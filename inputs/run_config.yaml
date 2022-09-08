@@ -1,0 +1,39 @@
+# run configuration
+
+n: 48  # number of time intervals per day
+n_intervals: 50  # number of intervals in EV factor transition matrix
+
+
+# input your root path on your local machine e.g. '/Users/username'
+local: '/Users/floracharbonnier'
+
+# the folder in which the input data is stored.
+# You may have both a local machine and a server path if you run this programme on different machines
+data_path:
+  local: '/Users/floracharbonnier/DPhildownloaded/'
+  remote: '/home/epg/Flora/DataProcessing'
+
+parallel: True  # False may be easier during debugging - True more efficient
+do_heat_map: False  # plot data available from NTS - this is computationally expensive
+n_rows: # number of rows to import in each data file (limit numbers e.g. for debugging)
+  gen: 1.e+6   # 172718544 all
+  dem: 1.e+6  # 300267349 all
+  EV: 1.e+6  # 4449164 all
+
+fill_type: # interpolate linearly to fill in errors instead of looking at day/week before
+  gen: day_week
+  dem: day_week
+
+do_test_filling_in: 0.01  # number between 0 and 1 ; what proportion of points we evaluate
+
+n_cpu: 10
+
+n_clusters:
+  dem: 4
+  EV: 3
+
+data_types: ["EV", "dem", "gen"]
+
+plots: True
+
+test_filling_in: True

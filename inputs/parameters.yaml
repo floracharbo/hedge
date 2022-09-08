@@ -1,0 +1,83 @@
+# variable names
+data_sources: ['CLNR', 'NTS']
+behaviour_types: ['dem', 'EV']
+date_entries: ['dtm_yr', 'dtm_mth', 'dtm_day']  # type of information about date only
+time_entries: ['dtm_hr', 'dtm_min']  # type of information about time
+weekday_type: ['wd', 'we']  # week day types - wd: weekday day and we: weekend day
+directs: ['prev', 'next']  # when looking at potential substitutes for missing data, one can look at the same time in two directions: in the past of in the future
+jumps:
+  one_day: ['day']  # when looking at potential substitutes for missing data, one can make two jumps: one day in the past/future or one week in the past/future
+  day_week: ['week', 'day']
+  two_days: ['day', 'two_days']
+
+consfactor: [2.25, 1.62, 1.36] # convert dist consumption tag for each trip # motorway, urban ('1'), rural ('2') kWh/10km
+
+i_home: 23 # for purposeFrom/purposeTo, which one is home
+type_cols:
+  CLNR: ['int', 'str', 'flt']
+  NTS: ['int', 'int', 'int', 'int', 'int', 'int', 'int', 'int', 'int', 'int', 'flt', 'flt', 'int']
+
+line_terminator:
+  CLNR: null
+  NTS: '\n'
+
+separator:
+  CLNR: ','
+  NTS: '\t'
+
+# in the string which corresponds to time, which characters correspond to which type of time information
+date_cols: ['day', 'mth', 'yr']
+startind: [0, 3, 6]
+endind: [2, 5, 10]
+
+# test cell type /data file name in CLNR data corresponding to each type of data
+test_cell_translation:
+  1a: 'dem'
+  5: 'gen'
+
+data_type_source:
+  gen: 'CLNR'
+  dem: 'CLNR'
+  EV: 'NTS'
+
+#name_cols_NTS: ['year', 'id', 'weekday', 'mode', 'dist', 'purposeFrom', 'purposeTo',
+#                          'start_h', 'start_min', 'check_time', 'end_h', 'end_min', 'duration']
+#i_cols_NTS: [1, 4, 7, 14, 21, 23, 24, 32, 33, 35, 37, 38, 44]
+name_cols_NTS: ['id', 'weekday', 'mode', 'purposeFrom',
+                'purposeTo', 'start_h', 'start_min', 'check_time',
+                'end_h', 'end_min', 'dist', 'duration', 'year']
+i_cols_NTS: [3, 6, 13, 16, 17, 21, 22, 24, 26, 27, 31, 35, 47]
+i_cols_CLNR: [0, 3, 4]
+
+i_cols_homes_info:
+    CLNR: [0, 2, 4, 5]
+    NTS:  [0, 2, 3, 5, 9, 10, 69]
+
+name_cols_homes_info:
+    CLNR: ['id', 'test_cell','start', 'end'] # household id, test_cell = '1a': 'dem', '5': 'gen'; start/end = strings corresponding to start and end of validity for given household
+    NTS:  ['id', 'start_day', 'start_month', 'survey_year', 'end_day', 'end_month', 'home_type']
+
+filling_in_entries: ['mean_abs_err', 'std_abs_err', 'p99_abs_err', 'max_abs_err', 'share_types_replaced']
+
+sequence_entries_CLNR: ['mins', 'cum_day', 'cum_min', 'month', 'id']
+#sequence_entries_NTS: ['cum_min', 'cum_min_end', 'cum_day', 'dist', 'purposeFrom', 'purposeTo',
+#                       'weekday', 'home_type', 'cum_min_day_start', 'cum_min_day_end', 'duration']
+sequence_entries_NTS: ['cum_min', 'cum_min_end', 'cum_day', 'dist', 'purposeFrom', 'purposeTo',
+                       'weekday', 'home_type', 'cum_min_all', 'cum_min_all_end', 'duration', 'id', 'month']
+
+dem_intervals: [[0, 7], [7, 11], [11, 14], [14, 17], [17, 21], [21, 24]]
+
+NTS_day_keys: ["cum_day", "weekday", "avail", "EV", "mins",
+               "cum_min", "id", "month"]
+bat:
+  c_max: 22 # kW max battery charge
+  d_max: 100 # kW max battery discharge
+  SoCmin: 0.1 # minimum state of charge
+  SoC0: 0.5 # initial and final state of charge
+  cap: 75 # kWh battery capacity
+
+fill_types: ['day_week', 'two_days', 'one_day', 'lin_interp']
+# day_week: Select from day or week before or after
+# two_days: Select from one or two days before or after
+# one_day: Select from day before or after
+# lin_interp: Linear interpolation time steps before and after
