@@ -30,16 +30,6 @@ date_cols: ['day', 'mth', 'yr']
 startind: [0, 3, 6]
 endind: [2, 5, 10]
 
-# test cell type /data file name in CLNR data corresponding to each type of data
-test_cell_translation:
-  1a: 'dem'
-  5: 'gen'
-
-data_type_source:
-  gen: 'CLNR'
-  dem: 'CLNR'
-  EV: 'NTS'
-
 #name_cols_NTS: ['year', 'id', 'weekday', 'mode', 'dist', 'purposeFrom', 'purposeTo',
 #                          'start_h', 'start_min', 'check_time', 'end_h', 'end_min', 'duration']
 #i_cols_NTS: [1, 4, 7, 14, 21, 23, 24, 32, 33, 35, 37, 38, 44]
@@ -81,3 +71,13 @@ fill_types: ['day_week', 'two_days', 'one_day', 'lin_interp']
 # two_days: Select from one or two days before or after
 # one_day: Select from day before or after
 # lin_interp: Linear interpolation time steps before and after
+
+# test cell type /data file name in CLNR data corresponding to each type of data
+test_cell_translation:
+  1a: 'dem'
+  5: 'gen'
+
+data_type_source:
+  gen: 'CLNR'
+  dem: 'CLNR'
+  EV: 'NTS'

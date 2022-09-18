@@ -17,6 +17,7 @@ def _get_correlation(
         f_nexts_all: List[float],
         save_path: Path,
         data_type: str,
+        plots,
         label: Optional[str] = None):
 
     factors = {}
@@ -46,7 +47,7 @@ def _get_correlation(
         assert f_next >= 0, f"{label} i {i} f_next = {f_next}"
 
     # plot f_next vs f_prev
-    if prm["plots"]:
+    if plots:
         for stylised in [True, False]:
             fig = plt.figure()
             plt.plot(f_prevs, f_nexts, "o", label="data", alpha=0.1)
@@ -241,7 +242,7 @@ def _scaling_factors_behaviour_types(
         initialise_dict(prm["CLNR_types"], "empty_dict") for _ in range(2)
     ]
     factors = initialise_dict(prm["data_types"], "empty_dict")
-    n_transitions = intitialise_dict(prm["data_types"], "zero")
+    n_transitions = initialise_dict(prm["data_types"], "zero")
 
     for data_type in prm["behaviour_types"]:
         if not _enough_data(banks[data_type], prm["weekday_type"]):
@@ -254,7 +255,7 @@ def _scaling_factors_behaviour_types(
             if len(f_prevs_all) == 0:
                 print(f"{data_type} transition {transition} len f_prevs_all == 0")
             factors[data_type][transition] = _get_correlation(
-                f_prevs_all, f_nexts_all, save_path, data_type, transition)
+                f_prevs_all, f_nexts_all, save_path, data_type, prm["plots"], transition)
             n_transitions[data_type] += len(f_prevs_all)
 
     if "dem" in prm["data_types"]:
@@ -312,7 +313,7 @@ def _scaling_factors_generation(n_data_type_, days_, save_path, plots):
         n_transitions += len(f_prev_gen)
 
         factors.append(
-            _get_correlation(f_prev_gen, f_next_gen, save_path, "gen", month)
+            _get_correlation(f_prev_gen, f_next_gen, save_path, "gen", plots, month)
         )
 
         # fit gamma
@@ -360,9 +361,10 @@ def scaling_factors(prm, banks, days, n_data_type, save_path):
     factors, mean_residual, gamma_prms, n_transitions \
         = _scaling_factors_behaviour_types(prm, banks, save_path)
 
-    for transition in prm["day_trans"]:
-        if gamma_prms['dem'][transition] is None:
-            print(f"gamma_prms['dem'][{transition}] is None")
+    if "dem" in prm["data_types"]:
+        for transition in prm["day_trans"]:
+            if gamma_prms['dem'][transition] is None:
+                print(f"gamma_prms['dem'][{transition}] is None")
 
     if "gen" in prm["data_types"]:
         factors["gen"], mean_residual["gen"], gamma_prms["gen"], n_transitions["gen"]  \
@@ -377,9 +379,10 @@ def scaling_factors(prm, banks, days, n_data_type, save_path):
             pickle.dump(obj, file)
         np.save(path, obj)
 
-    if len(mean_residual.keys()) < 2:
+    n_gamma = sum(prm["data_type_source"][data_type] == 'CLNR' for data_type in prm["data_types"])
+    if len(mean_residual.keys()) < n_gamma:
         print(f"missing mean_residual, mean_residual.keys() = {mean_residual.keys()}")
-    if len(gamma_prms.keys()) < 2:
+    if len(gamma_prms.keys()) < n_gamma:
         print(f"missing gamma_prms, gamma_prms.keys() = {gamma_prms.keys()}")
 
     for property_, obj in zip(["mean_residual", "gamma_prms"], [mean_residual, gamma_prms]):

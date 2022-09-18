@@ -290,7 +290,7 @@ def fill_whole_days(
 
             # test performance of filling in
             if prm["do_test_filling_in"]:
-                if random.random() < prm["do_test_filling_in"]:
+                if random.random() < prm["prob_test_filling_in"]:
                     types_replaced_eval, abs_error_ \
                         = _assess_filling_in(
                             prm, day, t, data_type, sequences[id_],
