@@ -372,12 +372,11 @@ def scaling_factors(prm, banks, days, n_data_type, save_path):
             n_data_type["gen"], days["gen"], save_path, prm["plots"])
 
     folder_path = save_path / "factors"
-    for property_, obj in zip(["f_min", "f_max", "f_mean", "n_transitions"],
-                              [f_min, f_max, f_mean, n_transitions]):
+    for property_, obj in zip(["f_min", "f_max", "f_mean", "n_transitions", "factors"],
+                              [f_min, f_max, f_mean, n_transitions, factors]):
         path = folder_path / f"{property_}.pickle"
         with open(path, "wb") as file:
             pickle.dump(obj, file)
-        np.save(path, obj)
 
     n_gamma = sum(prm["data_type_source"][data_type] == 'CLNR' for data_type in prm["data_types"])
     if len(mean_residual.keys()) < n_gamma:

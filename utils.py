@@ -1,10 +1,12 @@
 """User-defined tool functions used in the project."""
 
+import array
 import datetime
 from typing import List
 
 import numpy as np
 import pandas as pd
+import sys
 
 
 def initialise_dict(keys, type_obj="empty_list"):
@@ -17,6 +19,10 @@ def initialise_dict(keys, type_obj="empty_list"):
             obj[key] = {}
         elif type_obj == "zero":
             obj[key] = 0
+        elif type_obj == 'empty_array':
+            obj[key] = array.array('f')
+        elif type_obj == 'empty_np_array':
+            obj[key] = np.array([])
 
     return obj
 
@@ -63,11 +69,17 @@ def formatting(data, type_cols, name_col=None, hour_min=0):
         col = i if name_col is None else name_col[i]
         if data[col] is not None:
             if type_col == "int":
-                data[col] = data[col].apply(
-                    lambda x: int(x) if x != " " else None)
+                data = data.astype({col: 'int'})
+                # data.loc[data[col] == " ", col] = None
+                # data.loc[data[col] is not None, col].map(lambda x: int(x))
+
+                # data[col] = data[col].map(
+                #     lambda x: int(x) if x != " " else None)
             elif type_col == "flt":
-                data[col] = data[col].apply(
-                    lambda x: float(x) if x != " " else None)
+                data = data.astype({col: 'float'})
+
+                # data[col] = data[col].apply(
+                #     lambda x: float(x) if x != " " else None)
             elif type_col == "dtm":
                 data = datetime_to_cols(data, col, hour_min=hour_min)
 
@@ -83,7 +95,7 @@ def obtain_time(data: pd.DataFrame, data_source: str) -> pd.DataFrame:
     """Compute time-related values in DataFrame."""
     if data_source == "CLNR":
         mins = [
-            int(x[14: 16]) + int(x[11: 13]) * 60 if len(x) > 0 else None
+            int(x[14: 16]) + int(x[11: 13]) * 60 if len(x) > 15 else None
             for x in data["dtm"]]
         cum_day = [
             str_to_cum_day(x) if len(x) > 0 else None
@@ -131,3 +143,19 @@ def get_granularity(dt: int,
         granularities.append(granularity)
 
     return granularity, granularities
+
+
+
+def print_size_vars():
+    def sizeof_fmt(num, suffix='B'):
+        ''' by Fred Cirera,  https://stackoverflow.com/a/1094933/1870254, modified'''
+        for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi']:
+            if abs(num) < 1024.0:
+                return "%3.1f %s%s" % (num, unit, suffix)
+            num /= 1024.0
+        return "%.1f %s%s" % (num, 'Yi', suffix)
+
+
+    for name, size in sorted(((name, sys.getsizeof(value)) for name, value in locals().items()),
+                             key=lambda x: -x[1])[:10]:
+        print("{:>30}: {:>8}".format(name, sizeof_fmt(size)))

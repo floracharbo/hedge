@@ -130,8 +130,6 @@ class HEDGE:
         if plotting:
             if not os.path.exists(self.save_day_path):
                 os.mkdir(self.save_day_path)
-            print(f"factors {factors}")
-            print(f"clusters {clusters}")
             y_labels = {
                 "EV": "Electric vehicle loads",
                 "gen": "PV generation",

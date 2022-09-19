@@ -103,7 +103,7 @@ def _get_n_rows(
     path_n_rows = paths["save_path"] / f"n_rows_all_{data_type}.npy"
 
     if os.path.exists(path_n_rows):
-        n_rows[data_type] = np.load(path_n_rows)
+        n_rows[data_type] = int(np.load(path_n_rows))
     else:
         n_rows[data_type] = 0
         # open main variable data file
@@ -124,26 +124,34 @@ def add_out(prm,
                        np.ndarray,
                        List[int]],
             days: list,
-            all_abs_error: Dict[str, list],
+            all_abs_error: Dict[str, np.ndarray],
             types_replaced: Dict[str, int],
             all_data: np.ndarray,
             data_type: str,
             granularities: List[int],
             range_dates: list,
-            n_ids: int
+            n_ids: int,
+            start_idx
             ) -> Tuple[List[dict],
                        List[float],
                        Dict[str, int],
                        np.ndarray,
                        List[int]]:
     """Concatenate import_segments outputs that were imported separately."""
-    days = days + out[0]
+    if out[0] is None:
+        with open(f"days_{start_idx}.pickle", "rb") as file:
+            days_ = pickle.load(file)
+    else:
+        days_ = out[0]
+    days = days + days_
+
     if prm["data_type_source"][data_type] == "CLNR":
         if prm["do_test_filling_in"]:
             for fill_type in prm["fill_types"]:
-                all_abs_error[fill_type] = all_abs_error[fill_type] + out[1][fill_type]
+                all_abs_error[fill_type] = np.concatenate((all_abs_error[fill_type], out[1][fill_type]))
                 for replacement in prm["replacement_types"]:
                     types_replaced[fill_type][replacement] += out[2][fill_type][replacement]
+
     if out[3] is not None:
         all_data += out[3]
     for granularity in out[4]:

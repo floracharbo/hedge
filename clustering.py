@@ -52,7 +52,6 @@ def _transition_probabilities(
     for transition in prm["day_trans"]:
         n_trans[data_type][transition] = np.zeros((n_clus_all_, n_clus_all_))
         p_trans[data_type][transition] = np.zeros((n_clus_all_, n_clus_all_))
-    print(f"n_clus_all_ {n_clus_all_}")
 
     for i in range(n_data_type[data_type] - 1):
         day, next_day = [days[data_type][i_] for i_ in [i, i + 1]]
@@ -273,7 +272,6 @@ def _cluster_module(
         i_zeros: list,
 ) -> Tuple[list, list, int, list]:
     # actual clustering
-    print("clustering")
     clusobj = KMeans(n_clusters=n_clusters, n_init=100)
     obj = clusobj.fit(transformed_features)
 
@@ -334,15 +332,9 @@ def _get_features(days_, data_type, prm):
         if days_[i][data_type] is not None and sum(days_[i][data_type]) > 0
     ]
     if data_type == "EV":
-        print(f"len(days_) = {len(days_)}")
-        len_nones = sum(1 for i in range(len(days_)) if days_[i][data_type] is None)
-        print(f"len_nones {len_nones}")
-        len_zeros = sum(1 for i in range(len(days_)) if sum(days_[i][data_type]) == 0)
-        print(f"len_zeros {len_zeros}")
         i_zeros = [i for i in range(len(days_))
                    if days_[i][data_type] is None
                    or sum(days_[i][data_type]) == 0]
-        len(f"len(i_zeros) {len(i_zeros)}")
         assert len(to_cluster) + len(i_zeros) == len(days_), \
             f"len(to_cluster) {len(to_cluster)} " \
             f"+ len(i_zeros) {len(i_zeros)} != " \
@@ -377,10 +369,7 @@ def _get_features(days_, data_type, prm):
                     int(22 * 60 / prm["dT"])]
             )
         norm_vals.append(days_[i][f"norm_{data_type}"])
-    print("fit_transform")
-    print(f"np.shape(features) = {np.shape(features)}")
     transformed_features = StandardScaler().fit_transform(features)
-    print(f"len(transformed_features) = {len(transformed_features)}")
 
     return transformed_features, to_cluster, i_zeros, norm_vals
 
@@ -504,7 +493,6 @@ def split_day_types(days, prm, n_data_type):
     for data_type in prm["behaviour_types"]:
         for day_type in prm["weekday_type"]:
             days[f"{data_type}_{day_type}"] = []
-        print(f"split day types {data_type}")
         for i in range(n_data_type[data_type]):
             day = days[data_type][i]
             if data_type == "EV":
@@ -551,7 +539,6 @@ def clustering(days, prm, save_path, n_data_type):
         enough_data[data_type] = True
         for day_type in prm["weekday_type"]:
             days_ = days[f"{data_type}_{day_type}"]
-            print(f"get features {data_type}_{day_type}")
             transformed_features, to_cluster, i_zeros, norm_vals \
                 = _get_features(days_, data_type, prm)
             if len(transformed_features) < 2:

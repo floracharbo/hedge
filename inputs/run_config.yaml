@@ -13,7 +13,7 @@ data_path:
   remote: '/home/epg/Flora/DataProcessing'
 
 n_rows: # number of rows to import in each data file (limit numbers e.g. for debugging)
-  gen: 1.e+6   # 172718544 all
+  gen: all   # 172718544 all
   dem: 1.e+6  # 300267349 all
   EV: all  # 4449164 all
 
@@ -29,8 +29,8 @@ n_clusters:
   dem: 4
   EV: 3
 
-data_types: ["EV"]  # , "dem", "gen"
+data_types: ["gen"]  # , "dem", "gen"
 plots: True
 do_test_filling_in: True
-parallel: True  # False may be easier during debugging - True more efficient
+parallel: True
 do_heat_map: False  # plot data available from NTS - this is computationally expensive

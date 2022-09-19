@@ -126,22 +126,25 @@ def adjust_i_start_end(prm, t, sequence, i_start, i_end):
     return i_start, i_end
 
 
-def save_outs(outs, prm, data_type, save_path):
+def save_outs(outs, prm, data_type, save_path, start_end_block):
     """Once import_segment is done, bring it all together."""
     days_ = []
-    all_abs_error = initialise_dict(prm["fill_types"], "empty_list")
+    all_abs_error = initialise_dict(prm["fill_types"], "empty_np_array")
     types_replaced \
-        = initialise_dict(prm["replacement_types"], "zero")
+        = initialise_dict(prm["fill_types"], "empty_dict")
+    for fill_type in prm["fill_types"]:
+        types_replaced[fill_type] = initialise_dict(prm["replacement_types"], "zero")
+
     all_data = np.zeros((prm["n"], 366)) if data_type == "EV" else None
     granularities = []
     range_dates = [1e6, - 1e6]
     n_ids = 0
-    for out in outs:
+    for out, start_end in zip(outs, start_end_block):
         [days_, all_abs_error, types_replaced,
          all_data, granularities, range_dates, n_ids] \
             = add_out(prm, out, days_, all_abs_error,
                       types_replaced, all_data, data_type,
-                      granularities, range_dates, n_ids)
+                      granularities, range_dates, n_ids, start_end[0])
 
     if prm["data_type_source"][data_type] == "CLNR":
         np.save(
@@ -629,10 +632,6 @@ def get_sequences(
     _, sequences[id_] \
         = append_id_sequences(
             prm, data_type, current_sequence, granularities)
-
-    id0 = data["id"][0]
-    if sum(id_ == id0 for id_ in data["id"]) == len(data["id"]):
-        print("all ids are the same")
     assert len(sequences) > 0, "len(sequences) == 0"
 
     return sequences, granularities
@@ -758,7 +757,8 @@ def import_segment(
         prm: dict,
         paths: dict,
         data: pd.DataFrame,
-        data_type: str
+        data_type: str,
+        start_idx=None
         # data
 ) -> Tuple[List[dict],
            Optional[List[float]],
@@ -778,6 +778,7 @@ def import_segment(
     # 2 - split into sequences of subsequent times
     sequences, granularities = get_sequences(
         prm, data, data_type)
+
     del data
 
     # 3 - convert into days of data at adequate granularity
@@ -795,6 +796,10 @@ def import_segment(
     del sequences
 
     days = normalise(prm["n"], days, data_type)
+    if start_idx is not None:
+        with open(f"days_{start_idx}.pickle", "wb") as file:
+            pickle.dump(days, file)
+        days = None
 
     return days, abs_error, types_replaced_eval, all_data, granularities, range_dates, n_ids
 
@@ -905,6 +910,10 @@ def import_data(
                           allow_pickle=True)
         else:
             data_source = prm["data_type_source"][data_type]
+            print(f"prm['n_rows'][data_type] {prm['n_rows'][data_type]}")
+            print(f"type(prm['n_rows'][data_type]) = {type(prm['n_rows'][data_type])}")
+            print(f"prm['n_rows'][data_type] {prm['n_rows'][data_type]}")
+            print(f"type(prm['n_rows'][data_type]) = {type(prm['n_rows'][data_type])}")
             data = pd.read_csv(
                 paths["var_path"][data_type],
                 usecols=list(prm["i_cols"][data_type].values()),
@@ -951,12 +960,12 @@ def import_data(
 
             else:  # not parallel to debug
                 outs = [import_segment(
-                    prm, paths, data[start_end[0]:start_end[1]], data_type)
+                    prm, paths, data[start_end[0]: start_end[1]], data_type, start_end[0])
                     for start_end in start_end_block
                 ]
 
             days[data_type] \
-                = save_outs(outs, prm, data_type, paths["save_path"])
+                = save_outs(outs, prm, data_type, paths["save_path"], start_end_block)
             np.save(paths["save_path"] / f"day0_{id_}", days[data_type])
             n_data_type[data_type] = len(days[data_type])
 

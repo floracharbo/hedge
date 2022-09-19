@@ -127,7 +127,6 @@ def get_parameters() -> Tuple[dict, dict, dict]:
             for jump in prm["jumps"][fill_type]:
                 if f"{direct}_{jump}" not in prm["replacement_types"]:
                     prm["replacement_types"].append(f"{direct}_{jump}")
-    print(f"prm['replacement_types'] = {prm['replacement_types']}")
 
     # instructions for importing data
     # columns corresponding to each type of information in the data files
@@ -141,9 +140,10 @@ def get_parameters() -> Tuple[dict, dict, dict]:
                                    prm["i_cols_CLNR"]):
             prm["i_cols"][data_type][name_col] = i_col
 
-    prm["sequence_entries"]["EV"] = prm["sequence_entries_NTS"]
-    for name_col, i_col in zip(prm["name_cols_NTS"], prm["i_cols_NTS"]):
-        prm["i_cols"]["EV"][name_col] = i_col
+    if "EV" in prm["data_types"]:
+        prm["sequence_entries"]["EV"] = prm["sequence_entries_NTS"]
+        for name_col, i_col in zip(prm["name_cols_NTS"], prm["i_cols_NTS"]):
+            prm["i_cols"]["EV"][name_col] = i_col
 
     # year                  : survey year
     # id                    : home unique id fo find home-specific data
@@ -173,6 +173,7 @@ def get_parameters() -> Tuple[dict, dict, dict]:
         "parallel",
         "fill_type",
         "do_test_filling_in",
+        "prob_test_filling_in",
         "do_heat_map",
         "n",
         "n_clusters",

@@ -1,4 +1,5 @@
 """Functions related to filling in missing values in data."""
+import sys
 
 import matplotlib.pyplot as plt
 import pickle
@@ -253,8 +254,7 @@ def _assess_filling_in(
                     prm, t, day, data_type, sequence, throw,
                     types_replaced_eval[fill_type], implement=False, fill_type=fill_type)
             if replaced_val is not None:
-                abs_error[fill_type].append(abs(day[data_type][t] - replaced_val))
-
+                abs_error[fill_type] = np.append(abs_error[fill_type], abs(day[data_type][t] - replaced_val))
 
     return types_replaced_eval, abs_error
 
@@ -264,7 +264,7 @@ def fill_whole_days(
 ) -> Tuple[list, List[int], Optional[List[float]], Optional[Dict[str, int]]]:
     """Loop through days, fill in or throw."""
     to_throw = []
-    abs_error = initialise_dict(prm["fill_types"], "empty_list")
+    abs_error = initialise_dict(prm["fill_types"], "empty_np_array")
     types_replaced = initialise_dict(prm["replacement_types"], "zero")
     types_replaced_eval = initialise_dict(prm["fill_types"], "empty_dict")
     for fill_type in prm["fill_types"]:
@@ -291,12 +291,12 @@ def fill_whole_days(
             # test performance of filling in
             if prm["do_test_filling_in"]:
                 if random.random() < prm["prob_test_filling_in"]:
-                    types_replaced_eval, abs_error_ \
+                    types_replaced_eval, abs_error \
                         = _assess_filling_in(
                             prm, day, t, data_type, sequences[id_],
                             throw, types_replaced_eval, abs_error)
-                    for fill_type in abs_error.keys():
-                        abs_error[fill_type] += abs_error_[fill_type]
+                    # for fill_type in abs_error.keys():
+                    #     abs_error[fill_type] = np.concatenate(abs_error[fill_type], abs_error_[fill_type])
 
         # check if values are missing
         if not throw and len(days[i]["mins"]) < prm["n"]:
@@ -320,32 +320,34 @@ def fill_whole_days(
 def stats_filling_in(
         prm: dict,
         data_type: str,
-        all_abs_error: List[float],
+        all_abs_error: dict,
         types_replaced: dict,
         save_path: Path
 ) -> dict:
     """Obtain accuracy statistics on the filling in methodology."""
     filling_in = initialise_dict(prm["filling_in_entries"])
-    if len(all_abs_error) == 0:
+    if len(all_abs_error[prm["fill_types"][0]]) == 0:
         return None
 
     if prm["data_type_source"][data_type] == "CLNR":
-        filling_in["n_sample"] = len(all_abs_error)
-        filling_in["mean_abs_err"] = np.mean(all_abs_error)
-        filling_in["std_abs_err"] = np.std(all_abs_error)
-        filling_in["p99_abs_err"] = np.percentile(all_abs_error, 99)
-        filling_in["max_abs_err"] = np.max(all_abs_error)
-        filling_in["share_types_replaced"] = {}
-        sum_share = 0
+        for key in ["mean_abs_err", "std_abs_err", "p99_abs_err", "max_abs_err", "n_sample"]:
+            filling_in[key] = {}
+        for fill_type in prm["fill_types"]:
+            filling_in["mean_abs_err"][fill_type] = np.mean(all_abs_error[fill_type])
+            filling_in["std_abs_err"][fill_type] = np.std(all_abs_error[fill_type])
+            filling_in["p99_abs_err"][fill_type] = np.percentile(all_abs_error[fill_type], 99)
+            filling_in["max_abs_err"][fill_type] = np.max(all_abs_error[fill_type])
+            filling_in["n_sample"][fill_type] = len(all_abs_error[fill_type])
 
-        for key in prm["replacement_types"]:
-            filling_in["share_types_replaced"][key] \
-                = types_replaced[key] / len(all_abs_error)
-            sum_share += filling_in["share_types_replaced"][key]
-        assert not (data_type == "dem" and abs(sum_share - 1) > 1e-3), \
-            f"dt = {data_type}, sum_share = {sum_share}"
+        filling_in["share_types_replaced"] = initialise_dict(prm["fill_types"], "empty_dict")
+        for fill_type in prm["fill_types"]:
+            sum_share = 0
+            for replacement_type in prm["replacement_types"]:
+                share = types_replaced[fill_type][replacement_type] / filling_in["n_sample"][fill_type]
+                filling_in["share_types_replaced"][fill_type][replacement_type] = share
+                sum_share += share
+            assert not (data_type == "dem" and abs(sum_share - 1) > 1e-3), \
+                f"dt = {data_type}, sum_share = {sum_share}"
 
     with open(save_path / f"filling_in_{data_type}.pickle", "wb") as file:
         pickle.dump(filling_in, file)
-
-    return None
