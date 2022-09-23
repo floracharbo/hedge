@@ -6,7 +6,6 @@ from typing import List
 
 import numpy as np
 import pandas as pd
-import sys
 
 
 def initialise_dict(keys, type_obj="empty_list"):
@@ -29,7 +28,7 @@ def initialise_dict(keys, type_obj="empty_list"):
 
 def str_to_cum_day(str_):
     """From datetime str, get number of days since 1/1/2010."""
-    if isinstance(str_, str) and str_ != "None":
+    if isinstance(str_, str) and len(str_) > 9:
         date = datetime.date(int(str_[6:10]), int(str_[3:5]), int(str_[0:2]))
         date0 = datetime.date(2010, 1, 1)
         return (date - date0).days
@@ -95,18 +94,18 @@ def obtain_time(data: pd.DataFrame, data_source: str) -> pd.DataFrame:
     """Compute time-related values in DataFrame."""
     if data_source == "CLNR":
         mins = [
-            int(x[14: 16]) + int(x[11: 13]) * 60 if len(x) > 15 else None
+            int(x[14: 16]) + int(x[11: 13]) * 60 if len(x) > 16 else None
             for x in data["dtm"]]
         cum_day = [
             str_to_cum_day(x) if len(x) > 0 else None
             for x in data["dtm"]]
-        month = [int(x[3: 5]) if len(x) > 0
+        month = [int(x[3: 5]) if len(x) > 5
                  else None
                  for x in data["dtm"]]
 
-        data["mins"] = mins
-        data["cum_day"] = cum_day
-        data["month"] = month
+        data["mins"] = np.array(mins)
+        data["cum_day"] = np.array(cum_day)
+        data["month"] = np.array(month)
 
         data["cum_min"] = data.apply(
             lambda x: x.mins + x.cum_day * 24 * 60
@@ -143,19 +142,3 @@ def get_granularity(dt: int,
         granularities.append(granularity)
 
     return granularity, granularities
-
-
-
-def print_size_vars():
-    def sizeof_fmt(num, suffix='B'):
-        ''' by Fred Cirera,  https://stackoverflow.com/a/1094933/1870254, modified'''
-        for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi']:
-            if abs(num) < 1024.0:
-                return "%3.1f %s%s" % (num, unit, suffix)
-            num /= 1024.0
-        return "%.1f %s%s" % (num, 'Yi', suffix)
-
-
-    for name, size in sorted(((name, sys.getsizeof(value)) for name, value in locals().items()),
-                             key=lambda x: -x[1])[:10]:
-        print("{:>30}: {:>8}".format(name, sizeof_fmt(size)))

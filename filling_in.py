@@ -1,12 +1,11 @@
 """Functions related to filling in missing values in data."""
-import sys
 
-import matplotlib.pyplot as plt
 import pickle
 import random
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import matplotlib.pyplot as plt
 import numpy as np
 
 from utils import initialise_dict
@@ -67,10 +66,11 @@ def _potential_replacements(
             sum_none = 0
             for bound in bounds:
                 # potential replacement, value before, value after
-                idx = [i for i in range(len(sequence["cum_min"]))
-                       if sequence["cum_min"][i] == t_cum
-                       + prm["direct_mult"][direction] * prm["jump_dt"][jump]
-                       + prm["bound_delta"][bound]]
+                idx = np.where(
+                    sequence["cum_min"] == t_cum
+                    + prm["direct_mult"][direction] * prm["jump_dt"][jump]
+                    + prm["bound_delta"][bound]
+                )[0]
                 if len(idx) == 0:
                     # there is no data for the time we are looking for
                     sum_none += 1
@@ -175,31 +175,33 @@ def _check_fill_missing(
         save_path: Path
 ) -> Tuple[Dict[str, float], Optional[Dict[str, int]], List[int]]:
     """Loop through days to check which to fill in and which to throw."""
-    assert len(set(day["mins"])) == len(day["mins"]), f"mins duplicates {day['mins']}"
+    assert len(set(day["mins"])) == len(day["mins"]), \
+        f"mins duplicates {day['mins']}"
+    missing_fig_path = save_path / f"missing_data_{data_type}.png"
     to_fill = []
     for t in range(len(day["mins"])):
         n_miss, fill_t = _number_missing_points(prm["dT"], t, day["mins"])
-        assert len(fill_t) == 0 or not (fill_t[0] == 0 and day["mins"][0] == 0), f"why add zero if already 0? day['mins'] {day['mins']} t {t} fill_t {fill_t}"
         for n_miss_, fill_t_ in zip(n_miss, fill_t):
             if n_miss_ > 1:
                 throw = True
                 if i not in to_throw:
                     to_throw.append(i)
-                if prm["plots"] and n_miss_ > 2 and len(day["mins"]) > 10 and not (save_path / f"missing_data_{data_type}.png").is_file():
-                    fig = plt.figure()
-                    xs = [min / 60 for min in day["mins"]]
-                    for t in range(len(day[data_type]) - 1):
-                        if day["mins"][t] + 24 * 60 / prm["n"] == day["mins"][t + 1]:
-                            plt.plot(xs[t: t + 2], day[data_type][t: t + 2], '-o', color="blue", lw=3)
-                        else:
-                            plt.plot(xs[t: t + 2], day[data_type][t: t + 2], '--o', color="blue")
-
-                    fig.savefig(save_path / f"missing_data_{data_type}")
+                if (
+                        prm["plots"]
+                        and n_miss_ > 2
+                        and len(day["mins"]) > 10
+                        and not missing_fig_path.is_file()
+                ):
+                    _plot_missing_data(
+                        day, data_type, prm, missing_fig_path
+                    )
             else:
                 to_fill.append(fill_t_)
-                assert not (to_fill == 0 and day["mins"][0] == 0), "why add zero if already 0?"
+                assert not (to_fill == 0 and day["mins"][0] == 0), \
+                    "why add zero if already 0?"
 
-    assert len(set(day["mins"])) == len(day["mins"]), f"mins duplicates {day['mins']}"
+    assert len(set(day["mins"])) == len(day["mins"]), \
+        f"mins duplicates {day['mins']}"
 
     # replace single missing values
     i_tfill = 0
@@ -209,8 +211,8 @@ def _check_fill_missing(
             prm, t, day, data_type, sequences_id, throw, types_replaced
         )
         assert len(set(day["mins"])) == len(day["mins"]), \
-            f"mins duplicates {day['mins']} to_fill[{i_tfill}] {to_fill[i_tfill]}" \
-            f"t {t}"
+            f"mins duplicates {day['mins']} " \
+            f"to_fill[{i_tfill}] {to_fill[i_tfill]} t {t}"
         if throw is True:  # could not fill in
             if i not in to_throw:
                 to_throw.append(i)
@@ -218,11 +220,15 @@ def _check_fill_missing(
             to_fill = [tf if tf < t else tf + 1 for tf in to_fill]
 
         i_tfill += 1
-    assert throw or all([min % (24 * 60 / prm["n"]) == 0 for min in day["mins"]]), \
-        f"day['mins'] {day['mins']} not right granularity {data_type}"
-    assert throw or all([next_min == min + 24 * 60 / prm["n"] for min, next_min in zip(day["mins"][:-1], day["mins"][1:])]), \
-        f"day['mins'] {day['mins']} for right sequence {data_type}"
-    assert throw or len(day["mins"]) == prm["n"], f"len mins {len(day['mins'])} but no throw {data_type}"
+    assert throw or all(
+        [min % prm["dT"] == 0 for min in day["mins"]]
+    ), f"day['mins'] {day['mins']} not right granularity {data_type}"
+    assert throw or all(
+        [next_min == min + prm["dT"]
+         for min, next_min in zip(day["mins"][:-1], day["mins"][1:])]
+    ), f"day['mins'] {day['mins']} for right sequence {data_type}"
+    assert throw or len(day["mins"]) == prm["n"], \
+        f"len mins {len(day['mins'])} but no throw {data_type}"
 
     return day, types_replaced, to_throw
 
@@ -234,9 +240,9 @@ def _assess_filling_in(
         data_type: str,
         sequence: dict,
         throw: bool,
-        types_replaced_eval: Optional[Dict[str, int]],
+        types_replaced_eval: Optional[dict],
         abs_error: dict
-) -> Tuple[Optional[Dict[str, int]], Optional[List[float]]]:
+) -> Tuple[Optional[Dict[str, int]], Optional[Dict[str, np.ndarray]]]:
     """Compare real values with filled in values."""
     final_t = t == len(day["mins"]) - 1
     expect_next = day["mins"][t] + prm["dT"]
@@ -251,10 +257,14 @@ def _assess_filling_in(
         for fill_type in prm["fill_types"]:
             _, _, types_replaced_eval[fill_type], replaced_val \
                 = _evaluate_missing(
-                    prm, t, day, data_type, sequence, throw,
-                    types_replaced_eval[fill_type], implement=False, fill_type=fill_type)
+                prm, t, day, data_type, sequence, throw,
+                types_replaced_eval[fill_type],
+                implement=False, fill_type=fill_type
+            )
             if replaced_val is not None:
-                abs_error[fill_type] = np.append(abs_error[fill_type], abs(day[data_type][t] - replaced_val))
+                abs_error[fill_type] = np.append(
+                    abs_error[fill_type], abs(day[data_type][t] - replaced_val)
+                )
 
     return types_replaced_eval, abs_error
 
@@ -263,7 +273,7 @@ def fill_whole_days(
         prm, days: list, data_type: str, sequences: dict, save_path: Path
 ) -> Tuple[list, List[int], Optional[List[float]], Optional[Dict[str, int]]]:
     """Loop through days, fill in or throw."""
-    to_throw = []
+    to_throw: List[int] = []
     abs_error = initialise_dict(prm["fill_types"], "empty_np_array")
     types_replaced = initialise_dict(prm["replacement_types"], "zero")
     types_replaced_eval = initialise_dict(prm["fill_types"], "empty_dict")
@@ -278,15 +288,8 @@ def fill_whole_days(
         assert len(day[data_type]) > 0, \
             f"i = {i} dt = {data_type} len(days[i][dt])) == 0"
         for t in range(len(days[i][data_type])):
-            if day[data_type][t] < 0 and day[data_type][t] > -1e-2:
-                day[data_type][t] = 0
-                print("Negatives should have been removed before")
-            elif day[data_type][t] < 0:
-                print(f"days[{i}][{data_type}][{t}] = {day[data_type][t]}")
-                throw = True
-                if i in to_throw:
-                    print(f"double {i} in to_throw")
-                to_throw.append(i)
+            assert not day[data_type][t] < 0, \
+                "Negatives should have been removed before"
 
             # test performance of filling in
             if prm["do_test_filling_in"]:
@@ -295,8 +298,6 @@ def fill_whole_days(
                         = _assess_filling_in(
                             prm, day, t, data_type, sequences[id_],
                             throw, types_replaced_eval, abs_error)
-                    # for fill_type in abs_error.keys():
-                    #     abs_error[fill_type] = np.concatenate(abs_error[fill_type], abs_error_[fill_type])
 
         # check if values are missing
         if not throw and len(days[i]["mins"]) < prm["n"]:
@@ -313,6 +314,14 @@ def fill_whole_days(
 
     if not prm["do_test_filling_in"]:
         abs_error, types_replaced_eval = None, None
+    else:
+        for fill_type in prm["fill_types_choice"]:
+            assert sum(types_replaced_eval[fill_type].values()) > 0, \
+                f"{data_type} {fill_type} " \
+                f"types_replaced_eval {types_replaced_eval}"
+        for fill_type in prm["fill_types"]:
+            assert len(abs_error[fill_type]) > 0, \
+                f"len(abs_error[{fill_type}]) == 0"
 
     return days, to_throw, abs_error, types_replaced_eval
 
@@ -329,25 +338,59 @@ def stats_filling_in(
     if len(all_abs_error[prm["fill_types"][0]]) == 0:
         return None
 
-    if prm["data_type_source"][data_type] == "CLNR":
-        for key in ["mean_abs_err", "std_abs_err", "p99_abs_err", "max_abs_err", "n_sample"]:
-            filling_in[key] = {}
-        for fill_type in prm["fill_types"]:
-            filling_in["mean_abs_err"][fill_type] = np.mean(all_abs_error[fill_type])
-            filling_in["std_abs_err"][fill_type] = np.std(all_abs_error[fill_type])
-            filling_in["p99_abs_err"][fill_type] = np.percentile(all_abs_error[fill_type], 99)
-            filling_in["max_abs_err"][fill_type] = np.max(all_abs_error[fill_type])
-            filling_in["n_sample"][fill_type] = len(all_abs_error[fill_type])
+    for key in [
+        "mean_abs_err", "std_abs_err", "p99_abs_err", "max_abs_err", "n_sample"
+    ]:
+        filling_in[key] = {}
+    for fill_type in prm["fill_types"]:
+        filling_in["mean_abs_err"][fill_type] \
+            = np.mean(all_abs_error[fill_type])
+        filling_in["std_abs_err"][fill_type] \
+            = np.std(all_abs_error[fill_type])
+        filling_in["p99_abs_err"][fill_type] \
+            = np.percentile(all_abs_error[fill_type], 99)
+        filling_in["max_abs_err"][fill_type] \
+            = np.max(all_abs_error[fill_type])
+        filling_in["n_sample"][fill_type] = len(all_abs_error[fill_type])
 
-        filling_in["share_types_replaced"] = initialise_dict(prm["fill_types"], "empty_dict")
-        for fill_type in prm["fill_types"]:
-            sum_share = 0
-            for replacement_type in prm["replacement_types"]:
-                share = types_replaced[fill_type][replacement_type] / filling_in["n_sample"][fill_type]
-                filling_in["share_types_replaced"][fill_type][replacement_type] = share
-                sum_share += share
-            assert not (data_type == "dem" and abs(sum_share - 1) > 1e-3), \
-                f"dt = {data_type}, sum_share = {sum_share}"
+    filling_in["share_types_replaced"] \
+        = initialise_dict(prm["fill_types_choice"], "empty_dict")
+    for fill_type in prm["fill_types_choice"]:
+        sum_share = 0
+        for replacement_type in prm["replacement_types"]:
+            share = types_replaced[fill_type][replacement_type] \
+                / filling_in["n_sample"][fill_type]
+            filling_in["share_types_replaced"][fill_type][replacement_type] \
+                = share
+            sum_share += share
+        assert not (data_type == "dem" and abs(sum_share - 1) > 1e-3), \
+            f"dt = {data_type}, sum_share = {sum_share} " \
+            f"types_replaced[{fill_type}] = {types_replaced}"
 
     with open(save_path / f"filling_in_{data_type}.pickle", "wb") as file:
         pickle.dump(filling_in, file)
+
+    return None
+
+
+def _plot_missing_data(day, data_type, prm, missing_fig_path):
+    fig = plt.figure()
+    xs = [min / 60 for min in day["mins"]]
+    for t in range(len(day[data_type]) - 1):
+        if day["mins"][t] + prm["dT"] == day["mins"][t + 1]:
+            plt.plot(
+                xs[t: t + 2],
+                day[data_type][t: t + 2],
+                '-o',
+                color="blue",
+                lw=3
+            )
+        else:
+            plt.plot(
+                xs[t: t + 2],
+                day[data_type][t: t + 2],
+                '--o',
+                color="blue"
+            )
+
+    fig.savefig(missing_fig_path)
