@@ -23,27 +23,25 @@ if __name__ == "__main__":
     # 1 - initialise variables
     print("(1) initialise variables")
     tic_dtm = datetime.datetime.now()
-    prm, paths, run_config = get_parameters()
+    prm, run_config = get_parameters()
     dtm_1 = datetime.datetime.now()
     print(f"(1) done in {dtm_1 - tic_dtm} seconds")
 
     # %% 2 - import generation and electricity demand data
     print("(2) import profiles")
-    days, n_data_type = import_data(prm, paths)
+    days, n_data_type = import_data(prm)
     dtm_2 = datetime.datetime.now()
     print(f"(2) done in {dtm_2 - dtm_1} seconds")
 
     # %% 4 - clustering - for demand and transport
     print("(3) clustering")
-    banks = clustering(
-        days, prm, paths["save_path"], n_data_type)
+    banks = clustering(days, prm, n_data_type)
     dtm_3 = datetime.datetime.now()
     print(f"(3) done in {dtm_3 - dtm_2} seconds")
 
     # %% 5 - scaling factors
     print("(4) scaling factors")
-    scaling_factors(prm, banks, days, n_data_type,
-                    paths["save_path"])
+    scaling_factors(prm, banks, days, n_data_type)
     dtm_4 = datetime.datetime.now()
     print(f"(4) done in {dtm_4 - dtm_3} seconds")
 

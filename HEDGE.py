@@ -11,12 +11,12 @@ The main method is 'make_next_day', which generates new day of data
 import os
 import pickle
 from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tick
-from pathlib import Path
-from typing import Any, List, Optional, Tuple
-
 import numpy as np
 import yaml
 from scipy.stats import gamma
@@ -46,7 +46,7 @@ class HEDGE:
         self.n_homes = n_homes
 
         # load input data
-        paths, prm, config = self._load_inputs()
+        prm, config = self._load_inputs()
 
         # update date and time information
         self.date = datetime(2020, config["month"], 1)
@@ -56,7 +56,7 @@ class HEDGE:
 
         self._init_factors_clusters()
 
-        self.profs = self._load_profiles(paths, prm)
+        self.profs = self._load_profiles(prm)
 
         # number of time steps per day
         if "dem" in self.profs:
@@ -66,7 +66,7 @@ class HEDGE:
         else:
             self.n_steps = len(self.profs["gen"][0][0])
 
-        self.save_day_path = Path(paths["results_save_HEDGE"])
+        self.save_day_path = Path(config["results_save_HEDGE"])
 
     def make_next_day(self, plotting=False) -> dict:
         """Generate new day of data (EV, gen, dem profiles)."""
@@ -97,10 +97,11 @@ class HEDGE:
                      clusters["dem"][home]][i_profiles["dem"][home]]]
                 for home in range(self.n_homes)]
         if "gen" in self.data_types:
+            gen_profs = self.profs["gen"][i_month]
             day["gen"] = [
                 [
                     p * factors["gen"][home]
-                    for p in self.profs["gen"][i_month][i_profiles["gen"][home]]
+                    for p in gen_profs[i_profiles["gen"][home]]
                 ]
                 for home in range(self.n_homes)
             ]
@@ -128,56 +129,7 @@ class HEDGE:
         self.clusters = clusters
 
         if plotting:
-            if not os.path.exists(self.save_day_path):
-                os.mkdir(self.save_day_path)
-            y_labels = {
-                "EV": "Electric vehicle loads",
-                "gen": "PV generation",
-                "dem": "Household loads"
-            }
-            font = {'size': 22}
-            matplotlib.rc('font', **font)
-            hr_per_t = 24 / self.n_steps
-            hours = [i * hr_per_t for i in range(self.n_steps)]
-            for data_type in self.data_types:
-                key = "loads_EV" if data_type == "EV" else data_type
-                for a in range(self.n_homes):
-                    fig = plt.figure()
-                    plt.plot(hours, day[key][a], color="blue", lw=3)
-                    plt.xlabel("Time [hours]")
-                    plt.ylabel(f"{y_labels[data_type]} [kWh]")
-                    y_fmt = tick.FormatStrFormatter('%.1f')
-                    plt.gca().yaxis.set_major_formatter(y_fmt)
-                    plt.tight_layout()
-                    fig.savefig(self.save_day_path / f"{data_type}_a{a}")
-                    plt.close("all")
-
-                    if "EV" in self.data_types:
-                        bands_bEV = []
-                        non_avail = [i for i in range(self.n_steps) if day["avail_EV"][a][i] == 0]
-                        if len(non_avail) > 0:
-                            current_band = [non_avail[0] * hr_per_t]
-                            if len(non_avail) > 1:
-                                for i in range(1, len(non_avail)):
-                                    if non_avail[i] != non_avail[i - 1] + 1:
-                                        current_band.append((non_avail[i - 1] + 0.99) * hr_per_t)
-                                        bands_bEV.append(current_band)
-                                        current_band = [non_avail[i] * hr_per_t]
-                            current_band.append((non_avail[-1] + 0.999) * hr_per_t)
-                            bands_bEV.append(current_band)
-
-                        fig, ax = plt.subplots()
-                        ax.step(hours[0: self.n_steps], day["loads_EV"][a][0: self.n_steps], color='k', where='post', lw=3)
-                        for band in bands_bEV:
-                            ax.axvspan(band[0], band[1], alpha=0.3, color='grey')
-                        grey_patch = matplotlib.patches.Patch(
-                            alpha=0.3, color='grey', label='EV unavailable')
-                        # plt.legend(handles=[grey_patch], fancybox=True)
-                        plt.xlabel("Time [hours]")
-                        plt.ylabel("EV loads and at-home availability")
-                        fig.tight_layout()
-                        fig.savefig(self.save_day_path / f"avail_EV_a{a}")
-                        plt.close("all")
+            self._plotting_profiles(day)
 
         return day
 
@@ -200,7 +152,6 @@ class HEDGE:
 
     def _load_inputs(self):
         # load inputs
-        paths = yaml.safe_load(open("inputs/paths.yaml"))
         prm = yaml.safe_load(open("inputs/parameters.yaml"))
         config = yaml.safe_load(open("inputs/config_hedge.yaml"))
 
@@ -212,7 +163,7 @@ class HEDGE:
         self.bat = prm["bat"]
 
         # update paths
-        self.save_path = Path(paths["results_path_HEDGE"])
+        self.save_path = Path(config["results_path_HEDGE"])
 
         # possible types of transition between week day types (week/weekend)
         prm["day_trans"] = []
@@ -262,7 +213,7 @@ class HEDGE:
                    for min_cdf, max_cdf in zip(
                     self.min_cdfs["gen"], self.max_cdfs["gen"])]
 
-        return paths, prm, config
+        return prm, config
 
     def _init_factors_clusters(self):
         day_type, transition = self._transition_type()
@@ -400,7 +351,6 @@ class HEDGE:
 
         return day_type, transition
 
-
     def _adjust_max_ev_loads(self, day, interval_f_ev, factors,
                              transition, clusters, day_type, i_ev):
         for home in range(self.n_homes):
@@ -408,23 +358,15 @@ class HEDGE:
             while np.max(day["loads_EV"][home]) > self.bat["c_max"] \
                     and it < 100:
                 if it == 99:
-                    print(f"np.max(loads_EV[{home}]) {np.max(day['loads_EV'][home])} > "
-                          f"self.max_load_ev[{home}] {self.bat['c_max']}")
-                    print(f"interval_f_ev[home] = {interval_f_ev[home]}")
-                    print(f"self.mid_xs[{transition}] {self.mid_xs[transition]}")
-                    print(f"self.mid_xs[{transition}][int(interval_f_ev[home])] {self.mid_xs[transition][int(interval_f_ev[home])]}")
-                    print(f"self.profs['EV']['cons'][day_type][clusters['EV'][home]][i_ev[home]] "
-                          f"{self.profs['EV']['cons'][day_type][clusters['EV'][home]][i_ev[home]]}")
-                    print(f"self.n_prof['EV'][day_type][clusters['EV'][home]] "
-                          f"{self.n_prof['EV'][day_type][clusters['EV'][home]]}")
-                    print(f"day['loads_EV'][home]  {day['loads_EV'][home] }")
+                    print("100 iterations _adjust_max_ev_loads")
                 if factors["EV"][home] > 0 and interval_f_ev[home] > 0:
                     interval_f_ev[home] -= 1
                     factors["EV"][home] = self.mid_xs[transition][
                         int(interval_f_ev[home])]
                     ev_cons = self.profs["EV"]["cons"][day_type][
                         clusters["EV"][home]][i_ev[home]]
-                    assert sum(ev_cons) == 0 or abs(sum(ev_cons) - 1) < 1e-3, f"ev_cons {ev_cons}"
+                    assert sum(ev_cons) == 0 or abs(sum(ev_cons) - 1) < 1e-3, \
+                        f"ev_cons {ev_cons}"
                     day["loads_EV"][home] \
                         = [p * factors["EV"][home] for p in ev_cons]
                 else:
@@ -480,19 +422,22 @@ class HEDGE:
                 if file[0] != ".":
                     cluster = int(file[1])
                     data_type = file[3: 5]
-                    profiles["EV"][data][data_type][cluster] = np.load(
-                        path / file, mmap_mode="r"
-                    )
+                    profiles_ = np.load(path / file, mmap_mode="r")
+                    # mmap_mode = 'r': not loaded, but elements accessible
                     if data == 'cons':
-                        assert all([sum(prof) == 0 or abs(sum(prof) - 1) < 1e-3 for prof in profiles["EV"][data][data_type][cluster]]), \
-                            f"sum profiles not 1 path {path} file {file}"
-                    # (mmap_mode = 'r' means not actually loaded,
-                    # but elements accessible)
-                    prof_shape = np.shape(profiles["EV"][data][data_type][cluster])
+                        assert all(
+                            [
+                                sum(prof) == 0 or abs(sum(prof) - 1) < 1e-3
+                                for prof in profiles_
+                            ]
+                        ), f"sum profiles not 1 path {path} file {file}"
+
+                    prof_shape = np.shape(profiles_)
                     if len(prof_shape) == 1:
-                        profiles["EV"][data][data_type][cluster] = np.reshape(
+                        profiles_ = np.reshape(
                             prof_shape, (1, len(prof_shape))
                         )
+                    profiles["EV"][data][data_type][cluster] = profiles_
 
         for day_type in labels_day:
             self.n_prof["EV"][day_type] = [
@@ -502,13 +447,13 @@ class HEDGE:
 
         return profiles
 
-    def _load_dem_profiles(self, paths, profiles, prm):
+    def _load_dem_profiles(self, profiles, prm):
 
         profiles["dem"] = initialise_dict(prm["weekday_type"], [])
         self.n_prof["dem"] = {}
         clusters = [
             int(file[1])
-            for file in os.listdir(paths['profiles_path'] / "norm_dem")
+            for file in os.listdir(prm['profiles_path'] / "norm_dem")
         ]
 
         n_dem_clus = max(clusters) + 1
@@ -538,10 +483,10 @@ class HEDGE:
 
         return profiles
 
-    def _load_profiles(self, paths: dict, prm: dict) -> dict:
+    def _load_profiles(self, prm: dict) -> dict:
         """Load banks of profiles from files."""
         profiles: Dict[str, Any] = {"EV": {}}
-        paths['profiles_path'] = self.save_path / "profiles"
+        prm['profiles_path'] = self.save_path / "profiles"
         self.n_prof: dict = {}
 
         # EV profiles
@@ -551,7 +496,7 @@ class HEDGE:
 
         # dem profiles
         if "dem" in self.data_types:
-            profiles = self._load_dem_profiles(paths, profiles, prm)
+            profiles = self._load_dem_profiles(profiles, prm)
 
         # PV generation bank and month
         if "gen" in self.data_types:
@@ -768,3 +713,70 @@ class HEDGE:
             return trip_load, dt_to_trip, t_end_trip
 
         return None, None, None
+
+    def _plotting_profiles(self, day):
+        if not os.path.exists(self.save_day_path):
+            os.mkdir(self.save_day_path)
+        y_labels = {
+            "EV": "Electric vehicle loads",
+            "gen": "PV generation",
+            "dem": "Household loads"
+        }
+        font = {'size': 22}
+        matplotlib.rc('font', **font)
+        hr_per_t = 24 / self.n_steps
+        hours = [i * hr_per_t for i in range(self.n_steps)]
+        for data_type in self.data_types:
+            key = "loads_EV" if data_type == "EV" else data_type
+            for a in range(self.n_homes):
+                fig = plt.figure()
+                plt.plot(hours, day[key][a], color="blue", lw=3)
+                plt.xlabel("Time [hours]")
+                plt.ylabel(f"{y_labels[data_type]} [kWh]")
+                y_fmt = tick.FormatStrFormatter('%.1f')
+                plt.gca().yaxis.set_major_formatter(y_fmt)
+                plt.tight_layout()
+                fig.savefig(self.save_day_path / f"{data_type}_a{a}")
+                plt.close("all")
+
+                if "EV" in self.data_types:
+                    bands_bEV = []
+                    non_avail = [
+                        i for i in range(self.n_steps)
+                        if day["avail_EV"][a][i] == 0
+                    ]
+                    if len(non_avail) > 0:
+                        current_band = [non_avail[0] * hr_per_t]
+                        if len(non_avail) > 1:
+                            for i in range(1, len(non_avail)):
+                                if non_avail[i] != non_avail[i - 1] + 1:
+                                    current_band.append(
+                                        (non_avail[i - 1] + 0.99) * hr_per_t
+                                    )
+                                    bands_bEV.append(current_band)
+                                    current_band = [non_avail[i] * hr_per_t]
+                        current_band.append(
+                            (non_avail[-1] + 0.999) * hr_per_t
+                        )
+                        bands_bEV.append(current_band)
+
+                    fig, ax = plt.subplots()
+                    ax.step(
+                        hours[0: self.n_steps],
+                        day["loads_EV"][a][0: self.n_steps],
+                        color='k',
+                        where='post',
+                        lw=3
+                    )
+                    for band in bands_bEV:
+                        ax.axvspan(
+                            band[0], band[1], alpha=0.3, color='grey'
+                        )
+                    grey_patch = matplotlib.patches.Patch(
+                        alpha=0.3, color='grey', label='EV unavailable')
+                    plt.legend(handles=[grey_patch], fancybox=True)
+                    plt.xlabel("Time [hours]")
+                    plt.ylabel("EV loads and at-home availability")
+                    fig.tight_layout()
+                    fig.savefig(self.save_day_path / f"avail_EV_a{a}")
+                    plt.close("all")

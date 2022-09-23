@@ -3,3 +3,7 @@
 *.npy
 *.png
 *.pickle
+*.lprof
+*.pstats
+*.txt
+results/factors/sum_log_likelihood_dem_wd2wd

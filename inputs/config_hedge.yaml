@@ -6,3 +6,4 @@ max_discharge:
 f_std_share: 1
 clust_dist_share: 1
 month: 1
+results_save_HEDGE: '/Users/floracharbonnier/Documents/GitHub/private_HEDGE/save_day'

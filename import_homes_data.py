@@ -2,6 +2,7 @@
 
 import os
 import pickle
+from pathlib import Path
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -13,7 +14,6 @@ from utils import dmy_to_cum_day, initialise_dict, str_to_cum_day
 def _make_data(
         prm: dict,
         data_source: str,
-        paths: dict,
         test_cell: dict,
         str_save: List[str],
 ) -> Tuple[list, dict, dict]:
@@ -22,7 +22,7 @@ def _make_data(
     start_id, end_id = [{} for _ in range(2)]
 
     home_data = pd.read_csv(
-        paths["homes_path"][data_source],
+        prm["homes_path"][data_source],
         usecols=prm["i_cols_homes_info"][data_source],
         names=prm["name_cols_homes_info"][data_source],
         sep=prm["separator"][data_source],
@@ -61,17 +61,17 @@ def _make_data(
             home_type[id_] = home_data["home_type"][row]
 
     for label, obj in zip(str_save, [start_id, end_id, test_cell]):
-        with open(paths["save_path"] / f"{label}.pickle", "wb") as file:
+        with open(prm["save_path"] / f"{label}.pickle", "wb") as file:
             pickle.dump(obj, file)
     if data_source == "NTS":
-        with open(paths["save_path"] / "home_type_NTS.pickle", "wb") as file:
+        with open(prm["save_path"] / "home_type_NTS.pickle", "wb") as file:
             pickle.dump(home_type, file)
 
     return [start_id, end_id], test_cell, home_type
 
 
 def _load_data(
-        paths: dict,
+        save_path: Path,
         str_save: List[str],
         data_source: str,
         home_type: dict
@@ -79,19 +79,18 @@ def _load_data(
     # if data was already loaded and computed before,
     # load it from the saved files
     start_id, end_id, test_cell \
-        = [np.load(paths["save_path"] / f"{label}.npy",
+        = [np.load(save_path / f"{label}.npy",
                    allow_pickle=True).item()
            for label in str_save]
 
     if data_source == "NTS":
-        with open(paths["save_path"] / "home_type_NTS.pickle", "rb") as file:
+        with open(save_path / "home_type_NTS.pickle", "rb") as file:
             home_type = pickle.load(file)
 
     return [start_id, end_id], test_cell, home_type
 
 
-def import_homes_data(prm: dict, paths: dict) \
-        -> Tuple[dict, List[dict], dict]:
+def import_homes_data(prm: dict) -> Tuple[dict, List[dict], dict]:
     """
     Import home-specific information.
 
@@ -115,22 +114,23 @@ def import_homes_data(prm: dict, paths: dict) \
     for data_source in prm["data_sources"]:
         str_save = [str_ + str(data_source) for str_ in str_save_root]
         make_homes_data = not os.path.exists(
-            paths["save_path"] / f"start_avails_{data_source}.npy"
+            prm["save_path"] / f"start_avails_{data_source}.npy"
         )
         if data_source == "NTS" and not os.path.exists(
-            paths["data_path"] / "homes_type_NTS.npy"
+            prm["data_path"] / "homes_type_NTS.npy"
         ):
             make_homes_data = True
 
         if make_homes_data:
             start_end_id, test_cell, home_type_ \
                 = _make_data(
-                    prm, data_source, paths, test_cell, str_save)
+                    prm, data_source, test_cell, str_save)
             if data_source == "NTS":
                 home_type = home_type_
         else:
-            start_end_id, test_cell, home_type \
-                = _load_data(paths, str_save, data_source, home_type)
+            start_end_id, test_cell, home_type = _load_data(
+                prm["save_path"], str_save, data_source, home_type
+            )
 
         start_ids[data_source], end_ids[data_source] = start_end_id
 
