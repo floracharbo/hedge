@@ -5,21 +5,22 @@ The main method is "import_data" which imports, filters,
 pre-processes data for current block,
 calling other private methods as needed.
 """
-
-from datetime import date, datetime, timedelta
+import csv
 import math
 import multiprocessing as mp
-from pathlib import Path
+import pickle
 import sys
+from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pickle
 import seaborn as sns
+from dask import dataframe as dd
 
-from define_blocks import add_out, define_blocks
+from define_blocks import _get_n_rows, add_out
 from filling_in import fill_whole_days, stats_filling_in
 from import_homes_data import import_homes_data
 from utils import (empty, formatting, get_granularity, initialise_dict,
@@ -38,7 +39,9 @@ def keep_column(dtm_no: list, start_avail: list,
         elif type(start) in [np.float64, float, int]:
             keep.append(start <= day <= stop)
         else:
-            keep.append(start[0] <= day <= stop[0] or start[1] <= day <= stop[1])
+            keep.append(
+                start[0] <= day <= stop[0] or start[1] <= day <= stop[1]
+            )
 
     return keep
 
@@ -126,25 +129,27 @@ def adjust_i_start_end(prm, t, sequence, i_start, i_end):
     return i_start, i_end
 
 
-def save_outs(outs, prm, data_type, save_path, start_end_block):
+def save_outs(outs, prm, data_type, save_path, block_ids):
     """Once import_segment is done, bring it all together."""
     days_ = []
     all_abs_error = initialise_dict(prm["fill_types"], "empty_np_array")
     types_replaced \
-        = initialise_dict(prm["fill_types"], "empty_dict")
-    for fill_type in prm["fill_types"]:
-        types_replaced[fill_type] = initialise_dict(prm["replacement_types"], "zero")
+        = initialise_dict(prm["fill_types_choice"], "empty_dict")
+    for fill_type in prm["fill_types_choice"]:
+        types_replaced[fill_type] \
+            = initialise_dict(prm["replacement_types"], "zero")
 
     all_data = np.zeros((prm["n"], 366)) if data_type == "EV" else None
     granularities = []
     range_dates = [1e6, - 1e6]
     n_ids = 0
-    for out, start_end in zip(outs, start_end_block):
+    for out, ids in zip(outs, block_ids):
         [days_, all_abs_error, types_replaced,
          all_data, granularities, range_dates, n_ids] \
             = add_out(prm, out, days_, all_abs_error,
                       types_replaced, all_data, data_type,
-                      granularities, range_dates, n_ids, start_end[0])
+                      granularities, range_dates, n_ids, ids)
+        assert len(days_) > 0, f"in save_outs len(days_) {len(days_)}"
 
     if prm["data_type_source"][data_type] == "CLNR":
         np.save(
@@ -158,13 +163,18 @@ def save_outs(outs, prm, data_type, save_path, start_end_block):
         ax.set_title("existing data trips")
         fig.savefig(save_path / "existing_data_trips")
 
-    if prm["do_test_filling_in"] and prm["data_type_source"][data_type] == "CLNR":
+    if (
+            prm["do_test_filling_in"]
+            and prm["data_type_source"][data_type] == "CLNR"
+    ):
         stats_filling_in(
             prm, data_type, all_abs_error, types_replaced, save_path)
 
     np.save(save_path / f"len_all_days_{data_type}", len(days_))
     np.save(save_path / f"n_ids_{data_type}", n_ids)
     np.save(save_path / f"range_dates_{data_type}", range_dates)
+
+    assert len(days_) > 0, f"in save_outs len(days_) {len(days_)}"
 
     return days_
 
@@ -173,7 +183,8 @@ def remove_incomplete_days(days: list, to_throw: list, n: int) -> list:
     """Throw away days which could not be completed."""
     for i, day in enumerate(days):
         if i not in to_throw:
-            assert len(day["mins"]) == n, f"day {i} should be in to throw, len {len(day['mins'])}"
+            assert len(day["mins"]) == n, \
+                f"day {i} should be in to throw, len {len(day['mins'])}"
     for it, _ in enumerate(to_throw):
         i = to_throw[it]
         if i == 0:
@@ -191,8 +202,12 @@ def remove_incomplete_days(days: list, to_throw: list, n: int) -> list:
     return days
 
 
-def get_days_clnr(prm: dict, sequences: dict, data_type: str, save_path: Path) \
-        -> Tuple[list, Optional[List[float]], Optional[Dict[str, int]]]:
+def get_days_clnr(
+        prm: dict,
+        sequences: dict,
+        data_type: str,
+        save_path: Path
+) -> Tuple[list, Optional[List[float]], Optional[Dict[str, int]]]:
     """Split CLNR sequences into days, fill in, or throw incomplete days."""
     step_keys = ["n", data_type, "mins", "cum_min"]
     days = []
@@ -210,7 +225,7 @@ def get_days_clnr(prm: dict, sequences: dict, data_type: str, save_path: Path) \
                     "error len(current_day['mins']) " \
                     f"{len(current_day['mins'])}"
                 current_day = initialise_dict(step_keys)
-            
+
             for step_key in step_keys:
                 current_day[step_key].append(sequence[step_key][t])
             for day_key in ["cum_day", "month", "id"]:
@@ -218,7 +233,8 @@ def get_days_clnr(prm: dict, sequences: dict, data_type: str, save_path: Path) \
 
         # store final day
         days.append(current_day)
-        assert len(set(current_day["mins"])) == len(current_day["mins"]), f"mins duplicates {current_day['mins']}"
+        assert len(set(current_day["mins"])) == len(current_day["mins"]), \
+            f"mins duplicates {current_day['mins']}"
 
         current_day = initialise_dict(step_keys)
 
@@ -273,7 +289,6 @@ def add_day_nts(
     day["id"] = int(id_)
     days.append(day)
 
-
     if t == len(sequence["dist"]) - 1 and sequence["weekday"][t] != 7:
         # missing day(s) with no trips at the end of the week
         current_n_no_trips = 7 - sequence["weekday"][t]
@@ -303,7 +318,10 @@ def add_no_trips_day(
             "cum_day": current["cum_day"] + i_no_trip + 1
             if cum_day is None
             else cum_day,
-            "weekday": (prm["date0"] + timedelta(days=current["cum_day"] + i_no_trip + 1)).weekday()
+            "weekday": (
+                prm["date0"]
+                + timedelta(days=current["cum_day"] + i_no_trip + 1)
+            ).weekday()
             if weekday is None
             else weekday,
             "id": id_,
@@ -324,13 +342,12 @@ def new_day_nts(dt, n_time_steps, t: int, id_: int, sequences: dict) \
     for key in ["weekday", "cum_day", "home_type", "month"]:
         current[key] = sequences[id_][key][t]
     current["id"] = id_
-    current["mins"] = [i * dt for i in range(n_time_steps)]
-    current["cum_min"] = [
-        m + sequences[id_]["cum_day"][t] * 24 * 60 for m in current["mins"]
-    ]
+    current["mins"] = np.arange(n_time_steps) * dt
+    current["cum_min"] \
+        = current["mins"] + sequences[id_]["cum_day"][t] * 24 * 60
     for key in ["dist", "purposeFrom", "purposeTo", "triptype", "EV"]:
-        current[key] = [0 for _ in range(n_time_steps)]
-    current["avail"] = [1 for _ in range(n_time_steps)]
+        current[key] = np.zeros(n_time_steps)
+    current["avail"] = np.ones(n_time_steps)
     list_current = initialise_dict(
         ["i_start", "i_end", "purposeFrom", "purposeTo"])
 
@@ -443,8 +460,9 @@ def normalise(
             day[f"norm_{data_type}"] = [
                 x / sum_day if sum_day > 0 else 0 for x in day[data_type]
             ]
-            assert sum(day[f"norm_{data_type}"]) == 0 or abs(sum(day[f"norm_{data_type}"]) - 1) < 1e-3, \
-                f"sum(day[f'norm_{data_type}']) = {sum(day['norm_' + data_type])}"
+            assert sum(day[f"norm_{data_type}"]) == 0 \
+                   or abs(sum(day[f"norm_{data_type}"]) - 1) < 1e-3, \
+                   f"sum(norm_{data_type} = {sum(day['norm_' + data_type])}"
             assert len(day["norm_" + data_type]) == n_time_steps, \
                 f"len(days[{i}]['norm_{data_type}]) " \
                 f"= {len(day['norm_' + data_type])}"
@@ -754,23 +772,22 @@ def filter_validity(
 
 
 def import_segment(
-        prm: dict,
-        paths: dict,
-        data: pd.DataFrame,
-        data_type: str,
-        start_idx=None
-        # data
-) -> Tuple[List[dict],
-           Optional[List[float]],
-           Optional[Dict[str, int]],
-           Optional[np.ndarray],
-           List[int]]:
+        prm, dd_data, ids, data_type
+) -> list:
     """In parallel or sequentially, import and process block of data."""
+    print(f"import segment {ids[0]} -> {ids[-1]}")
     data_source = prm["data_type_source"][data_type]
+    dtypes = {}
+    for dtype, column in zip(dd_data.dtypes, dd_data.columns):
+        dtypes[column] = dtype
+    data = dd_data.map_partitions(
+        lambda x: x[x.id.isin(ids)],
+        meta=dtypes
+    ).compute()
 
     # 1 - get the data in initial format
     data, all_data, range_dates, n_ids = get_data(
-        paths, data_type, prm, data_source, data
+        data_type, prm, data_source, data
     )
     assert isinstance(range_dates, list)
     assert len(range_dates) == 2
@@ -778,15 +795,19 @@ def import_segment(
     # 2 - split into sequences of subsequent times
     sequences, granularities = get_sequences(
         prm, data, data_type)
-
     del data
 
     # 3 - convert into days of data at adequate granularity
     if data_source == "CLNR":
         # reduce to desired granularity
         days, abs_error, types_replaced_eval = get_days_clnr(
-            prm, sequences, data_type, paths["save_path"]
+            prm, sequences, data_type, prm["save_path"]
         )
+
+        if prm["do_test_filling_in"]:
+            for fill_type in prm["fill_types_choice"]:
+                assert len(abs_error[fill_type]) > 0, \
+                    f"{data_type} abs_error {abs_error}"
 
     if data_source == "NTS":
         # convert from list of trips to 24 h-profiles
@@ -796,25 +817,36 @@ def import_segment(
     del sequences
 
     days = normalise(prm["n"], days, data_type)
-    if start_idx is not None:
-        with open(f"days_{start_idx}.pickle", "wb") as file:
-            pickle.dump(days, file)
-        days = None
 
-    return days, abs_error, types_replaced_eval, all_data, granularities, range_dates, n_ids
+    assert len(days) > 0, \
+        f"len(days) {len(days)}, {data_type}, ids[0] {ids[0]}"
+
+    outs = [
+        days, abs_error, types_replaced_eval, all_data,
+        granularities, range_dates, n_ids
+    ]
+    for out, label in zip(outs, prm["outs_labels"]):
+        with open(prm["outs_path"] / f"{label}_{ids[0]}.pickle", "wb") as file:
+            pickle.dump(out, file)
+
+    [days, abs_error, types_replaced_eval, all_data,
+        granularities, range_dates, n_ids] = [None] * 7
+
+    return [
+        days, abs_error, types_replaced_eval, all_data,
+        granularities, range_dates, n_ids
+    ]
 
 
 def get_data(
-        paths: dict,
         data_type: str,
         prm: dict,
         data_source: str,
         data: pd.DataFrame
-) -> Tuple[pd.DataFrame, np.ndarray]:
+) -> Tuple[pd.DataFrame, np.ndarray, list, int]:
     """Get raw data, format, filter."""
-
     # 1 - import homes data
-    home_type, start_end_id, test_cell = import_homes_data(prm, paths)
+    home_type, start_end_id, test_cell = import_homes_data(prm)
 
     data = formatting(
         data,
@@ -876,108 +908,149 @@ def map_all_data(data_source, data, prm):
 
 
 def get_percentiles(days, prm):
+    """Get percentiles of data values."""
     percentiles = {}
     for data_type in prm["data_types"]:
         list_data = []
+        assert len(days[data_type]) > 0, \
+            f"len(days[data_type]) {len(days[data_type])}"
         for d, day in enumerate(days[data_type]):
             values = [v for v in day[data_type] if v > 0]
             list_data += values
-        percentiles[data_type] = [np.percentile(list_data, i) for i in range(101)]
+        assert len(list_data) > 0, f"len(list_data) {len(list_data)}"
+        percentiles[data_type] \
+            = [np.percentile(list_data, i) for i in range(101)]
 
     return percentiles
 
 
+def _get_unique_ids(prm, data_type, data_source):
+    current_id = None
+    with open(
+            prm["var_path"][data_type],
+            newline=prm["line_terminator"][data_source]
+    ) as file:
+        reader = csv.reader(
+            file, delimiter=prm["separator"][data_source]
+        )
+        next(reader, None)  # skip the headers
+        it = 0
+        for row in reader:
+            if current_id is None:
+                current_id = int(row[0])
+                ids = np.array([current_id], dtype=np.int32)
+                idx = np.array([it], dtype=np.int32)
+            id = int(row[0])
+            if id != current_id:
+                idx = np.append(idx, it)
+                ids = np.append(ids, id)
+                current_id = id
+            it += 1
+
+            if it > prm["n_rows"][data_type]:
+                break
+
+    unique_ids = list(set(ids))
+    np.save(
+        prm["save_path"]
+        / f"unique_ids_{data_type}_{prm['n_rows'][data_type]}.npy",
+        unique_ids
+    )
+
+    return unique_ids
+
+
 def import_data(
         prm: dict,
-        paths: dict
 ) -> Tuple[dict, Dict[str, int]]:
     """Import, filter, pre-process data for current block."""
     days = {}  # bank of days of data per data type
     n_data_type = {}  # len of bank per data type
 
-    blocks = define_blocks(prm, paths)
-
     for data_type in prm["data_types"]:
         print(f"start import {data_type}")
         id_ = f"{data_type}_{prm['n_rows'][data_type]}.npy"
-        if (paths["save_path"] / f"day0_{id_}").is_file() \
-                and (paths["save_path"] / f"n_dt0_{id_}.npy").is_file():
+
+        if (prm["save_path"] / f"day0_{id_}").is_file() \
+                and (prm["save_path"] / f"n_dt0_{id_}.npy").is_file():
             days[data_type] \
-                = np.load(paths["save_path"] / f"day0_{id_}.npy",
+                = np.load(prm["save_path"] / f"day0_{id_}.npy",
                           allow_pickle=True)
             n_data_type[data_type] \
-                = np.load(paths["save_path"] / f"n_dt0_{id_}.npy",
+                = np.load(prm["save_path"] / f"n_dt0_{id_}.npy",
                           allow_pickle=True)
         else:
             data_source = prm["data_type_source"][data_type]
-            print(f"prm['n_rows'][data_type] {prm['n_rows'][data_type]}")
-            print(f"type(prm['n_rows'][data_type]) = {type(prm['n_rows'][data_type])}")
-            print(f"prm['n_rows'][data_type] {prm['n_rows'][data_type]}")
-            print(f"type(prm['n_rows'][data_type]) = {type(prm['n_rows'][data_type])}")
-            data = pd.read_csv(
-                paths["var_path"][data_type],
+            if prm["n_rows"][data_type] == "all":
+                prm["n_rows"][data_type] = _get_n_rows(
+                    data_source, data_type, prm
+                )
+            if (prm["save_path"] / f"unique_ids_{data_type}.npy").is_file():
+                unique_ids = np.load(
+                    prm["save_path"]
+                    / f"unique_ids_{data_type}_{prm['n_rows'][data_type]}.npy"
+                )
+            else:
+                unique_ids = _get_unique_ids(prm, data_type, data_source)
+
+            n_ids_0 = len(unique_ids)
+            np.save(prm["save_path"] / f"n_ids_0_{id_}", n_ids_0)
+            n_ids_chunks = max(int(len(unique_ids) / prm["n_cpu"]), 1)
+            n_chunks = min(len(unique_ids), prm["n_cpu"])
+            ids = [
+                unique_ids[i * n_ids_chunks: (i + 1) * n_ids_chunks]
+                for i in range(n_chunks - 1)
+            ] + [unique_ids[(n_chunks - 1) * n_ids_chunks:]]
+
+            dd_data = dd.read_csv(
+                prm["var_path"][data_type],
                 usecols=list(prm["i_cols"][data_type].values()),
                 skiprows=1,
-                nrows=prm["n_rows"][data_type],
                 names=list(prm["i_cols"][data_type]),
                 sep=prm["separator"][data_source],
                 lineterminator=prm["line_terminator"][data_source],
+                dtype=prm["dtypes"][data_type],
             )
-            # data["id"] = data["id"].apply(lambda x: int(x))
-            data = data.sort_values("id")
-            n_ids_0 = len(set(data["id"]))
-            np.save(paths["save_path"] / f"n_ids_0_{data_type}", n_ids_0)
-            i_change_id = []
-            id_ = data["id"].iloc[0]
-            for i in range(1, len(data)):
-                if data["id"].iloc[i] != id_:
-                    i_change_id.append(i)
-                    id_ = data["id"].iloc[i]
-            block_ends = []
-            current_block = 0
-            n_per_block = prm["n_rows"][data_type] / prm["n_cpu"]
-            for id_end in i_change_id:
-                # once the current block has at least the target number of
-                # data rows allocated, without breaking up individual IDs
-                if id_end > (current_block + 1) * n_per_block:
-                    block_ends.append(id_end)
-                    current_block += 1
-            block_starts = [0] + block_ends
-            block_ends = block_ends + [prm["n_rows"][data_type]]
-            start_end_block = [
-                [block_start, block_end]
-                for block_start, block_end in zip(block_starts, block_ends)
-            ]
+
             if prm["parallel"]:
                 pool = mp.Pool(prm["n_cpu"])
                 outs = pool.starmap(
                     import_segment,
-                    [(prm, paths, data[start_end[0]:start_end[1]],
+                    [(prm, dd_data, ids_block,
                       data_type)
-                     for start_end in start_end_block],
+                     for ids_block in ids],
                 )
                 pool.close()
 
             else:  # not parallel to debug
                 outs = [import_segment(
-                    prm, paths, data[start_end[0]: start_end[1]], data_type, start_end[0])
-                    for start_end in start_end_block
+                    prm, dd_data, ids_block, data_type
+                )
+                    for ids_block in ids
                 ]
 
-            days[data_type] \
-                = save_outs(outs, prm, data_type, paths["save_path"], start_end_block)
-            np.save(paths["save_path"] / f"day0_{id_}", days[data_type])
+            del dd_data
+
+            days[data_type] = save_outs(
+                outs, prm, data_type, prm["save_path"], ids
+            )
+            np.save(prm["save_path"] / f"day0_{id_}", days[data_type])
             n_data_type[data_type] = len(days[data_type])
 
+        assert len(days[data_type]) > 0, \
+            f"all len(days[{data_type}]) {len(days[data_type])}"
     percentiles = get_percentiles(days, prm)
 
     for data_type in prm["data_types"]:
         list_factors = [day["factor"] for day in days[data_type]]
-        np.save(paths["save_path"] / "factors"
+        np.save(prm["save_path"] / "factors"
                 / f"list_factors_{data_type}", list_factors)
 
-    for label, obj in zip(["percentiles", "n_data_type"], [percentiles, n_data_type]):
-        path = paths["save_path"] / f"{label}.pickle"
+    for label, obj in zip(
+            ["percentiles", "n_data_type"],
+            [percentiles, n_data_type]
+    ):
+        path = prm["save_path"] / f"{label}.pickle"
         with open(path, "wb") as file:
             pickle.dump(obj, file)
 
