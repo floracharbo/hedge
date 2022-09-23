@@ -13,6 +13,16 @@ from utils import initialise_dict
 
 
 def _import_columns_info(prm):
+
+    prm["i_cols"] = initialise_dict(prm["data_types"], "empty_dict")
+    for data_type in prm["CLNR_types"]:
+        for name_col, i_col in zip(["id", "dtm", data_type],
+                                   prm["i_cols_CLNR"]):
+            prm["i_cols"][data_type][name_col] = i_col
+    if "EV" in prm["data_types"]:
+        for name_col, i_col in zip(prm["name_cols_NTS"], prm["i_cols_NTS"]):
+            prm["i_cols"]["EV"][name_col] = i_col
+
     str_to_type = {
         'int': np.int32,
         'str': str,
@@ -24,15 +34,6 @@ def _import_columns_info(prm):
             data_source = prm["data_type_source"][data_type]
             type_ = str_to_type[prm["type_cols"][data_source][i]]
             prm["dtypes"][data_type][name] = type_
-
-    prm["i_cols"] = initialise_dict(prm["data_types"], "empty_dict")
-    for data_type in prm["CLNR_types"]:
-        for name_col, i_col in zip(["id", "dtm", data_type],
-                                   prm["i_cols_CLNR"]):
-            prm["i_cols"][data_type][name_col] = i_col
-    if "EV" in prm["data_types"]:
-        for name_col, i_col in zip(prm["name_cols_NTS"], prm["i_cols_NTS"]):
-            prm["i_cols"]["EV"][name_col] = i_col
 
     return prm
 
@@ -71,8 +72,8 @@ def _init_data_filling(prm, run_config):
     }
 
     prm["bound_delta"] = {
-        "before": - prm["dT"],
-        "after": prm["dT"],
+        "before": - prm["step_len"],
+        "after": prm["step_len"],
         "replacement": 0
     }
     prm["replacement_types"] = []
@@ -176,7 +177,7 @@ def get_parameters() -> Tuple[dict, dict]:
     ]
 
     # information about date and time
-    prm["dT"] = 60 * 24 / run_config["n"]  # interval length in minutes
+    prm["step_len"] = 60 * 24 / run_config["n"]  # interval length in minutes
     prm["datetime_entries"] \
         = prm["date_entries"] + prm["time_entries"]
     prm["date0"] = datetime.date(2010, 1, 1)
@@ -237,7 +238,8 @@ def get_parameters() -> Tuple[dict, dict]:
         "n_clusters",
         "n_intervals",
         "plots",
-        "test_factor_distr"
+        "test_factor_distr",
+        "save_intermediate_outs"
     ]:
         prm[key] = run_config[key]
 

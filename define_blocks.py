@@ -11,6 +11,7 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 
+from filling_in import stats_filling_in
 from utils import initialise_dict
 
 
@@ -66,7 +67,6 @@ def _get_indexes_blocks(prm, data_type, n_rows):
 
 
 def _get_n_rows(
-        data_source: str,
         data_type: str,
         prm: dict,
 ) -> int:
@@ -75,6 +75,7 @@ def _get_n_rows(
     if os.path.exists(path_n_rows):
         n_rows = int(np.load(path_n_rows))
     else:
+        data_source = prm["data_type_source"][data_type]
         n_rows = 0
         # open main variable data file
         with open(prm["var_path"][data_type]) as file:
@@ -140,3 +141,67 @@ def add_out(prm,
         days, all_abs_error, types_replaced, all_data,
         granularities, range_dates, n_ids
     ]
+
+def save_outs(outs, prm, data_type, save_path, block_ids):
+    """Once import_segment is done, bring it all together."""
+    days_ = []
+    all_abs_error = initialise_dict(prm["fill_types"], "empty_np_array")
+    types_replaced \
+        = initialise_dict(prm["fill_types_choice"], "empty_dict")
+    for fill_type in prm["fill_types_choice"]:
+        types_replaced[fill_type] \
+            = initialise_dict(prm["replacement_types"], "zero")
+
+    all_data = np.zeros((prm["n"], 366)) if data_type == "EV" else None
+    granularities = []
+    range_dates = [1e6, - 1e6]
+    n_ids = 0
+    for out, ids in zip(outs, block_ids):
+        [days_, all_abs_error, types_replaced,
+         all_data, granularities, range_dates, n_ids] \
+            = add_out(prm, out, days_, all_abs_error,
+                      types_replaced, all_data, data_type,
+                      granularities, range_dates, n_ids, ids)
+        assert len(days_) > 0, f"in save_outs len(days_) {len(days_)}"
+
+    if prm["data_type_source"][data_type] == "CLNR":
+        np.save(
+            save_path / f"granularities_{data_type}",
+            granularities
+        )
+
+    if data_type == "EV" and prm["do_heat_map"]:
+        fig = plt.figure()
+        ax = sns.heatmap(all_data)
+        ax.set_title("existing data trips")
+        fig.savefig(save_path / "existing_data_trips")
+
+    if (
+            prm["do_test_filling_in"]
+            and prm["data_type_source"][data_type] == "CLNR"
+    ):
+        stats_filling_in(
+            prm, data_type, all_abs_error, types_replaced, save_path)
+
+    np.save(save_path / f"len_all_days_{data_type}", len(days_))
+    np.save(save_path / f"n_ids_{data_type}", n_ids)
+    np.save(save_path / f"range_dates_{data_type}", range_dates)
+
+    assert len(days_) > 0, f"in save_outs len(days_) {len(days_)}"
+
+    return days_
+
+
+def save_intermediate_out(prm, out, ids):
+    if prm["save_intermediate_outs"]:
+        for obj, label in zip(out, prm["outs_labels"]):
+            with open(
+                    prm["outs_path"] / f"{label}_{ids[0]}.pickle", "wb"
+            ) as file:
+                pickle.dump(obj, file)
+
+        out = [None] * 7
+
+    return out
+
+

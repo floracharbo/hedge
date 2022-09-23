@@ -11,49 +11,13 @@ from scipy.stats import gamma, pearsonr
 from utils import initialise_dict
 
 
-def _get_correlation(
-        f_prevs_all: List[float],
-        f_nexts_all: List[float],
-        prm: dict,
-        data_type: str,
-        label: Optional[str] = None):
-
-    factors = {}
-    if len(f_prevs_all) == 0:
-        return None
-
-    if data_type == "EV":
-        i_not_none = [
-            i
-            for i in range(len(f_prevs_all))
-            if f_prevs_all[i] is not None and f_nexts_all[i] is not None
-        ]
-        f_prevs, f_nexts = [
-            [fs[i] for i in i_not_none] for fs in [f_prevs_all, f_nexts_all]
-        ]
-    else:
-        f_prevs, f_nexts = f_prevs_all, f_nexts_all
-
-    if len(f_prevs) == 0:
-        print("len(f_prevs) == 0")
-        return None
-
-    factors["corr"], _ = pearsonr(f_prevs, f_nexts)
-
-    for i, (f_prev, f_next) in enumerate(zip(f_prevs, f_nexts)):
-        assert f_prev >= 0, f"{label} i {i} f_prev = {f_prev}"
-        assert f_next >= 0, f"{label} i {i} f_next = {f_next}"
-
-    factors_path = prm["save_path"] / "factors"
+def _plot_f_next_vs_prev(prm, factors_path, f_prevs, f_nexts, label):
     # plot f_next vs f_prev
     if prm["plots"]:
-
         for stylised in [True, False]:
             fig = plt.figure()
             plt.plot(f_prevs, f_nexts, "o", label="data", alpha=0.1)
-            # plt.xlim([0, max(f_prevs)])
-            # plt.ylim([0, max(f_nexts)])
-            title = f"f_prev vs f_next {data_type} {label}"
+            title = f"f_prev vs f_next {label}"
             if stylised:
                 title += " stylised"
                 ax = plt.gca()
@@ -77,6 +41,43 @@ def _get_correlation(
             fig.savefig(factors_path / title.replace(" ", "_"))
             plt.close("all")
 
+
+def _get_correlation(
+        f_prevs_all: List[float],
+        f_nexts_all: List[float],
+        prm: dict,
+        data_type: str,
+        label: Optional[str] = None):
+
+    if len(f_prevs_all) == 0:
+        return None
+
+    factors = {}
+    if data_type == "EV":
+        mask_nones = \
+            np.isnan(f_prevs_all.astype(float)) \
+            | np.isnan(f_nexts_all.astype(float))
+        f_prevs, f_nexts \
+            = [fs[~mask_nones] for fs in [f_prevs_all, f_nexts_all]]
+    else:
+        f_prevs, f_nexts = f_prevs_all, f_nexts_all
+
+    if len(f_prevs) == 0:
+        print("len(f_prevs) == 0")
+        return None
+
+    for i, (f_prev, f_next) in enumerate(zip(f_prevs, f_nexts)):
+        assert f_prev >= 0, f"{label} i {i} f_prev = {f_prev}"
+        assert f_next >= 0, f"{label} i {i} f_next = {f_next}"
+
+    factors["corr"], _ = pearsonr(f_prevs, f_nexts)
+
+    factors_path = prm["save_path"] / "factors"
+
+    _plot_f_next_vs_prev(
+        prm, factors_path, f_prevs, f_nexts, f"{data_type} {label}"
+    )
+
     np.save(factors_path / f"corr_{data_type}_{label}", factors["corr"])
     factors["f_prevs"] = f_prevs
     factors["f_nexts"] = f_nexts
@@ -88,7 +89,7 @@ def _count_transitions(
         f_prevs: List[float],
         f_nexts: List[float],
         n_intervals: int,
-        xs: List[float]):
+        fs_brackets: List[float]):
     n_pos, p_pos = [np.zeros((n_intervals, n_intervals)) for _ in range(2)]
     n_zero2pos = np.zeros(n_intervals)
     i_non_zeros \
@@ -103,11 +104,17 @@ def _count_transitions(
            and f_next is not None
            and f_next > 0]
     for i in i_non_zeros:
-        i_prev = [j for j in range(n_intervals - 1) if f_prevs[i] >= xs[j]][-1]
-        i_next = [j for j in range(n_intervals - 1) if f_nexts[i] >= xs[j]][-1]
+        i_prev = [
+            j for j in range(n_intervals - 1) if f_prevs[i] >= fs_brackets[j]
+        ][-1]
+        i_next = [
+            j for j in range(n_intervals - 1) if f_nexts[i] >= fs_brackets[j]
+        ][-1]
         n_pos[i_prev, i_next] += 1
     for i in i_zero_to_nonzero:
-        i_next = [j for j in range(n_intervals - 1) if f_nexts[i] >= xs[j]][-1]
+        i_next = [
+            j for j in range(n_intervals - 1) if f_nexts[i] >= fs_brackets[j]
+        ][-1]
         n_zero2pos[i_next] += 1
 
     for i_prev in range(n_intervals - 1):
@@ -128,13 +135,16 @@ def _transition_intervals(
         transition: str,
         prm: int,
 ) -> Tuple[np.ndarray, List[float], np.ndarray, List[float]]:
-    xs = np.linspace(min(min(f_prevs), min(f_nexts)),
-                     max(max(f_prevs), max(f_nexts)),
-                     prm["n_intervals"] + 1)
-    mid_xs = [np.mean(xs[i: i + 2]) for i in range(prm["n_intervals"])]
+    fs_brackets = np.linspace(
+        min(min(f_prevs), min(f_nexts)),
+        max(max(f_prevs), max(f_nexts)),
+        prm["n_intervals"] + 1
+    )
+    mid_fs_brackets \
+        = [np.mean(fs_brackets[i: i + 2]) for i in range(prm["n_intervals"])]
 
     p_pos, p_zero2pos = _count_transitions(
-        f_prevs, f_nexts, prm["n_intervals"], xs
+        f_prevs, f_nexts, prm["n_intervals"], fs_brackets
     )
 
     labels_prob = [
@@ -150,20 +160,20 @@ def _transition_intervals(
         if prm["plots"]:
             fig, ax = plt.subplots()
             ax.imshow(trans_prob, norm=LogNorm())
-            # fig.colorbar(im, ax = ax)
-            tick_labels = [0] + [xs[int(i - 1)] for i in ax.get_xticks()][1:]
-            tick_labels_format \
-                = ["{:.1f}".format(label) for label in tick_labels]
+            tick_labels = [
+                f"{label:.1f}" for label in
+                [0] + [fs_brackets[int(i - 1)] for i in ax.get_xticks()][1:]
+            ]
             title \
                 = f"{label_prob} {transition} n_intervals {prm['n_intervals']}"
             plt.title(title)
-            ax.set_xticklabels(tick_labels_format)
-            ax.set_yticklabels(tick_labels_format)
+            ax.set_xticklabels(tick_labels)
+            ax.set_yticklabels(tick_labels)
             ax.set_xlabel("f(t + 1)")
             ax.set_ylabel("f(t)")
             fig.savefig(prm["save_path"] / "factors" / title.replace(" ", "_"))
 
-    return p_pos, p_zero2pos, xs, mid_xs
+    return p_pos, p_zero2pos, fs_brackets, mid_fs_brackets
 
 
 def _print_error_factors(ex, label, f_prevs, f_nexts):
@@ -183,7 +193,9 @@ def _compare_factor_error_distributions(prm, errors, save_label):
         for error in errors:
             sum_log_likelihood[label] += np.log(distr.pdf(error, *prms))
     with open(
-            prm["save_path"] / "factors" / f"sum_log_likelihood_{save_label}.pickle",
+            prm["save_path"]
+            / "factors"
+            / f"sum_log_likelihood_{save_label}.pickle",
             "wb"
     ) as file:
         pickle.dump(sum_log_likelihood, file)
@@ -203,13 +215,18 @@ def _fit_gamma(f_prevs, f_nexts, prm, data_type, label=None):
     if prm["plots"]:
         fig = plt.figure()
         plt.hist(errors, density=1, alpha=0.5, label="data")
-        x = np.linspace(
+        factor_residuals = np.linspace(
             gamma.ppf(0.0001, *gamma_prms),
             gamma.ppf(0.9999, *gamma_prms),
             100,
         )
-        plt.plot(x, gamma.pdf(x, gamma_prms[0], gamma_prms[1], gamma_prms[2]),
-                 label="gamma pdf")
+        plt.plot(
+            factor_residuals,
+            gamma.pdf(
+                factor_residuals, gamma_prms[0], gamma_prms[1], gamma_prms[2]
+            ),
+            label="gamma pdf"
+        )
         plt.legend(loc="upper right")
         title = (
             f"fit of gamma distribution to error around "
@@ -233,18 +250,17 @@ def _enough_data(banks_, weekday_type):
 
 
 def _ev_transitions(prm, factors):
-    p_pos, p_zero2pos, xs, mid_xs = [{} for _ in range(4)]
+    p_pos, p_zero2pos, fs_brackets, mid_fs_brackets = [{} for _ in range(4)]
 
     for transition in prm["day_trans"]:
         f_prevs, f_nexts \
             = [factors["EV"][transition][f] for f in ["f_prevs", "f_nexts"]]
         # EV transitions
         [p_pos[transition], p_zero2pos[transition],
-         xs[transition], mid_xs[transition]] = _transition_intervals(
-            f_prevs, f_nexts, transition, prm
-        )
-    dictionaries = p_pos, p_zero2pos, xs, mid_xs
-    labels = ["p_pos", "p_zero2pos", "xs", "mid_xs"]
+         fs_brackets[transition], mid_fs_brackets[transition]] \
+            = _transition_intervals(f_prevs, f_nexts, transition, prm)
+    dictionaries = p_pos, p_zero2pos, fs_brackets, mid_fs_brackets
+    labels = ["p_pos", "p_zero2pos", "fs_brackets", "mid_fs_brackets"]
     for dictionary, label in zip(dictionaries, labels):
         with open(
                 prm["save_path"] / "factors" / f"EV_{label}.pickle", "wb"
@@ -268,7 +284,7 @@ def _scaling_factors_behaviour_types(
         factors[data_type] = initialise_dict(prm["day_trans"], "empty_dict")
         for transition in prm["day_trans"]:
             f_prevs_all, f_nexts_all \
-                = [banks[data_type][transition][f"f{i_f}"]
+                = [np.array(banks[data_type][transition][f"f{i_f}"])
                    for i_f in range(2)]
             if len(f_prevs_all) == 0:
                 print(

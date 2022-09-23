@@ -37,3 +37,4 @@ parallel: False
 do_heat_map: False  # plot data available from NTS - this is computationally expensive
 test_factor_distr: True
 candidate_factor_distributions:
+save_intermediate_outs: True

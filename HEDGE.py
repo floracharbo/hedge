@@ -32,6 +32,8 @@ class HEDGE:
     a given number of homes.
     """
 
+    # pylint: disable=too-many-instance-attributes, disable=no-member
+
     def __init__(
         self,
         n_homes: int,
@@ -114,7 +116,8 @@ class HEDGE:
             ]
 
             # check loads EV are consistent with maximum battery load
-            interval_f_ev, factors, day, i_ev = self._adjust_max_ev_loads(
+            interval_f_ev, factors, day, i_profiles["EV"] \
+                = self._adjust_max_ev_loads(
                 day, interval_f_ev, factors, transition, clusters,
                 day_type, i_profiles["EV"]
             )

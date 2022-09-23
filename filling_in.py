@@ -11,19 +11,19 @@ import numpy as np
 from utils import initialise_dict
 
 
-def _number_missing_points(dt: int, t: int, mins: List[int]) \
+def _number_missing_points(step_len: int, t: int, mins: List[int]) \
         -> Tuple[List[int], List[int]]:
     """Get the number of missing points from current time step."""
     n_miss, fill_t = [], []
     if t == 0 and mins[0] != 0:
-        n_miss.append(int(mins[0] / dt))
+        n_miss.append(int(mins[0] / step_len))
         fill_t.append(0)
-    elif t > 0 and mins[t] != mins[t - 1] + dt:
-        n_miss.append(int((mins[t] - mins[t - 1]) / dt))
+    elif t > 0 and mins[t] != mins[t - 1] + step_len:
+        n_miss.append(int((mins[t] - mins[t - 1]) / step_len))
         fill_t.append(t)
     if t == len(mins) - 1 \
-            and mins[t] != 24 * 60 - dt:
-        n_miss.append(int((24 * 60 - dt - mins[-1]) / dt))
+            and mins[t] != 24 * 60 - step_len:
+        n_miss.append(int((24 * 60 - step_len - mins[-1]) / step_len))
         fill_t.append(t + 1)
 
     return n_miss, fill_t
@@ -113,11 +113,11 @@ def _evaluate_missing(
     Based on previous and subsequent available time steps around
     that step and the day and week before and after.
 
-    implement : missing day[dt][t] to be inserted
-    not implement : for evaluation, actually day[dt][t] already exists
+    implement : missing day[data_type][t] to be inserted
+    not implement : for evaluation, actually day[data_type][t] already exists
     """
     # the number of minutes since the start of the day
-    t_min = t * prm["dT"]
+    t_min = t * prm["step_len"]
     # the number of minutes since 01/01/2010
     t_cum = t_min + day["cum_day"] * 24 * 60
     # if data is missing t = the next val;
@@ -180,7 +180,8 @@ def _check_fill_missing(
     missing_fig_path = save_path / f"missing_data_{data_type}.png"
     to_fill = []
     for t in range(len(day["mins"])):
-        n_miss, fill_t = _number_missing_points(prm["dT"], t, day["mins"])
+        n_miss, fill_t \
+            = _number_missing_points(prm["step_len"], t, day["mins"])
         for n_miss_, fill_t_ in zip(n_miss, fill_t):
             if n_miss_ > 1:
                 throw = True
@@ -221,10 +222,10 @@ def _check_fill_missing(
 
         i_tfill += 1
     assert throw or all(
-        [min % prm["dT"] == 0 for min in day["mins"]]
+        [min % prm["step_len"] == 0 for min in day["mins"]]
     ), f"day['mins'] {day['mins']} not right granularity {data_type}"
     assert throw or all(
-        [next_min == min + prm["dT"]
+        [next_min == min + prm["step_len"]
          for min, next_min in zip(day["mins"][:-1], day["mins"][1:])]
     ), f"day['mins'] {day['mins']} for right sequence {data_type}"
     assert throw or len(day["mins"]) == prm["n"], \
@@ -245,9 +246,9 @@ def _assess_filling_in(
 ) -> Tuple[Optional[Dict[str, int]], Optional[Dict[str, np.ndarray]]]:
     """Compare real values with filled in values."""
     final_t = t == len(day["mins"]) - 1
-    expect_next = day["mins"][t] + prm["dT"]
+    expect_next = day["mins"][t] + prm["step_len"]
     next_slot = not final_t and expect_next == day["mins"][t + 1]
-    expect_prev = day["mins"][t] - prm["dT"]
+    expect_prev = day["mins"][t] - prm["step_len"]
     prev_slot = t > 0 and day["mins"][t - 1] == expect_prev
     if (
             (t == 0 and next_slot)
@@ -286,7 +287,7 @@ def fill_whole_days(
         id_ = day["id"]
         # check positive values
         assert len(day[data_type]) > 0, \
-            f"i = {i} dt = {data_type} len(days[i][dt])) == 0"
+            f"i = {i} data_type = {data_type} len(days[i][data_type])) == 0"
         for t in range(len(days[i][data_type])):
             assert not day[data_type][t] < 0, \
                 "Negatives should have been removed before"
@@ -364,7 +365,7 @@ def stats_filling_in(
                 = share
             sum_share += share
         assert not (data_type == "dem" and abs(sum_share - 1) > 1e-3), \
-            f"dt = {data_type}, sum_share = {sum_share} " \
+            f"data_type = {data_type}, sum_share = {sum_share} " \
             f"types_replaced[{fill_type}] = {types_replaced}"
 
     with open(save_path / f"filling_in_{data_type}.pickle", "wb") as file:
@@ -377,7 +378,7 @@ def _plot_missing_data(day, data_type, prm, missing_fig_path):
     fig = plt.figure()
     xs = [min / 60 for min in day["mins"]]
     for t in range(len(day[data_type]) - 1):
-        if day["mins"][t] + prm["dT"] == day["mins"][t + 1]:
+        if day["mins"][t] + prm["step_len"] == day["mins"][t + 1]:
             plt.plot(
                 xs[t: t + 2],
                 day[data_type][t: t + 2],

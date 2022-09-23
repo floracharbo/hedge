@@ -129,16 +129,24 @@ def granularity_fits(cum_mins: list, granularity: int) -> bool:
     return sum(list_fits) == len(cum_mins)
 
 
-def get_granularity(dt: int,
+def get_granularity(step_len: int,
                     cum_mins: List[float],
                     granularities: List[int]):
     """Given list of cumulative minutes, get granularity of data."""
-    granularity = dt
+    granularity = step_len
     count = 0
-    while count < dt and not granularity_fits(cum_mins, granularity):
+    while count < step_len and not granularity_fits(cum_mins, granularity):
         granularity -= 1
         count += 1
     if granularity not in granularities:
         granularities.append(granularity)
 
     return granularity, granularities
+
+
+def _dtypes(dd_data):
+    dtypes = {}
+    for dtype, column in zip(dd_data.dtypes, dd_data.columns):
+        dtypes[column] = dtype
+
+    return dtypes

@@ -9,22 +9,19 @@ import csv
 import math
 import multiprocessing as mp
 import pickle
-import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 from dask import dataframe as dd
 
-from define_blocks import _get_n_rows, add_out
-from filling_in import fill_whole_days, stats_filling_in
+from define_blocks import _get_n_rows, save_outs, save_intermediate_out
+from filling_in import fill_whole_days
 from import_homes_data import import_homes_data
 from utils import (empty, formatting, get_granularity, initialise_dict,
-                   obtain_time)
+                   obtain_time, _dtypes)
 
 
 def keep_column(dtm_no: list, start_avail: list,
@@ -86,12 +83,12 @@ def adjust_i_start_end(prm, t, sequence, i_start, i_end):
     """Check if trip start and end indexes match duration or adjust indexes."""
     duration_mins = sequence["cum_min_all_end"][t] \
         - sequence["cum_min_all"][t]
-    extra_mins = duration_mins - (i_end - i_start) * prm["dT"]
+    extra_mins = duration_mins - (i_end - i_start) * prm["step_len"]
 
-    if extra_mins > prm["dT"] / 2:  # one more hour closer to truth
-        mins_before_start = sequence["cum_min_all"][t] % prm["dT"]
-        mins_after_end = prm["dT"] - sequence["cum_min_all_end"][t] \
-            % prm["dT"]
+    if extra_mins > prm["step_len"] / 2:  # one more hour closer to truth
+        mins_before_start = sequence["cum_min_all"][t] % prm["step_len"]
+        mins_after_end = prm["step_len"] - sequence["cum_min_all_end"][t] \
+            % prm["step_len"]
         if (
                 mins_before_start < mins_after_end
                 or i_end == prm["n"] - 1
@@ -99,10 +96,10 @@ def adjust_i_start_end(prm, t, sequence, i_start, i_end):
             i_start -= 1
         elif i_end < prm["n"] - 1:
             i_end += 1
-    elif extra_mins < prm["dT"] / 2 and i_end > i_start:
+    elif extra_mins < prm["step_len"] / 2 and i_end > i_start:
         mins_after_start \
-            = prm["dT"] - sequence["cum_min_all"][t] % prm["dT"]
-        mins_before_end = sequence["cum_min_all_end"][t] % prm["dT"]
+            = prm["step_len"] - sequence["cum_min_all"][t] % prm["step_len"]
+        mins_before_end = sequence["cum_min_all_end"][t] % prm["step_len"]
         if mins_after_start < mins_before_end:
             i_start += 1
         else:
@@ -129,64 +126,13 @@ def adjust_i_start_end(prm, t, sequence, i_start, i_end):
     return i_start, i_end
 
 
-def save_outs(outs, prm, data_type, save_path, block_ids):
-    """Once import_segment is done, bring it all together."""
-    days_ = []
-    all_abs_error = initialise_dict(prm["fill_types"], "empty_np_array")
-    types_replaced \
-        = initialise_dict(prm["fill_types_choice"], "empty_dict")
-    for fill_type in prm["fill_types_choice"]:
-        types_replaced[fill_type] \
-            = initialise_dict(prm["replacement_types"], "zero")
-
-    all_data = np.zeros((prm["n"], 366)) if data_type == "EV" else None
-    granularities = []
-    range_dates = [1e6, - 1e6]
-    n_ids = 0
-    for out, ids in zip(outs, block_ids):
-        [days_, all_abs_error, types_replaced,
-         all_data, granularities, range_dates, n_ids] \
-            = add_out(prm, out, days_, all_abs_error,
-                      types_replaced, all_data, data_type,
-                      granularities, range_dates, n_ids, ids)
-        assert len(days_) > 0, f"in save_outs len(days_) {len(days_)}"
-
-    if prm["data_type_source"][data_type] == "CLNR":
-        np.save(
-            save_path / f"granularities_{data_type}",
-            granularities
-        )
-
-    if data_type == "EV" and prm["do_heat_map"]:
-        fig = plt.figure()
-        ax = sns.heatmap(all_data)
-        ax.set_title("existing data trips")
-        fig.savefig(save_path / "existing_data_trips")
-
-    if (
-            prm["do_test_filling_in"]
-            and prm["data_type_source"][data_type] == "CLNR"
-    ):
-        stats_filling_in(
-            prm, data_type, all_abs_error, types_replaced, save_path)
-
-    np.save(save_path / f"len_all_days_{data_type}", len(days_))
-    np.save(save_path / f"n_ids_{data_type}", n_ids)
-    np.save(save_path / f"range_dates_{data_type}", range_dates)
-
-    assert len(days_) > 0, f"in save_outs len(days_) {len(days_)}"
-
-    return days_
-
-
 def remove_incomplete_days(days: list, to_throw: list, n: int) -> list:
     """Throw away days which could not be completed."""
     for i, day in enumerate(days):
         if i not in to_throw:
             assert len(day["mins"]) == n, \
                 f"day {i} should be in to throw, len {len(day['mins'])}"
-    for it, _ in enumerate(to_throw):
-        i = to_throw[it]
+    for it, i in enumerate(to_throw):
         if i == 0:
             days = days[1:]
         elif i == len(days) - 1:
@@ -216,8 +162,8 @@ def get_days_clnr(
         if len(sequence[data_type]) == 0:
             continue
         # go through all the data for the current id
-        for t, cum_day in enumerate(sequence["cum_day"]):
-            if t > 0 and cum_day != sequence["cum_day"][t - 1]:
+        for t in range(len(sequence["cum_day"])):
+            if t > 0 and sequence["cum_day"][t] != sequence["cum_day"][t - 1]:
                 # if starting a new day
                 current_day["id"] = int(id_)
                 days.append(current_day)
@@ -296,7 +242,8 @@ def add_day_nts(
             prm, days, current, current_n_no_trips, n_no_trips, id_
         )
 
-    current, list_current = new_day_nts(prm["dT"], prm["n"], t, id_, sequences)
+    current, list_current \
+        = new_day_nts(prm["step_len"], prm["n"], t, id_, sequences)
 
     return current, list_current, days, n_no_trips
 
@@ -335,14 +282,14 @@ def add_no_trips_day(
     return days, n_no_trips
 
 
-def new_day_nts(dt, n_time_steps, t: int, id_: int, sequences: dict) \
+def new_day_nts(step_len, n_time_steps, t: int, id_: int, sequences: dict) \
         -> Tuple[dict, dict]:
     """Initialise variables for a new time slot."""
     current = {}
     for key in ["weekday", "cum_day", "home_type", "month"]:
         current[key] = sequences[id_][key][t]
     current["id"] = id_
-    current["mins"] = np.arange(n_time_steps) * dt
+    current["mins"] = np.arange(n_time_steps) * step_len
     current["cum_min"] \
         = current["mins"] + sequences[id_]["cum_day"][t] * 24 * 60
     for key in ["dist", "purposeFrom", "purposeTo", "triptype", "EV"]:
@@ -355,12 +302,9 @@ def new_day_nts(dt, n_time_steps, t: int, id_: int, sequences: dict) \
 
 
 def _add_trip_current(sequence, current, list_current, t, prm):
-    try:
-        i_start = int(np.floor(sequence["cum_min_all"][t] / prm["dT"]))
-        i_end = int(np.floor(sequence["cum_min_all_end"][t] / prm["dT"]))
-    except Exception as ex:
-        print(f"ex {ex}")
-        sys.exit()
+    i_start = int(np.floor(sequence["cum_min_all"][t] / prm["step_len"]))
+    i_end = int(np.floor(sequence["cum_min_all_end"][t] / prm["step_len"]))
+
     # additional minutes of trips beyond what is reflected
     # by whole number of hours resulting from i_start and i_end
     i_start, i_end = adjust_i_start_end(
@@ -397,7 +341,7 @@ def get_days_nts(prm: dict, sequences: dict) -> list:
             sequence[key] = [sequence[key][i] for i in i_sort]
         # new day
         current, list_current = new_day_nts(
-            prm["dT"], prm["n"], 0, id_, sequences)
+            prm["step_len"], prm["n"], 0, id_, sequences)
         assert len(current["dist"]) == prm["n"], \
             f"len(current['dist']) = {len(current['dist'])}"
         for t in range(len(sequence["dist"])):
@@ -509,13 +453,13 @@ def filter_validity_nts(
 
 
 def new_time_slot_clnr(
-        dt: int, t: int, sequence: dict
+        step_len: int, t: int, sequence: dict
 ) -> Tuple[List[int], int, int, list]:
     """Initialise variables for a new time slot."""
     # lower bound current slot in cumulative minutes since 01/01/2010
     min_lb = sequence["cum_min"][t]
-    min_lb = min_lb - min_lb % dt  # start of the current slot
-    min_ub = min_lb + dt - 1  # up to one minute before next slot
+    min_lb = min_lb - min_lb % step_len  # start of the current slot
+    min_ub = min_lb + step_len - 1  # up to one minute before next slot
     # days since 01/01/2010 and minutes since the start of the day
     day, month \
         = [sequence[e][t] for e in ["cum_day", "month"]]
@@ -527,7 +471,7 @@ def new_time_slot_clnr(
 
 
 def update_granularity(
-        dt: int,
+        step_len: int,
         sequence: dict,
         data_type: str,
         granularities: list
@@ -540,7 +484,7 @@ def update_granularity(
 
     # get granularity data
     granularity, granularities \
-        = get_granularity(dt, sequence["cum_min"], granularities)
+        = get_granularity(step_len, sequence["cum_min"], granularities)
 
     output: dict = initialise_dict(
         ["n", data_type, "cum_day", "cum_min", "mins", "month", "id"]
@@ -548,15 +492,15 @@ def update_granularity(
 
     # get initial slot
     min_bounds, day, month, slot_vals \
-        = new_time_slot_clnr(dt, 0, sequence)
+        = new_time_slot_clnr(step_len, 0, sequence)
     n_same_min = 0
     for t, cum_min in enumerate(sequence["cum_min"]):
         if t == len(sequence["cum_min"]) - 1 or cum_min > min_bounds[1]:
             # reaching the end of the current time slot
-            target_n = dt / granularity
+            target_n = step_len / granularity
             if len(slot_vals) > 0:
-                assert len(slot_vals) <= 10 * dt, \
-                    f"len(slot_vals) {len(slot_vals)} > 10 * dt"
+                assert len(slot_vals) <= 10 * step_len, \
+                    f"len(slot_vals) {len(slot_vals)} > 10 * step_len"
 
                 # if there is data in the current time slot
                 # info is in kWh if demand, in kW if solar generation
@@ -566,7 +510,7 @@ def update_granularity(
                     )
                 elif data_type == "gen":
                     output[data_type].append(
-                        np.mean(slot_vals) * dt / 60)
+                        np.mean(slot_vals) * step_len / 60)
 
                 output["n"].append(len(slot_vals))
                 output["id"].append(sequence["id"][t - 1])
@@ -577,7 +521,7 @@ def update_granularity(
 
                 # get new time slot boundaries
                 min_bounds, day, month, slot_vals \
-                    = new_time_slot_clnr(dt, t, sequence)
+                    = new_time_slot_clnr(step_len, t, sequence)
 
         if t > 0 and cum_min == sequence["cum_min"][t - 1]:
             n_same_min += 1  # two data points for the same exact time
@@ -587,14 +531,14 @@ def update_granularity(
         assert n_same_min < 10, \
             f"n_same_min = {n_same_min} data_type {data_type} t {t}"
         slot_vals.append(sequence[data_type][t])
-        assert len(slot_vals) <= 10 * dt, \
-            f"len(slot_vals) {len(slot_vals)} > 10 * prm['dT']"
+        assert len(slot_vals) <= 10 * step_len, \
+            f"len(slot_vals) {len(slot_vals)} > 10 * prm['step_len']"
         assert not np.isnan(sequence[data_type][t]), \
             f"np.isnan(sequence[{data_type}][{t}])"
 
     # checking it is in the right order
     assert len(output["cum_min"]) == len(output["mins"]), \
-        f"dt {data_type} len cum_min != mins"
+        f"step_len {data_type} len cum_min != mins"
     assert len(set(output["cum_min"])) == len(output["cum_min"]), \
         f"minutes are not unique output['cum_min'] {output['cum_min']}"
 
@@ -613,7 +557,7 @@ def append_id_sequences(
         sequences_id = current_sequence
     else:
         sequences_id, granularities = update_granularity(
-            prm["dT"], current_sequence, data_type, granularities
+            prm["step_len"], current_sequence, data_type, granularities
         )
 
     current_sequence = initialise_dict(prm["sequence_entries"][data_type])
@@ -777,20 +721,16 @@ def import_segment(
     """In parallel or sequentially, import and process block of data."""
     print(f"import segment {ids[0]} -> {ids[-1]}")
     data_source = prm["data_type_source"][data_type]
-    dtypes = {}
-    for dtype, column in zip(dd_data.dtypes, dd_data.columns):
-        dtypes[column] = dtype
+
     data = dd_data.map_partitions(
         lambda x: x[x.id.isin(ids)],
-        meta=dtypes
+        meta=_dtypes(dd_data)
     ).compute()
 
     # 1 - get the data in initial format
     data, all_data, range_dates, n_ids = get_data(
         data_type, prm, data_source, data
     )
-    assert isinstance(range_dates, list)
-    assert len(range_dates) == 2
 
     # 2 - split into sequences of subsequent times
     sequences, granularities = get_sequences(
@@ -804,11 +744,6 @@ def import_segment(
             prm, sequences, data_type, prm["save_path"]
         )
 
-        if prm["do_test_filling_in"]:
-            for fill_type in prm["fill_types_choice"]:
-                assert len(abs_error[fill_type]) > 0, \
-                    f"{data_type} abs_error {abs_error}"
-
     if data_source == "NTS":
         # convert from list of trips to 24 h-profiles
         days = get_days_nts(prm, sequences)
@@ -821,21 +756,13 @@ def import_segment(
     assert len(days) > 0, \
         f"len(days) {len(days)}, {data_type}, ids[0] {ids[0]}"
 
-    outs = [
+    out = [
         days, abs_error, types_replaced_eval, all_data,
         granularities, range_dates, n_ids
     ]
-    for out, label in zip(outs, prm["outs_labels"]):
-        with open(prm["outs_path"] / f"{label}_{ids[0]}.pickle", "wb") as file:
-            pickle.dump(out, file)
+    out = save_intermediate_out(prm, out, ids)
 
-    [days, abs_error, types_replaced_eval, all_data,
-        granularities, range_dates, n_ids] = [None] * 7
-
-    return [
-        days, abs_error, types_replaced_eval, all_data,
-        granularities, range_dates, n_ids
-    ]
+    return out
 
 
 def get_data(
@@ -914,50 +841,68 @@ def get_percentiles(days, prm):
         list_data = []
         assert len(days[data_type]) > 0, \
             f"len(days[data_type]) {len(days[data_type])}"
-        for d, day in enumerate(days[data_type]):
-            values = [v for v in day[data_type] if v > 0]
-            list_data += values
+        for day in days[data_type]:
+            list_data += [v for v in day[data_type] if v > 0]
         assert len(list_data) > 0, f"len(list_data) {len(list_data)}"
         percentiles[data_type] \
             = [np.percentile(list_data, i) for i in range(101)]
 
+    with open(prm["save_path"] / "percentiles.pickle", "wb") as file:
+        pickle.dump(percentiles, file)
+
     return percentiles
 
 
-def _get_unique_ids(prm, data_type, data_source):
-    current_id = None
-    with open(
-            prm["var_path"][data_type],
-            newline=prm["line_terminator"][data_source]
-    ) as file:
-        reader = csv.reader(
-            file, delimiter=prm["separator"][data_source]
+def _get_unique_ids(prm, data_type):
+    if (prm["save_path"] / f"unique_ids_{data_type}.npy").is_file():
+        # if the unique_ids have already been computed, load them
+        unique_ids = np.load(
+            prm["save_path"]
+            / f"unique_ids_{data_type}_{prm['n_rows'][data_type]}.npy"
         )
-        next(reader, None)  # skip the headers
-        it = 0
-        for row in reader:
-            if current_id is None:
-                current_id = int(row[0])
-                ids = np.array([current_id], dtype=np.int32)
-                idx = np.array([it], dtype=np.int32)
-            id = int(row[0])
-            if id != current_id:
-                idx = np.append(idx, it)
-                ids = np.append(ids, id)
-                current_id = id
-            it += 1
+    else:
+        data_source = prm["data_type_source"][data_type]
+        current_id = None
+        with open(
+                prm["var_path"][data_type],
+                newline=prm["line_terminator"][data_source]
+        ) as file:
+            reader = csv.reader(
+                file, delimiter=prm["separator"][data_source]
+            )
+            next(reader, None)  # skip the headers
+            for no_row, row in enumerate(reader):
+                if current_id is None:
+                    current_id = int(row[0])
+                    current_date = row[3]
+                    ids = np.array([current_id], dtype=np.int32)
+                    idx = np.array([no_row], dtype=np.int32)
+                    dates = np.array([current_date], dtype=str)
+                id_ = int(row[0])
+                if id_ != current_id:
+                    idx = np.append(idx, no_row)
+                    ids = np.append(ids, id_)
+                    dates = np.append(dates, row[3])
+                    current_id = id_
+                # no_row += 1
 
-            if it > prm["n_rows"][data_type]:
-                break
+                if no_row > prm["n_rows"][data_type]:
+                    break
 
-    unique_ids = list(set(ids))
-    np.save(
-        prm["save_path"]
-        / f"unique_ids_{data_type}_{prm['n_rows'][data_type]}.npy",
-        unique_ids
-    )
+        idx = np.append(idx, prm["n_rows"][data_type])
+
+        unique_ids = list(set(ids))
+        np.save(
+            prm["save_path"]
+            / f"unique_ids_{data_type}_{prm['n_rows'][data_type]}.npy",
+            unique_ids
+        )
 
     return unique_ids
+
+
+def _id(prm, data_type):
+    return f"{data_type}_{prm['n_rows'][data_type]}.npy"
 
 
 def import_data(
@@ -969,39 +914,32 @@ def import_data(
 
     for data_type in prm["data_types"]:
         print(f"start import {data_type}")
-        id_ = f"{data_type}_{prm['n_rows'][data_type]}.npy"
 
-        if (prm["save_path"] / f"day0_{id_}").is_file() \
-                and (prm["save_path"] / f"n_dt0_{id_}.npy").is_file():
-            days[data_type] \
-                = np.load(prm["save_path"] / f"day0_{id_}.npy",
-                          allow_pickle=True)
-            n_data_type[data_type] \
-                = np.load(prm["save_path"] / f"n_dt0_{id_}.npy",
-                          allow_pickle=True)
+        # identifier for saving data_type-related data
+        # savings paths
+        day0_path = prm["save_path"] / f"day0_{_id(prm, data_type)}.pickle"
+        n_data_type_path \
+            = prm["save_path"] / f"n_dt0_{_id(prm, data_type)}.npy"
+
+        if day0_path.is_file() and n_data_type_path.is_file():
+            # if the days have previously been computed, load:
+            with open(day0_path, "rb") as file:
+                days[data_type] = pickle.load(file)
+            n_data_type[data_type] = np.load(n_data_type_path)
         else:
-            data_source = prm["data_type_source"][data_type]
+            # else, compute and save them.
             if prm["n_rows"][data_type] == "all":
-                prm["n_rows"][data_type] = _get_n_rows(
-                    data_source, data_type, prm
-                )
-            if (prm["save_path"] / f"unique_ids_{data_type}.npy").is_file():
-                unique_ids = np.load(
-                    prm["save_path"]
-                    / f"unique_ids_{data_type}_{prm['n_rows'][data_type]}.npy"
-                )
-            else:
-                unique_ids = _get_unique_ids(prm, data_type, data_source)
+                prm["n_rows"][data_type] = _get_n_rows(data_type, prm)
 
-            n_ids_0 = len(unique_ids)
-            np.save(prm["save_path"] / f"n_ids_0_{id_}", n_ids_0)
-            n_ids_chunks = max(int(len(unique_ids) / prm["n_cpu"]), 1)
-            n_chunks = min(len(unique_ids), prm["n_cpu"])
-            ids = [
-                unique_ids[i * n_ids_chunks: (i + 1) * n_ids_chunks]
-                for i in range(n_chunks - 1)
-            ] + [unique_ids[(n_chunks - 1) * n_ids_chunks:]]
+            unique_ids = _get_unique_ids(prm, data_type)
+            np.save(
+                prm["save_path"] / f"n_ids_0_{_id(prm, data_type)}",
+                len(unique_ids)
+            )
 
+
+            # load the whole data but not in memory (dask)
+            data_source = prm["data_type_source"][data_type]
             dd_data = dd.read_csv(
                 prm["var_path"][data_type],
                 usecols=list(prm["i_cols"][data_type].values()),
@@ -1022,7 +960,7 @@ def import_data(
                 )
                 pool.close()
 
-            else:  # not parallel to debug
+            else:
                 outs = [import_segment(
                     prm, dd_data, ids_block, data_type
                 )
@@ -1034,24 +972,16 @@ def import_data(
             days[data_type] = save_outs(
                 outs, prm, data_type, prm["save_path"], ids
             )
-            np.save(prm["save_path"] / f"day0_{id_}", days[data_type])
             n_data_type[data_type] = len(days[data_type])
+
+            # save days for next time
+            with open(day0_path, "wb") as file:
+                pickle.dump(days[data_type], file)
+            np.save(n_data_type_path, n_data_type[data_type])
 
         assert len(days[data_type]) > 0, \
             f"all len(days[{data_type}]) {len(days[data_type])}"
-    percentiles = get_percentiles(days, prm)
 
-    for data_type in prm["data_types"]:
-        list_factors = [day["factor"] for day in days[data_type]]
-        np.save(prm["save_path"] / "factors"
-                / f"list_factors_{data_type}", list_factors)
-
-    for label, obj in zip(
-            ["percentiles", "n_data_type"],
-            [percentiles, n_data_type]
-    ):
-        path = prm["save_path"] / f"{label}.pickle"
-        with open(path, "wb") as file:
-            pickle.dump(obj, file)
+    get_percentiles(days, prm)
 
     return days, n_data_type

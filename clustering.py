@@ -323,7 +323,7 @@ def _cluster_module(
         days_[i]["cluster"] = n_clusters
 
     # obtain distances to centroid for each profile
-    # -> ndarray of shape (n_samples, n_clusters[dt])
+    # -> ndarray of shape (n_samples, n_clusters[data_type])
     # KMeans.transform() returns an array of distances
     # of each sample to the cluster center
     cluster_distances = obj.transform(transformed_features)
@@ -399,8 +399,8 @@ def _get_features(days_, data_type, prm):
         elif data_type == "EV":
             features.append(
                 days_[i][data_type][
-                    int(6 * 60 / prm["dT"]):
-                    int(22 * 60 / prm["dT"])]
+                    int(6 * 60 / prm["step_len"]):
+                    int(22 * 60 / prm["step_len"])]
             )
         norm_vals.append(days_[i][f"norm_{data_type}"])
     transformed_features = StandardScaler().fit_transform(features)
