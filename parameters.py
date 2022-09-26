@@ -239,7 +239,8 @@ def get_parameters() -> Tuple[dict, dict]:
         "n_intervals",
         "plots",
         "test_factor_distr",
-        "save_intermediate_outs"
+        "save_intermediate_outs",
+        "max_size_chunk"
     ]:
         prm[key] = run_config[key]
 

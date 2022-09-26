@@ -5,7 +5,6 @@ The main method is "import_data" which imports, filters,
 pre-processes data for current block,
 calling other private methods as needed.
 """
-import csv
 import math
 import multiprocessing as mp
 import pickle
@@ -15,13 +14,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-from dask import dataframe as dd
 
-from define_blocks import _get_n_rows, save_outs, save_intermediate_out
+from define_blocks import (get_data_chunks, get_n_rows, save_intermediate_out,
+                           save_outs)
 from filling_in import fill_whole_days
 from import_homes_data import import_homes_data
-from utils import (empty, formatting, get_granularity, initialise_dict,
-                   obtain_time, _dtypes)
+from utils import (data_id, empty, formatting, get_granularity,
+                   initialise_dict, obtain_time)
 
 
 def keep_column(dtm_no: list, start_avail: list,
@@ -132,7 +131,8 @@ def remove_incomplete_days(days: list, to_throw: list, n: int) -> list:
         if i not in to_throw:
             assert len(day["mins"]) == n, \
                 f"day {i} should be in to throw, len {len(day['mins'])}"
-    for it, i in enumerate(to_throw):
+    for it, _ in enumerate(to_throw):
+        i = to_throw[it]
         if i == 0:
             days = days[1:]
         elif i == len(days) - 1:
@@ -141,9 +141,9 @@ def remove_incomplete_days(days: list, to_throw: list, n: int) -> list:
             days = days[0: i] + days[i + 1:]
         to_throw = [tt if tt < i else tt - 1 for tt in to_throw]
 
-    for day in days:
+    for i, day in enumerate(days):
         assert len(day["mins"]) == n, \
-            f"error len(day['mins']) = {len(day['mins'])}"
+            f"error len(days[{i}]['mins']) = {len(day['mins'])}"
 
     return days
 
@@ -716,16 +716,29 @@ def filter_validity(
 
 
 def import_segment(
-        prm, dd_data, ids, data_type
+        prm, chunk_rows, data_type
 ) -> list:
     """In parallel or sequentially, import and process block of data."""
-    print(f"import segment {ids[0]} -> {ids[-1]}")
-    data_source = prm["data_type_source"][data_type]
 
-    data = dd_data.map_partitions(
-        lambda x: x[x.id.isin(ids)],
-        meta=_dtypes(dd_data)
-    ).compute()
+    if all(
+            (prm["outs_path"] / f"{label}_{data_id(prm, data_type)}_{chunk_rows[0]}.pickle").is_file()
+            for label in prm["outs_labels"]
+    ):
+        print(f"load previous out {chunk_rows[0]} -> {chunk_rows[1]}")
+        return [None] * 7
+    else:
+        print(f"import segment {chunk_rows[0]} -> {chunk_rows[1]}")
+
+    data_source = prm["data_type_source"][data_type]
+    data = pd.read_csv(
+        prm["var_path"][data_type],
+        usecols=list(prm["i_cols"][data_type].values()),
+        skiprows=max(1, chunk_rows[0]),
+        nrows=chunk_rows[1] - chunk_rows[0],
+        names=list(prm["i_cols"][data_type]),
+        sep=prm["separator"][data_source],
+        lineterminator=prm["line_terminator"][data_source]
+    )
 
     # 1 - get the data in initial format
     data, all_data, range_dates, n_ids = get_data(
@@ -754,13 +767,13 @@ def import_segment(
     days = normalise(prm["n"], days, data_type)
 
     assert len(days) > 0, \
-        f"len(days) {len(days)}, {data_type}, ids[0] {ids[0]}"
+        f"len(days) {len(days)}, {data_type}, ids[0] {chunk_rows[0]}"
 
     out = [
         days, abs_error, types_replaced_eval, all_data,
         granularities, range_dates, n_ids
     ]
-    out = save_intermediate_out(prm, out, ids)
+    out = save_intermediate_out(prm, out, chunk_rows, data_type)
 
     return out
 
@@ -853,58 +866,6 @@ def get_percentiles(days, prm):
     return percentiles
 
 
-def _get_unique_ids(prm, data_type):
-    if (prm["save_path"] / f"unique_ids_{data_type}.npy").is_file():
-        # if the unique_ids have already been computed, load them
-        unique_ids = np.load(
-            prm["save_path"]
-            / f"unique_ids_{data_type}_{prm['n_rows'][data_type]}.npy"
-        )
-    else:
-        data_source = prm["data_type_source"][data_type]
-        current_id = None
-        with open(
-                prm["var_path"][data_type],
-                newline=prm["line_terminator"][data_source]
-        ) as file:
-            reader = csv.reader(
-                file, delimiter=prm["separator"][data_source]
-            )
-            next(reader, None)  # skip the headers
-            for no_row, row in enumerate(reader):
-                if current_id is None:
-                    current_id = int(row[0])
-                    current_date = row[3]
-                    ids = np.array([current_id], dtype=np.int32)
-                    idx = np.array([no_row], dtype=np.int32)
-                    dates = np.array([current_date], dtype=str)
-                id_ = int(row[0])
-                if id_ != current_id:
-                    idx = np.append(idx, no_row)
-                    ids = np.append(ids, id_)
-                    dates = np.append(dates, row[3])
-                    current_id = id_
-                # no_row += 1
-
-                if no_row > prm["n_rows"][data_type]:
-                    break
-
-        idx = np.append(idx, prm["n_rows"][data_type])
-
-        unique_ids = list(set(ids))
-        np.save(
-            prm["save_path"]
-            / f"unique_ids_{data_type}_{prm['n_rows'][data_type]}.npy",
-            unique_ids
-        )
-
-    return unique_ids
-
-
-def _id(prm, data_type):
-    return f"{data_type}_{prm['n_rows'][data_type]}.npy"
-
-
 def import_data(
         prm: dict,
 ) -> Tuple[dict, Dict[str, int]]:
@@ -917,9 +878,9 @@ def import_data(
 
         # identifier for saving data_type-related data
         # savings paths
-        day0_path = prm["save_path"] / f"day0_{_id(prm, data_type)}.pickle"
+        day0_path = prm["save_path"] / f"day0_{data_id(prm, data_type)}.pickle"
         n_data_type_path \
-            = prm["save_path"] / f"n_dt0_{_id(prm, data_type)}.npy"
+            = prm["save_path"] / f"n_dt0_{data_id(prm, data_type)}.npy"
 
         if day0_path.is_file() and n_data_type_path.is_file():
             # if the days have previously been computed, load:
@@ -929,59 +890,42 @@ def import_data(
         else:
             # else, compute and save them.
             if prm["n_rows"][data_type] == "all":
-                prm["n_rows"][data_type] = _get_n_rows(data_type, prm)
+                prm["n_rows"][data_type] = get_n_rows(data_type, prm)
 
-            unique_ids = _get_unique_ids(prm, data_type)
-            np.save(
-                prm["save_path"] / f"n_ids_0_{_id(prm, data_type)}",
-                len(unique_ids)
-            )
-
-
-            # load the whole data but not in memory (dask)
-            data_source = prm["data_type_source"][data_type]
-            dd_data = dd.read_csv(
-                prm["var_path"][data_type],
-                usecols=list(prm["i_cols"][data_type].values()),
-                skiprows=1,
-                names=list(prm["i_cols"][data_type]),
-                sep=prm["separator"][data_source],
-                lineterminator=prm["line_terminator"][data_source],
-                dtype=prm["dtypes"][data_type],
-            )
+            chunks_rows = get_data_chunks(prm, data_type)
 
             if prm["parallel"]:
                 pool = mp.Pool(prm["n_cpu"])
                 outs = pool.starmap(
                     import_segment,
-                    [(prm, dd_data, ids_block,
-                      data_type)
-                     for ids_block in ids],
+                    [(prm, chunk_rows, data_type)
+                     for chunk_rows in chunks_rows],
                 )
                 pool.close()
 
             else:
-                outs = [import_segment(
-                    prm, dd_data, ids_block, data_type
-                )
-                    for ids_block in ids
+                outs = [
+                    import_segment(prm, chunk_rows, data_type)
+                    for chunk_rows in chunks_rows
                 ]
 
-            del dd_data
-
             days[data_type] = save_outs(
-                outs, prm, data_type, prm["save_path"], ids
+                outs, prm, data_type, chunks_rows
             )
             n_data_type[data_type] = len(days[data_type])
 
             # save days for next time
-            with open(day0_path, "wb") as file:
-                pickle.dump(days[data_type], file)
+            # print("save days")
+            # with open(day0_path, "wb") as file:
+            #     pickle.dump(days[data_type], file)
+            print("save n_data_type")
             np.save(n_data_type_path, n_data_type[data_type])
 
         assert len(days[data_type]) > 0, \
             f"all len(days[{data_type}]) {len(days[data_type])}"
 
+    print("get_percentiles")
     get_percentiles(days, prm)
 
+    print("done import data")
     return days, n_data_type

@@ -155,8 +155,10 @@ class HEDGE:
 
     def _load_inputs(self):
         # load inputs
-        prm = yaml.safe_load(open("inputs/parameters.yaml"))
-        config = yaml.safe_load(open("inputs/config_hedge.yaml"))
+        with open("inputs/parameters.yaml", "rb") as file:
+            prm = yaml.safe_load(file)
+        with open("inputs/config_hedge.yaml", "rb") as file:
+            config = yaml.safe_load(file)
 
         # add relevant parameters to object properties
         self.data_types = config["data_types"]
@@ -164,6 +166,7 @@ class HEDGE:
             = [data_type
                for data_type in self.data_types if data_type != "gen"]
         self.bat = prm["bat"]
+        self.store0 = self.bat["SoC0"] * self.bat["cap"]
 
         # update paths
         self.save_path = Path(config["results_path_HEDGE"])
@@ -408,7 +411,7 @@ class HEDGE:
 
         return choice
 
-    def _load_ev_profiles(self, input_dir, profiles, prm):
+    def _load_ev_profiles(self, input_dir, profiles):
         labels_day = self.labels_day
 
         for data in ["cons", "avail"]:
@@ -429,10 +432,8 @@ class HEDGE:
                     # mmap_mode = 'r': not loaded, but elements accessible
                     if data == 'cons':
                         assert all(
-                            [
-                                sum(prof) == 0 or abs(sum(prof) - 1) < 1e-3
-                                for prof in profiles_
-                            ]
+                            sum(prof) == 0 or abs(sum(prof) - 1) < 1e-3
+                            for prof in profiles_
                         ), f"sum profiles not 1 path {path} file {file}"
 
                     prof_shape = np.shape(profiles_)
@@ -495,7 +496,7 @@ class HEDGE:
         # EV profiles
         if "EV" in self.data_types:
             profiles \
-                = self._load_ev_profiles(self.save_path, profiles, prm)
+                = self._load_ev_profiles(self.save_path, profiles)
 
         # dem profiles
         if "dem" in self.data_types:
@@ -527,14 +528,12 @@ class HEDGE:
         """Given profiles generated, check feasibility of battery charge."""
         t = 0
         feasible = True
-        store0 = self.bat["SoC0"] * self.bat["cap"]
 
         while feasible:
-            last_step = t == self.n_steps
             # regular initial minimum charge
             min_charge_t_0 = (
-                store0 * day["avail_EV"][home][t]
-                if last_step
+                self.store0 * day["avail_EV"][home][t]
+                if t == self.n_steps - 1
                 else self.bat["min_charge"] * day["avail_EV"][home][t]
             )
             # min_charge if need to charge up ahead of last step
@@ -552,14 +551,14 @@ class HEDGE:
                         end = True
                     else:
                         feasible = self._check_trip_load(
-                            feasible, trip_load, dt_to_trip, store0,
+                            feasible, trip_load, dt_to_trip,
                             t, day["avail_EV"][home])
                         trip_loads.append(trip_load)
                         dt_to_trips.append(dt_to_trip)
                         t_trip = t_end_trip
 
                 charge_req = self._get_charge_req(
-                    store0, trip_loads, dt_to_trips,
+                    trip_loads, dt_to_trips,
                     t_end_trip, day["avail_EV"][home])
 
             else:
@@ -573,7 +572,7 @@ class HEDGE:
             # check if opportunity to charge before trip > 37.5
             if feasible and t == 0 and day["avail_EV"][home][0] == 0:
                 feasible = self._ev_unavailable_start(
-                    t, home, day, store0)
+                    t, home, day)
 
             # check if any hourly load is larger than d_max
             if sum(1 for t in range(self.n_steps)
@@ -584,14 +583,13 @@ class HEDGE:
 
             if feasible:
                 feasible = self._check_min_charge_t(
-                    min_charge_t, day, home, t, store0)
+                    min_charge_t, day, home, t)
 
             t += 1
 
         return feasible
 
     def _get_charge_req(self,
-                        store0: float,
                         trip_loads: List[float],
                         dt_to_trips: List[int],
                         t_end_trip: int,
@@ -606,7 +604,8 @@ class HEDGE:
         # or this is what is needed coming out of the last trip
         if len(trip_loads) == 0:
             n_avail_until_end -= 1
-        charge_req = max(0, store0 - self.bat["c_max"] * n_avail_until_end)
+        charge_req \
+            = max(0, self.store0 - self.bat["c_max"] * n_avail_until_end)
         for it in range(len(trip_loads)):
             trip_load = trip_loads[- (it + 1)]
             dt_to_trip = dt_to_trips[- (it + 1)]
@@ -626,7 +625,6 @@ class HEDGE:
             feasible: bool,
             trip_load: float,
             dt_to_trip: int,
-            store0: float,
             t: int,
             avail_ev_: list
     ) -> bool:
@@ -636,17 +634,17 @@ class HEDGE:
         elif (
                 dt_to_trip > 0
                 and sum(avail_ev_[0: t]) == 0
-                and trip_load / dt_to_trip > store0 + self.bat["c_max"]
+                and trip_load / dt_to_trip > self.store0 + self.bat["c_max"]
         ):
             feasible = False
 
         return feasible
 
-    def _ev_unavailable_start(self, t, home, day, store0):
+    def _ev_unavailable_start(self, t, home, day):
         feasible = True
         trip_load, dt_to_trip, _ \
             = self._next_trip_details(t, home, day)
-        if trip_load > store0:
+        if trip_load > self.store0:
             # trip larger than initial charge
             # and straight away not available
             feasible = False
@@ -668,7 +666,6 @@ class HEDGE:
                             day: dict,
                             home: int,
                             t: int,
-                            store0: float
                             ) -> bool:
         feasible = True
         if min_charge_t > self.bat["cap"] + 1e-2:
@@ -681,7 +678,7 @@ class HEDGE:
 
         if t > 0 and sum(day["avail_EV"][home][0:t]) == 0:
             # the EV has not been available at home to recharge until now
-            store_t_a = store0 - sum(day["loads_EV"][home][0:t])
+            store_t_a = self.store0 - sum(day["loads_EV"][home][0:t])
             if min_charge_t > store_t_a + self.bat["c_max"] + 1e-3:
                 feasible = False
 
@@ -717,6 +714,48 @@ class HEDGE:
 
         return None, None, None
 
+    def _plot_ev_avail(self, day, hr_per_t, hours, a):
+        bands_ev = []
+        non_avail = [
+            i for i in range(self.n_steps)
+            if day["avail_EV"][a][i] == 0
+        ]
+        if len(non_avail) > 0:
+            current_band = [non_avail[0] * hr_per_t]
+            if len(non_avail) > 1:
+                for i in range(1, len(non_avail)):
+                    if non_avail[i] != non_avail[i - 1] + 1:
+                        current_band.append(
+                            (non_avail[i - 1] + 0.99) * hr_per_t
+                        )
+                        bands_ev.append(current_band)
+                        current_band = [non_avail[i] * hr_per_t]
+            current_band.append(
+                (non_avail[-1] + 0.999) * hr_per_t
+            )
+            bands_ev.append(current_band)
+
+        fig, ax = plt.subplots()
+        ax.step(
+            hours[0: self.n_steps],
+            day["loads_EV"][a][0: self.n_steps],
+            color='k',
+            where='post',
+            lw=3
+        )
+        for band in bands_ev:
+            ax.axvspan(
+                band[0], band[1], alpha=0.3, color='grey'
+            )
+        grey_patch = matplotlib.patches.Patch(
+            alpha=0.3, color='grey', label='EV unavailable')
+        plt.legend(handles=[grey_patch], fancybox=True)
+        plt.xlabel("Time [hours]")
+        plt.ylabel("EV loads and at-home availability")
+        fig.tight_layout()
+        fig.savefig(self.save_day_path / f"avail_EV_a{a}")
+        plt.close("all")
+
     def _plotting_profiles(self, day):
         if not os.path.exists(self.save_day_path):
             os.mkdir(self.save_day_path)
@@ -742,44 +781,5 @@ class HEDGE:
                 fig.savefig(self.save_day_path / f"{data_type}_a{a}")
                 plt.close("all")
 
-                if "EV" in self.data_types:
-                    bands_bEV = []
-                    non_avail = [
-                        i for i in range(self.n_steps)
-                        if day["avail_EV"][a][i] == 0
-                    ]
-                    if len(non_avail) > 0:
-                        current_band = [non_avail[0] * hr_per_t]
-                        if len(non_avail) > 1:
-                            for i in range(1, len(non_avail)):
-                                if non_avail[i] != non_avail[i - 1] + 1:
-                                    current_band.append(
-                                        (non_avail[i - 1] + 0.99) * hr_per_t
-                                    )
-                                    bands_bEV.append(current_band)
-                                    current_band = [non_avail[i] * hr_per_t]
-                        current_band.append(
-                            (non_avail[-1] + 0.999) * hr_per_t
-                        )
-                        bands_bEV.append(current_band)
-
-                    fig, ax = plt.subplots()
-                    ax.step(
-                        hours[0: self.n_steps],
-                        day["loads_EV"][a][0: self.n_steps],
-                        color='k',
-                        where='post',
-                        lw=3
-                    )
-                    for band in bands_bEV:
-                        ax.axvspan(
-                            band[0], band[1], alpha=0.3, color='grey'
-                        )
-                    grey_patch = matplotlib.patches.Patch(
-                        alpha=0.3, color='grey', label='EV unavailable')
-                    plt.legend(handles=[grey_patch], fancybox=True)
-                    plt.xlabel("Time [hours]")
-                    plt.ylabel("EV loads and at-home availability")
-                    fig.tight_layout()
-                    fig.savefig(self.save_day_path / f"avail_EV_a{a}")
-                    plt.close("all")
+                if data_type == "EV":
+                    self._plot_ev_avail(day, hr_per_t, hours, a)

@@ -284,10 +284,8 @@ def _get_profs(
             idx_k_all = [to_cluster[i] for i in idx_k_clustered[k]]
             bank_["profs"] = [days_[i][f"norm_{data_type}"] for i in idx_k_all]
             assert all(
-                [
-                    sum(prof) == 0 or abs(sum(prof) - 1) < 1e-3
-                    for prof in bank_["profs"]
-                ]
+                sum(prof) == 0 or abs(sum(prof) - 1) < 1e-3
+                for prof in bank_["profs"]
             ), f"{data_type} normalised profile should sum to 1"
 
             if data_type == "EV":
@@ -616,10 +614,12 @@ def clustering(days, prm, n_data_type):
                            day_type, banks_, vals_k, prm, prm["save_path"])
             banks[data_type][day_type] = banks_
             n_zeros[data_type][day_type] = n_zeros_
+
         # obtain probabilities transition between day types and clusters
         if not enough_data[data_type]:
             print(f"not enough data {data_type}")
             continue
+
         p_clus, p_trans, n_trans, banks = _transition_probabilities(
             data_type, days, p_clus, n_trans, p_trans,
             banks, n_clus_all[data_type], prm, n_data_type,

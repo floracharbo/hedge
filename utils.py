@@ -68,17 +68,11 @@ def formatting(data, type_cols, name_col=None, hour_min=0):
         col = i if name_col is None else name_col[i]
         if data[col] is not None:
             if type_col == "int":
-                data = data.astype({col: 'int'})
-                # data.loc[data[col] == " ", col] = None
-                # data.loc[data[col] is not None, col].map(lambda x: int(x))
-
-                # data[col] = data[col].map(
-                #     lambda x: int(x) if x != " " else None)
+                data[col] = data[col].apply(
+                    lambda x: int(x) if x != " " else None)
             elif type_col == "flt":
-                data = data.astype({col: 'float'})
-
-                # data[col] = data[col].apply(
-                #     lambda x: float(x) if x != " " else None)
+                data[col] = data[col].apply(
+                    lambda x: float(x) if x != " " else None)
             elif type_col == "dtm":
                 data = datetime_to_cols(data, col, hour_min=hour_min)
 
@@ -87,7 +81,7 @@ def formatting(data, type_cols, name_col=None, hour_min=0):
 
 def empty(data):
     """Check if data is empty."""
-    return data in ["", " ", []] or data is None or np.isnan(data)
+    return data in ["", " ", "  ", []] or data is None or pd.isnull(data)
 
 
 def obtain_time(data: pd.DataFrame, data_source: str) -> pd.DataFrame:
@@ -144,9 +138,6 @@ def get_granularity(step_len: int,
     return granularity, granularities
 
 
-def _dtypes(dd_data):
-    dtypes = {}
-    for dtype, column in zip(dd_data.dtypes, dd_data.columns):
-        dtypes[column] = dtype
-
-    return dtypes
+def data_id(prm, data_type):
+    """Return string for identifying current data_type selection."""
+    return f"{data_type}_{prm['n_rows'][data_type]}"

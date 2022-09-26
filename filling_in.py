@@ -11,20 +11,20 @@ import numpy as np
 from utils import initialise_dict
 
 
-def _number_missing_points(step_len: int, t: int, mins: List[int]) \
+def _number_missing_points(step_len: int, time: int, mins: List[int]) \
         -> Tuple[List[int], List[int]]:
     """Get the number of missing points from current time step."""
     n_miss, fill_t = [], []
-    if t == 0 and mins[0] != 0:
+    if time == 0 and mins[0] != 0:
         n_miss.append(int(mins[0] / step_len))
         fill_t.append(0)
-    elif t > 0 and mins[t] != mins[t - 1] + step_len:
-        n_miss.append(int((mins[t] - mins[t - 1]) / step_len))
-        fill_t.append(t)
-    if t == len(mins) - 1 \
-            and mins[t] != 24 * 60 - step_len:
+    elif time > 0 and mins[time] != mins[time - 1] + step_len:
+        n_miss.append(int((mins[time] - mins[time - 1]) / step_len))
+        fill_t.append(time)
+    if time == len(mins) - 1 \
+            and mins[time] != 24 * 60 - step_len:
         n_miss.append(int((24 * 60 - step_len - mins[-1]) / step_len))
-        fill_t.append(t + 1)
+        fill_t.append(time + 1)
 
     return n_miss, fill_t
 
@@ -40,7 +40,7 @@ def _potential_replacements(
 ) -> Tuple[list, list, list]:
     """Get the list of potential replacements for the current time steps."""
     # potential replacement (last week, next week, yesterday, tomorrow)
-    # look at the replacement t, before t - 1, or after t + 1
+    # look at the replacement time, before time - 1, or after time + 1
     bounds = ["replacement"]
     if val_prev is not None:
         bounds += ["before"]
@@ -51,7 +51,7 @@ def _potential_replacements(
     replacements = []  # the potential replacements
     # sum of square of differences (replacement - current value)
     differences = []
-    # types of replacement for time t
+    # types of replacement for current time
     types_replacement_t = []
     jumps = prm["jumps"][fill_type]
 
@@ -98,7 +98,7 @@ def _potential_replacements(
 
 def _evaluate_missing(
         prm: dict,
-        t: int,
+        time: int,
         day: dict,
         data_type: str,
         sequence: dict,
@@ -113,19 +113,19 @@ def _evaluate_missing(
     Based on previous and subsequent available time steps around
     that step and the day and week before and after.
 
-    implement : missing day[data_type][t] to be inserted
+    implement : missing day[data_type][time] to be inserted
     not implement : for evaluation, actually day[data_type][t] already exists
     """
     # the number of minutes since the start of the day
-    t_min = t * prm["step_len"]
+    t_min = time * prm["step_len"]
     # the number of minutes since 01/01/2010
     t_cum = t_min + day["cum_day"] * 24 * 60
-    # if data is missing t = the next val;
-    # if data is already there t + 1 = the next val
-    t_next_val = t if implement else t + 1
+    # if data is missing time = the next val;
+    # if data is already there time + 1 = the next val
+    t_next_val = time if implement else time + 1
 
     # whether there is data available just before point to fill in
-    val_prev = day[data_type][t - 1] if t > 0 else None
+    val_prev = day[data_type][time - 1] if time > 0 else None
     # whether there is data available just after point to fill in
     val_next = (
         day[data_type][t_next_val] if t_next_val < len(day[data_type])
@@ -156,9 +156,9 @@ def _evaluate_missing(
             types_replaced[types_replacement_t[i_min_diff]] += 1
 
     if implement:  # insert missing values
-        day[data_type].insert(t, replacement)
-        day["cum_min"].insert(t, t_cum)
-        day["mins"].insert(t, t_min)
+        day[data_type].insert(time, replacement)
+        day["cum_min"].insert(time, t_cum)
+        day["mins"].insert(time, t_min)
 
     return day, throw, types_replaced, replacement
 
@@ -179,9 +179,9 @@ def _check_fill_missing(
         f"mins duplicates {day['mins']}"
     missing_fig_path = save_path / f"missing_data_{data_type}.png"
     to_fill = []
-    for t in range(len(day["mins"])):
+    for time in range(len(day["mins"])):
         n_miss, fill_t \
-            = _number_missing_points(prm["step_len"], t, day["mins"])
+            = _number_missing_points(prm["step_len"], time, day["mins"])
         for n_miss_, fill_t_ in zip(n_miss, fill_t):
             if n_miss_ > 1:
                 throw = True
@@ -207,26 +207,26 @@ def _check_fill_missing(
     # replace single missing values
     i_tfill = 0
     while not throw and i_tfill < len(to_fill):
-        t = to_fill[i_tfill]
+        time = to_fill[i_tfill]
         day, throw, types_replaced, _ = _evaluate_missing(
-            prm, t, day, data_type, sequences_id, throw, types_replaced
+            prm, time, day, data_type, sequences_id, throw, types_replaced
         )
         assert len(set(day["mins"])) == len(day["mins"]), \
             f"mins duplicates {day['mins']} " \
-            f"to_fill[{i_tfill}] {to_fill[i_tfill]} t {t}"
+            f"to_fill[{i_tfill}] {to_fill[i_tfill]} time {time}"
         if throw is True:  # could not fill in
             if i not in to_throw:
                 to_throw.append(i)
         else:  # we have filled in
-            to_fill = [tf if tf < t else tf + 1 for tf in to_fill]
+            to_fill = [tf if tf < time else tf + 1 for tf in to_fill]
 
         i_tfill += 1
     assert throw or all(
-        [min % prm["step_len"] == 0 for min in day["mins"]]
+        min % prm["step_len"] == 0 for min in day["mins"]
     ), f"day['mins'] {day['mins']} not right granularity {data_type}"
     assert throw or all(
-        [next_min == min + prm["step_len"]
-         for min, next_min in zip(day["mins"][:-1], day["mins"][1:])]
+        next_min == min + prm["step_len"]
+        for min, next_min in zip(day["mins"][:-1], day["mins"][1:])
     ), f"day['mins'] {day['mins']} for right sequence {data_type}"
     assert throw or len(day["mins"]) == prm["n"], \
         f"len mins {len(day['mins'])} but no throw {data_type}"
@@ -237,7 +237,7 @@ def _check_fill_missing(
 def _assess_filling_in(
         prm,
         day: dict,
-        t: int,
+        time: int,
         data_type: str,
         sequence: dict,
         throw: bool,
@@ -245,26 +245,27 @@ def _assess_filling_in(
         abs_error: dict
 ) -> Tuple[Optional[Dict[str, int]], Optional[Dict[str, np.ndarray]]]:
     """Compare real values with filled in values."""
-    final_t = t == len(day["mins"]) - 1
-    expect_next = day["mins"][t] + prm["step_len"]
-    next_slot = not final_t and expect_next == day["mins"][t + 1]
-    expect_prev = day["mins"][t] - prm["step_len"]
-    prev_slot = t > 0 and day["mins"][t - 1] == expect_prev
+    final_t = time == len(day["mins"]) - 1
+    expect_next = day["mins"][time] + prm["step_len"]
+    next_slot = not final_t and expect_next == day["mins"][time + 1]
+    expect_prev = day["mins"][time] - prm["step_len"]
+    prev_slot = time > 0 and day["mins"][time - 1] == expect_prev
     if (
-            (t == 0 and next_slot)
+            (time == 0 and next_slot)
             or (final_t and prev_slot)
             or (prev_slot and next_slot)
     ):
         for fill_type in prm["fill_types"]:
             _, _, types_replaced_eval[fill_type], replaced_val \
                 = _evaluate_missing(
-                prm, t, day, data_type, sequence, throw,
+                prm, time, day, data_type, sequence, throw,
                 types_replaced_eval[fill_type],
                 implement=False, fill_type=fill_type
             )
             if replaced_val is not None:
                 abs_error[fill_type] = np.append(
-                    abs_error[fill_type], abs(day[data_type][t] - replaced_val)
+                    abs_error[fill_type],
+                    abs(day[data_type][time] - replaced_val)
                 )
 
     return types_replaced_eval, abs_error
@@ -288,8 +289,8 @@ def fill_whole_days(
         # check positive values
         assert len(day[data_type]) > 0, \
             f"i = {i} data_type = {data_type} len(days[i][data_type])) == 0"
-        for t in range(len(days[i][data_type])):
-            assert not day[data_type][t] < 0, \
+        for time in range(len(day[data_type])):
+            assert not day[data_type][time] < 0, \
                 "Negatives should have been removed before"
 
             # test performance of filling in
@@ -297,15 +298,16 @@ def fill_whole_days(
                 if random.random() < prm["prob_test_filling_in"]:
                     types_replaced_eval, abs_error \
                         = _assess_filling_in(
-                            prm, day, t, data_type, sequences[id_],
+                            prm, day, time, data_type, sequences[id_],
                             throw, types_replaced_eval, abs_error)
 
         # check if values are missing
-        if not throw and len(days[i]["mins"]) < prm["n"]:
+        if not throw and len(day["mins"]) < prm["n"]:
             day, types_replaced, to_throw = _check_fill_missing(
                 prm, day, i, to_throw, data_type, sequences[id_],
                 types_replaced, throw, save_path
             )
+
         assert len(days[i]["mins"]) > 12 or i in to_throw, \
             f"i {i} id_ {id_} shouldn't this be in to_throw? " \
             f"len(days[i]['mins']) {len(days[i]['mins'])}"
@@ -332,7 +334,6 @@ def stats_filling_in(
         data_type: str,
         all_abs_error: dict,
         types_replaced: dict,
-        save_path: Path
 ) -> dict:
     """Obtain accuracy statistics on the filling in methodology."""
     filling_in = initialise_dict(prm["filling_in_entries"])
@@ -368,7 +369,7 @@ def stats_filling_in(
             f"data_type = {data_type}, sum_share = {sum_share} " \
             f"types_replaced[{fill_type}] = {types_replaced}"
 
-    with open(save_path / f"filling_in_{data_type}.pickle", "wb") as file:
+    with open(prm["save_path"] / f"filling_in_{data_type}.pickle", "wb") as file:
         pickle.dump(filling_in, file)
 
     return None
@@ -376,20 +377,20 @@ def stats_filling_in(
 
 def _plot_missing_data(day, data_type, prm, missing_fig_path):
     fig = plt.figure()
-    xs = [min / 60 for min in day["mins"]]
-    for t in range(len(day[data_type]) - 1):
-        if day["mins"][t] + prm["step_len"] == day["mins"][t + 1]:
+    times = [min / 60 for min in day["mins"]]
+    for time in range(len(day[data_type]) - 1):
+        if day["mins"][time] + prm["step_len"] == day["mins"][time + 1]:
             plt.plot(
-                xs[t: t + 2],
-                day[data_type][t: t + 2],
+                times[time: time + 2],
+                day[data_type][time: time + 2],
                 '-o',
                 color="blue",
                 lw=3
             )
         else:
             plt.plot(
-                xs[t: t + 2],
-                day[data_type][t: t + 2],
+                times[time: time + 2],
+                day[data_type][time: time + 2],
                 '--o',
                 color="blue"
             )
