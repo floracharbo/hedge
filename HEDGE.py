@@ -5,7 +5,7 @@ Generates subsequent days of EV, PV generation and home electricity data
 for a given number of homes.
 
 The main method is 'make_next_day', which generates new day of data
-(EV, dem, gen profiles), calling other methods as needed.
+(EV, loads, gen profiles), calling other methods as needed.
 """
 
 import os
@@ -28,7 +28,7 @@ class HEDGE:
     """
     Home energy data generator (HEDGE).
 
-    Generates subsequent days of EV, gen and dem data for
+    Generates subsequent days of EV, gen and loads data for
     a given number of homes.
     """
 
@@ -61,8 +61,8 @@ class HEDGE:
         self.profs = self._load_profiles(prm)
 
         # number of time steps per day
-        if "dem" in self.profs:
-            self.n_steps = len(self.profs["dem"]["wd"][0][0])
+        if "loads" in self.profs:
+            self.n_steps = len(self.profs["loads"]["wd"][0][0])
         elif "EV" in self.profs:
             self.n_steps = len(self.profs["EV"]["cons"]["wd"][0][0])
         else:
@@ -71,7 +71,7 @@ class HEDGE:
         self.save_day_path = Path(config["results_save_HEDGE"])
 
     def make_next_day(self, plotting=False) -> dict:
-        """Generate new day of data (EV, gen, dem profiles)."""
+        """Generate new day of data (EV, gen, loads profiles)."""
         self.date += timedelta(days=1)
         day_type, transition = self._transition_type()
         prev_clusters = self.clusters.copy()
@@ -92,11 +92,11 @@ class HEDGE:
 
         # obtain days
         day = {}
-        if "dem" in self.data_types:
-            day["dem"] = [
-                [p * factors["dem"][home]
-                 for p in self.profs["dem"][day_type][
-                     clusters["dem"][home]][i_profiles["dem"][home]]]
+        if "loads" in self.data_types:
+            day["loads"] = [
+                [p * factors["loads"][home]
+                 for p in self.profs["loads"][day_type][
+                     clusters["loads"][home]][i_profiles["loads"][home]]]
                 for home in range(self.n_homes)]
         if "gen" in self.data_types:
             gen_profs = self.profs["gen"][i_month]
@@ -138,18 +138,18 @@ class HEDGE:
 
     def _import_dem(self, prm, config):
         for transition in prm["day_trans"]:
-            if self.gamma_prms["dem"][transition] is None:
+            if self.gamma_prms["loads"][transition] is None:
                 continue
-            self.gamma_prms["dem"][transition] \
-                = list(self.gamma_prms["dem"][transition])
-            self.gamma_prms["dem"][transition][2] *= config["f_std_share"]
-        self.select_cdfs["dem"] = {}
+            self.gamma_prms["loads"][transition] \
+                = list(self.gamma_prms["loads"][transition])
+            self.gamma_prms["loads"][transition][2] *= config["f_std_share"]
+        self.select_cdfs["loads"] = {}
         for day_type in prm["weekday_type"]:
-            self.select_cdfs["dem"][day_type] = [
+            self.select_cdfs["loads"][day_type] = [
                 min_cdf + config["clust_dist_share"] * (max_cdf - min_cdf)
                 for min_cdf, max_cdf in zip(
-                    self.min_cdfs["dem"][day_type],
-                    self.max_cdfs["dem"][day_type]
+                    self.min_cdfs["loads"][day_type],
+                    self.max_cdfs["loads"][day_type]
                 )
             ]
 
@@ -165,8 +165,8 @@ class HEDGE:
         self.behaviour_types \
             = [data_type
                for data_type in self.data_types if data_type != "gen"]
-        self.bat = prm["bat"]
-        self.store0 = self.bat["SoC0"] * self.bat["cap"]
+        self.EV = prm["EV"]
+        self.store0 = self.EV["SoC0"] * self.EV["cap"]
 
         # update paths
         self.save_path = Path(config["results_path_HEDGE"])
@@ -194,18 +194,18 @@ class HEDGE:
             with open(str(path), "rb") as file:
                 self.__dict__[property_] = pickle.load(file)
 
-        with open(path_clusters / "n_clusters.pickle", "rb") as file:
-            prm["n_clusters"] = pickle.load(file)
-        self.n_all_clusters_ev = prm["n_clusters"]["EV"] + 1
+        with open(path_clusters / "n_clus.pickle", "rb") as file:
+            prm["n_clus"] = pickle.load(file)
+        self.n_all_clusters_ev = prm["n_clus"]["EV"] + 1
 
         self.select_cdfs = {}
         # household demand-specific inputs
-        if "dem" in self.data_types:
+        if "loads" in self.data_types:
             self._import_dem(prm, config)
 
         # EV-specific inputs
         if "EV" in self.data_types:
-            for property_ in ["p_pos", "p_zero2pos", "xs", "mid_xs"]:
+            for property_ in ["p_pos", "p_zero2pos", "fs_brackets", "mid_fs_brackets"]:
                 path = folder_path / f"EV_{property_}.pickle"
                 with open(path, "rb") as file:
                     self.__dict__[property_] = pickle.load(file)
@@ -227,12 +227,12 @@ class HEDGE:
         if self.factors is None:
             self.factors = {}
 
-            if "dem" in self.data_types:
-                self.factors["dem"] = [
-                    self.f_mean["dem"]
+            if "loads" in self.data_types:
+                self.factors["loads"] = [
+                    self.f_mean["loads"]
                     + gamma.ppf(
                         np.random.rand(),
-                        *self.gamma_prms["dem"][transition])
+                        *self.gamma_prms["loads"][transition])
                     for _ in range(self.n_homes)
                 ]
 
@@ -274,8 +274,8 @@ class HEDGE:
         for home in range(self.n_homes):
             if "EV" in self.data_types:
                 current_interval \
-                    = [i for i in range(len(self.xs[transition]) - 1)
-                       if self.xs[transition][i]
+                    = [i for i in range(len(self.fs_brackets[transition]) - 1)
+                       if self.fs_brackets[transition][i]
                        <= prev_factors["EV"][home]][-1]
                 if prev_clusters["EV"][home] == self.n_all_clusters_ev - 1:
                     # no trip day
@@ -289,7 +289,7 @@ class HEDGE:
                     )
                 )
                 factors["EV"].append(
-                    self.mid_xs[transition][int(interval_f_ev[home])]
+                    self.mid_fs_brackets[transition][int(interval_f_ev[home])]
                 )
 
             if "gen" in self.data_types:
@@ -310,16 +310,16 @@ class HEDGE:
                     self.f_max["gen"][i_month]
                 )
 
-            if "dem" in self.data_types:
+            if "loads" in self.data_types:
                 # factor for demand - differentiate between day types
                 delta_f = gamma.ppf(
                     random_f[2][home],
-                    *list(self.gamma_prms["dem"][transition])
+                    *list(self.gamma_prms["loads"][transition])
                 )
-                factors["dem"].append(
-                    prev_factors["dem"][home]
+                factors["loads"].append(
+                    prev_factors["loads"][home]
                     + delta_f
-                    - self.mean_residual["dem"][transition]
+                    - self.mean_residual["loads"][transition]
                 )
 
             for data_type in self.behaviour_types:
@@ -361,13 +361,13 @@ class HEDGE:
                              transition, clusters, day_type, i_ev):
         for home in range(self.n_homes):
             it = 0
-            while np.max(day["loads_EV"][home]) > self.bat["c_max"] \
+            while np.max(day["loads_EV"][home]) > self.EV["c_max"] \
                     and it < 100:
                 if it == 99:
                     print("100 iterations _adjust_max_ev_loads")
                 if factors["EV"][home] > 0 and interval_f_ev[home] > 0:
                     interval_f_ev[home] -= 1
-                    factors["EV"][home] = self.mid_xs[transition][
+                    factors["EV"][home] = self.mid_fs_brackets[transition][
                         int(interval_f_ev[home])]
                     ev_cons = self.profs["EV"]["cons"][day_type][
                         clusters["EV"][home]][i_ev[home]]
@@ -453,8 +453,8 @@ class HEDGE:
 
     def _load_dem_profiles(self, profiles, prm):
 
-        profiles["dem"] = initialise_dict(prm["weekday_type"], [])
-        self.n_prof["dem"] = {}
+        profiles["loads"] = initialise_dict(prm["weekday_type"], [])
+        self.n_prof["loads"] = {}
         clusters = [
             int(file[1])
             for file in os.listdir(prm['profiles_path'] / "norm_dem")
@@ -464,12 +464,12 @@ class HEDGE:
 
         path = self.save_path / "profiles" / "norm_dem"
         for day_type in prm["weekday_type"]:
-            profiles["dem"][day_type] = [
+            profiles["loads"][day_type] = [
                 np.load(path / f"c{cluster}_{day_type}.npy", mmap_mode="r")
                 for cluster in range(n_dem_clus)
             ]
-            self.n_prof["dem"][day_type] = [
-                len(profiles["dem"][day_type][clus])
+            self.n_prof["loads"][day_type] = [
+                len(profiles["loads"][day_type][clus])
                 for clus in range(n_dem_clus)
             ]
 
@@ -498,8 +498,8 @@ class HEDGE:
             profiles \
                 = self._load_ev_profiles(self.save_path, profiles)
 
-        # dem profiles
-        if "dem" in self.data_types:
+        # loads profiles
+        if "loads" in self.data_types:
             profiles = self._load_dem_profiles(profiles, prm)
 
         # PV generation bank and month
@@ -534,7 +534,7 @@ class HEDGE:
             min_charge_t_0 = (
                 self.store0 * day["avail_EV"][home][t]
                 if t == self.n_steps - 1
-                else self.bat["min_charge"] * day["avail_EV"][home][t]
+                else self.EV["min_charge"] * day["avail_EV"][home][t]
             )
             # min_charge if need to charge up ahead of last step
             if day["avail_EV"][home][t]:  # if you are currently in garage
@@ -576,7 +576,7 @@ class HEDGE:
 
             # check if any hourly load is larger than d_max
             if sum(1 for t in range(self.n_steps)
-                   if day["loads_EV"][home][t] > self.bat["d_max"] + 1e-2)\
+                   if day["loads_EV"][home][t] > self.EV["d_max"] + 1e-2)\
                     > 0:
                 # would have to break constraints to meet demand
                 feasible = False
@@ -605,7 +605,7 @@ class HEDGE:
         if len(trip_loads) == 0:
             n_avail_until_end -= 1
         charge_req \
-            = max(0, self.store0 - self.bat["c_max"] * n_avail_until_end)
+            = max(0, self.store0 - self.EV["c_max"] * n_avail_until_end)
         for it in range(len(trip_loads)):
             trip_load = trip_loads[- (it + 1)]
             dt_to_trip = dt_to_trips[- (it + 1)]
@@ -616,7 +616,7 @@ class HEDGE:
             # or right after the previous trip
             charge_req = max(
                 0,
-                charge_req + trip_load - dt_to_trip * self.bat["c_max"]
+                charge_req + trip_load - dt_to_trip * self.EV["c_max"]
             )
         return charge_req
 
@@ -628,13 +628,13 @@ class HEDGE:
             t: int,
             avail_ev_: list
     ) -> bool:
-        if trip_load > self.bat["cap"] + 1e-2:
+        if trip_load > self.EV["cap"] + 1e-2:
             # load during trip larger than whole
             feasible = False
         elif (
                 dt_to_trip > 0
                 and sum(avail_ev_[0: t]) == 0
-                and trip_load / dt_to_trip > self.store0 + self.bat["c_max"]
+                and trip_load / dt_to_trip > self.store0 + self.EV["c_max"]
         ):
             feasible = False
 
@@ -650,13 +650,13 @@ class HEDGE:
             feasible = False
         if sum(day["avail_EV"][home][0:23]) == 0 \
                 and sum(day["loads_EV"][home][0:23]) \
-                > self.bat["c_max"] + 1e-2:
+                > self.EV["c_max"] + 1e-2:
             feasible = False
         trip_load_next, next_dt_to_trip, _ \
             = self._next_trip_details(dt_to_trip, home, day)
         if next_dt_to_trip > 0 \
-            and trip_load_next - (self.bat["store0"] - trip_load) \
-                < self.bat["c_max"] / next_dt_to_trip:
+            and trip_load_next - (self.EV["store0"] - trip_load) \
+                < self.EV["c_max"] / next_dt_to_trip:
             feasible = False
 
         return feasible
@@ -668,18 +668,18 @@ class HEDGE:
                             t: int,
                             ) -> bool:
         feasible = True
-        if min_charge_t > self.bat["cap"] + 1e-2:
+        if min_charge_t > self.EV["cap"] + 1e-2:
             feasible = False  # min_charge_t larger than total cap
-        if min_charge_t > self.bat["store0"] \
+        if min_charge_t > self.EV["store0"] \
                 - sum(day["loads_EV"][home][0: t]) \
-                + (sum(day["loads_EV"][home][0: t]) + 1) * self.bat["c_max"] \
+                + (sum(day["loads_EV"][home][0: t]) + 1) * self.EV["c_max"] \
                 + 1e-3:
             feasible = False
 
         if t > 0 and sum(day["avail_EV"][home][0:t]) == 0:
             # the EV has not been available at home to recharge until now
             store_t_a = self.store0 - sum(day["loads_EV"][home][0:t])
-            if min_charge_t > store_t_a + self.bat["c_max"] + 1e-3:
+            if min_charge_t > store_t_a + self.EV["c_max"] + 1e-3:
                 feasible = False
 
         return feasible
@@ -762,7 +762,7 @@ class HEDGE:
         y_labels = {
             "EV": "Electric vehicle loads",
             "gen": "PV generation",
-            "dem": "Household loads"
+            "loads": "Household loads"
         }
         font = {'size': 22}
         matplotlib.rc('font', **font)

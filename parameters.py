@@ -121,6 +121,7 @@ def _update_paths(prm: dict, run_config: dict) \
         else "remote"
     )
     prm["data_path"] = Path(run_config["data_path"][location])
+    prm["save_folder"] = prm["save_folder"] + f"_n{prm['n']}"
     for folder in ["save", "debug", "outs"]:
         prm[f"{folder}_path"] = Path(current_path) / prm[f"{folder}_folder"]
     prm["homes_path"] = {}  # the path to the file with homes information
@@ -224,7 +225,7 @@ def get_parameters() -> Tuple[dict, dict]:
 
     _make_dirs(prm)
 
-    prm["bat"]["min_charge"] = prm["bat"]["cap"] * prm["bat"]["SoCmin"]
+    prm["EV"]["min_charge"] = prm["EV"]["cap"] * prm["EV"]["SoCmin"]
 
     # transfer run_config to prm
     for key in [

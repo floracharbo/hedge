@@ -297,28 +297,28 @@ def _scaling_factors_behaviour_types(
             )
             n_transitions[data_type] += len(f_prevs_all)
 
-    if "dem" in prm["data_types"]:
+    if "loads" in prm["data_types"]:
         for transition in prm["day_trans"]:
             # Household demand
-            if factors["dem"][transition] is None:
-                mean_residual["dem"][transition] = None
-                gamma_prms["dem"][transition] = None
-                print(f"factors['dem'][{transition}] is None")
+            if factors["loads"][transition] is None:
+                mean_residual["loads"][transition] = None
+                gamma_prms["loads"][transition] = None
+                print(f"factors['loads'][{transition}] is None")
                 continue
 
             f_prevs, f_nexts = [
-                factors["dem"][transition][f] for f in ["f_prevs", "f_nexts"]
+                factors["loads"][transition][f] for f in ["f_prevs", "f_nexts"]
             ]
 
             assert sum(1 for f_prev in f_prevs if f_prev == 0) == 0, \
                 "need to account for Nones for fit gamma"
-            mean_residual["dem"][transition], gamma_prms["dem"][transition] \
+            mean_residual["loads"][transition], gamma_prms["loads"][transition] \
                 = _fit_gamma(
-                f_prevs, f_nexts, prm, "dem", transition
+                f_prevs, f_nexts, prm, "loads", transition
             )
-            if mean_residual["dem"][transition] is None:
-                print(f"mean_residual['dem'][{transition}] "
-                      f"= {mean_residual['dem'][transition]}")
+            if mean_residual["loads"][transition] is None:
+                print(f"mean_residual['loads'][{transition}] "
+                      f"= {mean_residual['loads'][transition]}")
                 print(f"np.shape(f_prevs) = {np.shape(f_prevs)}")
                 print(f"np.shape(f_nexts) = {np.shape(f_nexts)}")
 

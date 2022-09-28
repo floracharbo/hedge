@@ -1,6 +1,6 @@
 # variable names
 data_sources: ['CLNR', 'NTS']
-behaviour_types: ['dem', 'EV']
+behaviour_types: ['loads', 'EV']
 date_entries: ['dtm_yr', 'dtm_mth', 'dtm_day']  # type of information about date only
 time_entries: ['dtm_hr', 'dtm_min']  # type of information about time
 weekday_type: ['wd', 'we']  # week day types - wd: weekday day and we: weekend day
@@ -44,7 +44,7 @@ i_cols_homes_info:
     NTS:  [0, 2, 3, 5, 9, 10, 69]
 
 name_cols_homes_info:
-    CLNR: ['id', 'test_cell','start', 'end'] # household id, test_cell = '1a': 'dem', '5': 'gen'; start/end = strings corresponding to start and end of validity for given household
+    CLNR: ['id', 'test_cell','start', 'end'] # household id, test_cell = '1a': 'loads', '5': 'gen'; start/end = strings corresponding to start and end of validity for given household
     NTS:  ['id', 'start_day', 'start_month', 'survey_year', 'end_day', 'end_month', 'home_type']
 
 filling_in_entries: ['mean_abs_err', 'std_abs_err', 'p99_abs_err', 'max_abs_err', 'share_types_replaced']
@@ -59,7 +59,7 @@ dem_intervals: [[0, 7], [7, 11], [11, 14], [14, 17], [17, 21], [21, 24]]
 
 NTS_day_keys: ["cum_day", "weekday", "avail", "EV", "mins",
                "cum_min", "id", "month"]
-bat:
+EV:
   c_max: 22 # kW max battery charge
   d_max: 100 # kW max battery discharge
   SoCmin: 0.1 # minimum state of charge
@@ -74,17 +74,17 @@ fill_types: ['day_week', 'two_days', 'one_day', 'lin_interp']
 
 # test cell type /data file name in CLNR data corresponding to each type of data
 test_cell_translation:
-  1a: 'dem'
+  1a: 'loads'
   5: 'gen'
 
 data_type_source:
   gen: 'CLNR'
-  dem: 'CLNR'
+  loads: 'CLNR'
   EV: 'NTS'
 
 var_file:
   gen: 'TC5/TrialMonitoringData.csv'
-  dem: 'TC1a/TrialMonitoringDataHH.csv'
+  loads: 'TC1a/TrialMonitoringDataHH.csv'
   EV: 'UKDA-5340-tab/tab/trip_eul_2002-2020.tab'
 
 homes_file:

@@ -1,7 +1,7 @@
 # run configuration
 str_path_inputs:
 day_week0: 1
-data_types: ["EV", "dem", "gen"]
+data_types: ["EV", "loads", "gen"]
 max_discharge:
 f_std_share: 1
 clust_dist_share: 1

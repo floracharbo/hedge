@@ -503,8 +503,8 @@ def update_granularity(
                     f"len(slot_vals) {len(slot_vals)} > 10 * step_len"
 
                 # if there is data in the current time slot
-                # info is in kWh if demand, in kW if solar generation
-                if data_type == "dem":
+                # info is in kWh if household loads, in kW if solar generation
+                if data_type == "loads":
                     output[data_type].append(
                         sum(slot_vals) * target_n / len(slot_vals)
                     )

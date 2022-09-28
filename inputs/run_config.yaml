@@ -14,23 +14,23 @@ data_path:
   remote: '/home/epg/Flora/DataProcessing'
 
 n_rows: # number of rows to import xin each data file (limit numbers e.g. for debugging)
-  gen: 1.e+7  # 172718543 all
-  dem: all  # 300267349 all
-  EV: 1.e+7  # 4449164 all
+  gen: all  # 172718543 all
+  loads: all  # 300267349 all
+  EV: all  # 4449164 all
 
 fill_type: # interpolate linearly to fill in errors instead of looking at day/week before
   gen: day_week
-  dem: day_week
+  loads: day_week
 
 prob_test_filling_in: 0.01  # number between 0 and 1 ; what proportion of points we evaluate
 
 n_cpu:  # to limit the number of CPUs being used
 
-n_clusters:
-  dem: 4
+n_clus:
+  loads: 4
   EV: 3
 
-data_types: ["dem"] # ,
+data_types: ["loads", "gen", "EV"] # ,
 plots: True
 do_test_filling_in: True
 parallel: False

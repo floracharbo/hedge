@@ -155,7 +155,7 @@ def _plot_clusters(
             f"check np.shape(norm_vals) = {np.shape(norm_vals)} "
             f"same as ({len(transformed_features)}, {prm['n']})"
         )
-    for k in range(prm["n_clusters"][data_type]):
+    for k in range(prm["n_clus"][data_type]):
         if bank[k]["n_clus"] != 0:
             d10, d50, d90, mean = [[0] * prm["n"] for _ in range(4)]
             for t in range(prm["n"]):
@@ -191,9 +191,9 @@ def _plot_clusters(
                 plt.close("all")
 
 
-def _get_vals_k(labels, norm_vals, n_clusters):
+def _get_vals_k(labels, norm_vals, n_clus):
     vals_k, idx_k_clustered = {}, {}
-    for k in range(n_clusters):
+    for k in range(n_clus):
         idx_k_clustered[k] \
             = [i for i, label in enumerate(labels) if label == k]
         vals_k[k] = np.array([norm_vals[i] for i in idx_k_clustered[k]])
@@ -247,11 +247,11 @@ def _get_cdfs(distances, label, save_path, bank, plots):
 
 
 def _get_p_clus(vals_k, n_days, data_type, n_zeros):
-    n_clusters = max(list(vals_k.keys())) + 1
+    n_clus = max(list(vals_k.keys())) + 1
     n_clus_all = (
-        n_clusters
-        if data_type == "dem"
-        else n_clusters + 1
+        n_clus
+        if data_type == "loads"
+        else n_clus + 1
     )
     bank = initialise_dict(range(n_clus_all), "empty_dict")
 
@@ -298,13 +298,13 @@ def _get_profs(
 
 def _cluster_module(
         transformed_features: list,
-        n_clusters: int,
+        n_clus: int,
         to_cluster: list,
         days_: list,
         i_zeros: list,
 ) -> Tuple[list, list, int, list]:
     # actual clustering
-    clusobj = KMeans(n_clusters=n_clusters, n_init=100)
+    clusobj = KMeans(n_clusters=n_clus, n_init=100)
     obj = clusobj.fit(transformed_features)
 
     n_zeros = len(days_) - len(to_cluster)
@@ -313,15 +313,15 @@ def _cluster_module(
     # centers_unordered = obj.cluster_centers_
     # centers_alloc = obj.fit_predict(centers_unordered)
     # centers = [centers_unordered[np.where(centers_alloc == c)[0][0]]
-    #            for c in range(prm["n_clusters"][data_type])]
+    #            for c in range(prm["n_clus"][data_type])]
     labels = obj.fit_predict(transformed_features)
     for label, i in zip(labels, to_cluster):
         days_[i]["cluster"] = label
     for i in i_zeros:
-        days_[i]["cluster"] = n_clusters
+        days_[i]["cluster"] = n_clus
 
     # obtain distances to centroid for each profile
-    # -> ndarray of shape (n_samples, n_clusters[data_type])
+    # -> ndarray of shape (n_samples, n_clus[data_type])
     # KMeans.transform() returns an array of distances
     # of each sample to the cluster center
     cluster_distances = obj.transform(transformed_features)
@@ -378,7 +378,7 @@ def _get_features(days_, data_type, prm):
     norm_vals = []
     for i in to_cluster:
         norm_day = days_[i][f"norm_{data_type}"]
-        if data_type == "dem":
+        if data_type == "loads":
             peak = np.max(norm_day)
             t_peak = np.argmax(norm_day)
             values = [
@@ -409,10 +409,10 @@ def _get_features(days_, data_type, prm):
 def _initialise_cluster_dicts(prm):
     """Initialise dictionaries for storing cluster info."""
     n_trans, p_trans, p_clus, n_zeros, n_clus_all, banks = [
-        initialise_dict(["dem", "EV"], "empty_dict") for _ in range(6)
+        initialise_dict(["loads", "EV"], "empty_dict") for _ in range(6)
     ]
 
-    for data_type in ["dem", "EV"]:
+    for data_type in ["loads", "EV"]:
         n_trans[data_type], p_trans[data_type] = [
             initialise_dict(prm["day_trans"]) for _ in range(2)
         ]
@@ -478,7 +478,7 @@ def _save_clustering(
     prof_path = save_path / "profiles"
     for data_type in prm["behaviour_types"]:
         for day_type in prm["weekday_type"]:
-            for k in range(prm["n_clusters"][data_type]):
+            for k in range(prm["n_clus"][data_type]):
                 np.save(
                     save_path / "clusters"
                     / f"cdfs_clus_{data_type}_{day_type}_{k}",
@@ -501,7 +501,7 @@ def _save_clustering(
                     )
 
     if "EV" in prm["data_types"]:
-        k = prm["n_clusters"]["EV"]
+        k = prm["n_clus"]["EV"]
         for day_type in prm["weekday_type"]:
             np.save(
                 prof_path / "EV_avail" / f"c{k}_{day_type}",
@@ -518,8 +518,8 @@ def _save_clustering(
         with open(path / f"{label}.pickle", "wb") as file:
             pickle.dump(var, file)
 
-    with open(path / "n_clusters.pickle", "wb") as file:
-        pickle.dump(prm["n_clusters"], file)
+    with open(path / "n_clus.pickle", "wb") as file:
+        pickle.dump(prm["n_clus"], file)
 
 
 def split_day_types(days, prm, n_data_type):
@@ -590,11 +590,11 @@ def clustering(days, prm, n_data_type):
             [labels, cluster_distance, n_zeros_,
              days[f"{data_type}_{day_type}"]] \
                 = _cluster_module(
-                transformed_features, prm["n_clusters"][data_type],
+                transformed_features, prm["n_clus"][data_type],
                 to_cluster, days_, i_zeros)
             vals_k, idx_k_clustered \
                 = _get_vals_k(labels, norm_vals,
-                              prm["n_clusters"][data_type])
+                              prm["n_clus"][data_type])
             banks_, n_clus_all[data_type] = _get_p_clus(
                 vals_k, n_day_type[data_type][day_type],
                 data_type, n_zeros_)

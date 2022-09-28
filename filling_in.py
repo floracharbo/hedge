@@ -365,7 +365,7 @@ def stats_filling_in(
             filling_in["share_types_replaced"][fill_type][replacement_type] \
                 = share
             sum_share += share
-        assert not (data_type == "dem" and abs(sum_share - 1) > 1e-3), \
+        assert not (data_type == "loads" and abs(sum_share - 1) > 1e-3), \
             f"data_type = {data_type}, sum_share = {sum_share} " \
             f"types_replaced[{fill_type}] = {types_replaced}"
 
