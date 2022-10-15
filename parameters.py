@@ -121,7 +121,7 @@ def _update_paths(prm: dict, run_config: dict) \
         else "remote"
     )
     prm["data_path"] = Path(run_config["data_path"][location])
-    prm["save_folder"] = prm["save_folder"] + f"_n{prm['n']}"
+    prm["save_folder"] = prm["save_folder"] + f"_n{run_config['n']}"
     for folder in ["save", "debug", "outs"]:
         prm[f"{folder}_path"] = Path(current_path) / prm[f"{folder}_folder"]
     prm["homes_path"] = {}  # the path to the file with homes information
@@ -236,7 +236,7 @@ def get_parameters() -> Tuple[dict, dict]:
         "prob_test_filling_in",
         "do_heat_map",
         "n",
-        "n_clusters",
+        "n_clus",
         "n_intervals",
         "plots",
         "test_factor_distr",

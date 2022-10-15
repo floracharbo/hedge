@@ -140,4 +140,4 @@ def get_granularity(step_len: int,
 
 def data_id(prm, data_type):
     """Return string for identifying current data_type selection."""
-    return f"{data_type}_{prm['n_rows'][data_type]}"
+    return f"{data_type}_n_rows{prm['n_rows'][data_type]}_n{prm['n']}"

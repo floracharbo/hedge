@@ -175,12 +175,14 @@ def save_outs(outs, prm, data_type, chunks_rows):
             granularities
         )
 
-    if data_type == "EV" and prm["do_heat_map"]:
-        fig = plt.figure()
-        ax = sns.heatmap(all_data)
-        ax.set_title("existing data trips")
-        fig.savefig(prm["save_path"] / "existing_data_trips")
-
+    if prm["do_heat_map"]:
+        if len(np.shape(all_data)) == 2:
+            fig = plt.figure()
+            ax = sns.heatmap(all_data)
+            ax.set_title("existing data trips")
+            fig.savefig(prm["save_path"] / f"existing_data_{data_type}")
+        else:
+            print(f"{data_type} np.shape(all_data) {np.shape(all_data)}")
     if (
             prm["do_test_filling_in"]
             and prm["data_type_source"][data_type] == "CLNR"
@@ -224,13 +226,15 @@ def get_data_chunks(prm, data_type):
     Without interrupting id sequences.
     """
     unique_ids_path \
-        = prm["save_path"] / f"unique_ids_{data_id(prm, data_type)}.npy"
+        = prm["save_path"] / f"unique_ids_{data_type}_{prm['n_rows'][data_type]}.npy"
     chunks_path \
-        = prm["save_path"] / f"chunks_rows_{data_id(prm, data_type)}.npy"
+        = prm["save_path"] / f"chunks_rows_{data_type}_{prm['n_rows'][data_type]}.npy"
     if unique_ids_path.is_file() and chunks_path.is_file():
         # if the unique_ids have already been computed, load them
+        print("load chunks_rows")
         chunks_rows = np.load(chunks_path)
     else:
+        print("make chunks_rows")
         idx, ids = _get_rows_ids(prm, data_type, unique_ids_path)
         chunks_rows = _rows_ids_to_chunks(
             prm, idx, ids, data_type, chunks_path

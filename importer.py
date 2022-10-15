@@ -827,7 +827,7 @@ def get_data(
 
 def map_all_data(data_source, data, prm):
     """Check number of data points per time of day and day of year."""
-    if data_source == "NTS" and prm["do_heat_map"]:
+    if prm["do_heat_map"]:
         all_data = np.zeros((24, 366))
         data["day_of_year"] = data.apply(
             lambda x:
@@ -838,9 +838,10 @@ def map_all_data(data_source, data, prm):
         )
         for i in range(len(data["start_h"])):
             start_h, day_of_year = [
-                data[e].iloc[i] for e in ["start_h, day_of_year"]
+                data[e].iloc[i] for e in ["start_h", "day_of_year"]
             ]
-            all_data[start_h, day_of_year - 1] += 1
+            day_of_year_ = (day_of_year - 1) % 365
+            all_data[int(start_h), int(day_of_year_)] += 1
     else:
         all_data = None
 
@@ -882,44 +883,37 @@ def import_data(
         n_data_type_path \
             = prm["save_path"] / f"n_dt0_{data_id(prm, data_type)}.npy"
 
-        if day0_path.is_file() and n_data_type_path.is_file():
-            # if the days have previously been computed, load:
-            with open(day0_path, "rb") as file:
-                days[data_type] = pickle.load(file)
-            n_data_type[data_type] = np.load(n_data_type_path)
-        else:
-            # else, compute and save them.
-            if prm["n_rows"][data_type] == "all":
-                prm["n_rows"][data_type] = get_n_rows(data_type, prm)
-
-            chunks_rows = get_data_chunks(prm, data_type)
-
-            if prm["parallel"]:
-                pool = mp.Pool(prm["n_cpu"])
-                outs = pool.starmap(
-                    import_segment,
-                    [(prm, chunk_rows, data_type)
-                     for chunk_rows in chunks_rows],
-                )
-                pool.close()
-
-            else:
-                outs = [
-                    import_segment(prm, chunk_rows, data_type)
-                    for chunk_rows in chunks_rows
-                ]
-
-            days[data_type] = save_outs(
-                outs, prm, data_type, chunks_rows
+        if prm["n_rows"][data_type] == "all":
+            prm["n_rows"][data_type] = get_n_rows(data_type, prm)
+        print(f"got n rows")
+        chunks_rows = get_data_chunks(prm, data_type)
+        print(f"got data_chunks")
+        if prm["parallel"]:
+            pool = mp.Pool(prm["n_cpu"])
+            outs = pool.starmap(
+                import_segment,
+                [(prm, chunk_rows, data_type)
+                 for chunk_rows in chunks_rows],
             )
-            n_data_type[data_type] = len(days[data_type])
+            pool.close()
 
-            # save days for next time
-            # print("save days")
-            # with open(day0_path, "wb") as file:
-            #     pickle.dump(days[data_type], file)
-            print("save n_data_type")
-            np.save(n_data_type_path, n_data_type[data_type])
+        else:
+            outs = [
+                import_segment(prm, chunk_rows, data_type)
+                for chunk_rows in chunks_rows
+            ]
+
+        days[data_type] = save_outs(
+            outs, prm, data_type, chunks_rows
+        )
+        n_data_type[data_type] = len(days[data_type])
+
+        # save days for next time
+        # print("save days")
+        # with open(day0_path, "wb") as file:
+        #     pickle.dump(days[data_type], file)
+        print("save n_data_type")
+        np.save(n_data_type_path, n_data_type[data_type])
 
         assert len(days[data_type]) > 0, \
             f"all len(days[{data_type}]) {len(days[data_type])}"

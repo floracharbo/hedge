@@ -19,7 +19,3 @@ lint:
 
 test:
 	pytest tests
-
-format:
-	isort .
-	# black .

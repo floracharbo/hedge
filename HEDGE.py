@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as tick
 import numpy as np
 import yaml
-from scipy.stats import gamma
+from scipy.stats import norm
 
 from utils import initialise_dict
 
@@ -68,7 +68,7 @@ class HEDGE:
         else:
             self.n_steps = len(self.profs["gen"][0][0])
 
-        self.save_day_path = Path(config["results_save_HEDGE"])
+        self.save_day_path = Path(config["save_day_path"])
 
     def make_next_day(self, plotting=False) -> dict:
         """Generate new day of data (EV, gen, loads profiles)."""
@@ -138,11 +138,11 @@ class HEDGE:
 
     def _import_dem(self, prm, config):
         for transition in prm["day_trans"]:
-            if self.gamma_prms["loads"][transition] is None:
+            if self.residual_distribution_prms["loads"][transition] is None:
                 continue
-            self.gamma_prms["loads"][transition] \
-                = list(self.gamma_prms["loads"][transition])
-            self.gamma_prms["loads"][transition][2] *= config["f_std_share"]
+            self.residual_distribution_prms["loads"][transition] \
+                = list(self.residual_distribution_prms["loads"][transition])
+            self.residual_distribution_prms["loads"][transition][1] *= config["f_std_share"]
         self.select_cdfs["loads"] = {}
         for day_type in prm["weekday_type"]:
             self.select_cdfs["loads"][day_type] = [
@@ -169,7 +169,7 @@ class HEDGE:
         self.store0 = self.EV["SoC0"] * self.EV["cap"]
 
         # update paths
-        self.save_path = Path(config["results_path_HEDGE"])
+        self.save_path = Path(f"{config['inputs_HEDGE']}_n{config['n']}")
 
         # possible types of transition between week day types (week/weekend)
         prm["day_trans"] = []
@@ -184,7 +184,7 @@ class HEDGE:
             with open(path, "rb") as file:
                 self.__dict__[property_] = pickle.load(file)
 
-        for property_ in ["mean_residual", "gamma_prms"]:
+        for property_ in ["mean_residual", "residual_distribution_prms"]:
             with open(folder_path / f"{property_}.pickle", "rb") as file:
                 self.__dict__[property_] = pickle.load(file)
 
@@ -212,7 +212,9 @@ class HEDGE:
 
         # PV generation-specific inputs
         if "gen" in self.data_types:
-            self.gamma_prms["gen"][2] *= config["f_std_share"]
+            print(f"self.residual_distribution_prms {self.residual_distribution_prms}")
+            self.residual_distribution_prms["gen"] = list(self.residual_distribution_prms["gen"])
+            self.residual_distribution_prms["gen"][1] *= config["f_std_share"]
 
             self.select_cdfs["gen"] \
                 = [min_cdf + config["clust_dist_share"] * (max_cdf - min_cdf)
@@ -230,19 +232,18 @@ class HEDGE:
             if "loads" in self.data_types:
                 self.factors["loads"] = [
                     self.f_mean["loads"]
-                    + gamma.ppf(
+                    + norm.ppf(
                         np.random.rand(),
-                        *self.gamma_prms["loads"][transition])
+                        *self.residual_distribution_prms["loads"][transition])
                     for _ in range(self.n_homes)
                 ]
 
             if "gen" in self.data_types:
-                i_month = self.date.month - 1
                 self.factors["gen"] = [
-                    self.f_mean["gen"][i_month]
-                    + gamma.ppf(
+                    self.f_mean["gen"][self.date.month - 1]
+                    + norm.ppf(
                         np.random.rand(),
-                        *self.gamma_prms["gen"][i_month])
+                        *self.residual_distribution_prms["gen"])
                     for _ in range(self.n_homes)]
 
             if "EV" in self.data_types:
@@ -266,9 +267,9 @@ class HEDGE:
     def _next_factors(self, transition, prev_clusters):
         prev_factors = self.factors.copy()
         factors = initialise_dict(self.data_types)
-        random_f \
-            = [[np.random.rand() for _ in range(self.n_homes)]
-               for _ in self.data_types]
+        random_f = {}
+        for data_type in self.data_types:
+            random_f[data_type] = [np.random.rand() for _ in range(self.n_homes)]
         interval_f_ev = []
 
         for home in range(self.n_homes):
@@ -285,7 +286,7 @@ class HEDGE:
                 interval_f_ev.append(
                     self._ps_rand_to_choice(
                         probabilities,
-                        random_f[0][home],
+                        random_f["EV"][home],
                     )
                 )
                 factors["EV"].append(
@@ -296,15 +297,20 @@ class HEDGE:
                 i_month = self.date.month - 1
                 # factor for generation
                 # without differentiation between day types
-                delta_f = gamma.ppf(
-                    random_f[1][home],
-                    *self.gamma_prms["gen"][i_month]
+                delta_f = norm.ppf(
+                    random_f["gen"][home],
+                    *self.residual_distribution_prms["gen"]
                 )
+                print(f"self.mean_residual['gen'] {self.mean_residual['gen']}")
+                print(f"delta_f {delta_f}")
                 factors["gen"].append(
                     prev_factors["gen"][home]
                     + delta_f
-                    - self.mean_residual["gen"][i_month]
+                    - self.mean_residual["gen"]
                 )
+                print(f"self.f_min['gen'][i_month] {self.f_min['gen'][i_month]}")
+                print(f"self.f_max['gen'][i_month] {self.f_max['gen'][i_month]}")
+                print(f"factors['gen'][home] {factors['gen'][home]}")
                 factors["gen"][home] = min(
                     max(self.f_min["gen"][i_month], factors["gen"][home]),
                     self.f_max["gen"][i_month]
@@ -312,9 +318,9 @@ class HEDGE:
 
             if "loads" in self.data_types:
                 # factor for demand - differentiate between day types
-                delta_f = gamma.ppf(
-                    random_f[2][home],
-                    *list(self.gamma_prms["loads"][transition])
+                delta_f = norm.ppf(
+                    random_f["loads"][home],
+                    *list(self.residual_distribution_prms["loads"][transition])
                 )
                 factors["loads"].append(
                     prev_factors["loads"][home]
@@ -457,12 +463,12 @@ class HEDGE:
         self.n_prof["loads"] = {}
         clusters = [
             int(file[1])
-            for file in os.listdir(prm['profiles_path'] / "norm_dem")
+            for file in os.listdir(prm['profiles_path'] / "norm_loads")
         ]
 
         n_dem_clus = max(clusters) + 1
 
-        path = self.save_path / "profiles" / "norm_dem"
+        path = self.save_path / "profiles" / "norm_loads"
         for day_type in prm["weekday_type"]:
             profiles["loads"][day_type] = [
                 np.load(path / f"c{cluster}_{day_type}.npy", mmap_mode="r")
@@ -772,6 +778,7 @@ class HEDGE:
             key = "loads_EV" if data_type == "EV" else data_type
             for a in range(self.n_homes):
                 fig = plt.figure()
+                print(f"len(hours) {len(hours)} len(day[{key}][{a}]) {len(day[key][a])}")
                 plt.plot(hours, day[key][a], color="blue", lw=3)
                 plt.xlabel("Time [hours]")
                 plt.ylabel(f"{y_labels[data_type]} [kWh]")

@@ -6,7 +6,7 @@ from typing import List, Optional, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import LogNorm
-from scipy.stats import gamma, pearsonr
+from scipy.stats import norm, pearsonr
 
 from utils import initialise_dict
 
@@ -187,21 +187,24 @@ def _print_error_factors(ex, label, f_prevs, f_nexts):
 
 def _compare_factor_error_distributions(prm, errors, save_label):
     sum_log_likelihood = {}
+    prms = {}
     for label, distr in prm["candidate_factor_distributions"].items():
-        prms = distr.fit(errors)
+        prms[label] = distr.fit(errors)
         sum_log_likelihood[label] = 0
         for error in errors:
-            sum_log_likelihood[label] += np.log(distr.pdf(error, *prms))
-    with open(
-            prm["save_path"]
-            / "factors"
-            / f"sum_log_likelihood_{save_label}.pickle",
-            "wb"
-    ) as file:
-        pickle.dump(sum_log_likelihood, file)
+            sum_log_likelihood[label] += np.log(distr.pdf(error, *prms[label]))
+    for item_label, item in zip(['sum_log_likelihood','all_distribution_prms'], [sum_log_likelihood, prms]):
+        with open(
+                prm["save_path"]
+                / "factors"
+                / f"{item_label}_{save_label}.pickle",
+                "wb"
+        ) as file:
+            pickle.dump(item, file)
 
 
-def _fit_gamma(f_prevs, f_nexts, prm, data_type, label=None):
+
+def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
     assert sum(1 for f_prev in f_prevs if f_prev is None) == 0,\
         "None f_prevs"
 
@@ -209,40 +212,40 @@ def _fit_gamma(f_prevs, f_nexts, prm, data_type, label=None):
     f_prev_sort = [f_prev for f_prev, f_next in sorted(zip(f_prevs, f_nexts))]
 
     errors = [f_next_sort[i] - f_prev_sort[i] for i in range(len(f_prevs))]
-    gamma_prms = gamma.fit(errors)
+    residual_distribution_prms = norm.fit(errors)
 
     # plot
     if prm["plots"]:
         fig = plt.figure()
         plt.hist(errors, density=1, alpha=0.5, label="data")
         factor_residuals = np.linspace(
-            gamma.ppf(0.0001, *gamma_prms),
-            gamma.ppf(0.9999, *gamma_prms),
+            norm.ppf(0.0001, *residual_distribution_prms),
+            norm.ppf(0.9999, *residual_distribution_prms),
             100,
         )
         plt.plot(
             factor_residuals,
-            gamma.pdf(
-                factor_residuals, gamma_prms[0], gamma_prms[1], gamma_prms[2]
+            norm.pdf(
+                factor_residuals, *residual_distribution_prms
             ),
-            label="gamma pdf"
+            label="norm pdf"
         )
         plt.legend(loc="upper right")
         title = (
-            f"fit of gamma distribution to error around "
+            f"fit of norm distribution to error around "
             f"perfect correlation {data_type} {label}"
         )
         plt.title(title)
         fig.savefig(prm["save_path"] / "factors" / title.replace(" ", "_"))
         plt.close("all")
 
-    mean_residual = gamma.stats(*gamma_prms, moments="m")
+    mean_residual = norm.stats(*residual_distribution_prms, moments="m")
     if prm["test_factor_distr"]:
         _compare_factor_error_distributions(
             prm, errors, f"{data_type}_{label}"
         )
 
-    return mean_residual, gamma_prms
+    return mean_residual, residual_distribution_prms
 
 
 def _enough_data(banks_, weekday_type):
@@ -272,7 +275,7 @@ def _scaling_factors_behaviour_types(
         prm: dict,
         banks: dict,
 ) -> Tuple[dict, dict, dict, dict]:
-    mean_residual, gamma_prms = [
+    mean_residual, residual_distribution_prms = [
         initialise_dict(prm["CLNR_types"], "empty_dict") for _ in range(2)
     ]
     factors = initialise_dict(prm["data_types"], "empty_dict")
@@ -302,7 +305,7 @@ def _scaling_factors_behaviour_types(
             # Household demand
             if factors["loads"][transition] is None:
                 mean_residual["loads"][transition] = None
-                gamma_prms["loads"][transition] = None
+                residual_distribution_prms["loads"][transition] = None
                 print(f"factors['loads'][{transition}] is None")
                 continue
 
@@ -311,9 +314,9 @@ def _scaling_factors_behaviour_types(
             ]
 
             assert sum(1 for f_prev in f_prevs if f_prev == 0) == 0, \
-                "need to account for Nones for fit gamma"
-            mean_residual["loads"][transition], gamma_prms["loads"][transition] \
-                = _fit_gamma(
+                "need to account for Nones for fit norm"
+            mean_residual["loads"][transition], residual_distribution_prms["loads"][transition] \
+                = _fit_residual_distribution(
                 f_prevs, f_nexts, prm, "loads", transition
             )
             if mean_residual["loads"][transition] is None:
@@ -326,20 +329,18 @@ def _scaling_factors_behaviour_types(
             and _enough_data(banks["EV"], prm["weekday_type"]):
         _ev_transitions(prm, factors)
 
-    return factors, mean_residual, gamma_prms, n_transitions
+    return factors, mean_residual, residual_distribution_prms, n_transitions
 
 
-def _get_month_factors_gen(n_data_type_, days_, month):
+def _get_month_factors_gen(n_data_type_, days_):
     f_prev_gen, f_next_gen = [], []
     for i in range(n_data_type_ - 1):
         day, next_day = [days_[i_] for i_ in [i, i + 1]]
         same_id = day["id"] == next_day["id"]
         subsequent_days = day["cum_day"] + 1 == next_day["cum_day"]
-        current_month = day["month"] == month
         if (
                 same_id
                 and subsequent_days
-                and current_month
         ):  # record transition
             f_prev_gen.append(day["factor"])
             f_next_gen.append(next_day["factor"])
@@ -350,30 +351,22 @@ def _get_month_factors_gen(n_data_type_, days_, month):
 def _scaling_factors_generation(n_data_type_, days_, prm):
     # generation
     # obtain subsequent factors
-    factors = []
-    mean_residual, gamma_prms = {}, {}
     n_transitions = 0
-    for i_month, month in enumerate(range(1, 13)):
-        f_prev_gen, f_next_gen \
-            = _get_month_factors_gen(n_data_type_, days_, month)
+    f_prev_gen, f_next_gen \
+        = _get_month_factors_gen(n_data_type_, days_)
+    n_transitions += len(f_prev_gen)
 
-        n_transitions += len(f_prev_gen)
-
-        factors.append(
-            _get_correlation(
-                f_prev_gen, f_next_gen, prm, "gen", month
-            )
+    factors = _get_correlation(
+            f_prev_gen, f_next_gen, prm, "gen"
         )
 
-        # fit gamma
-        if len(f_prev_gen) > 0:
-            mean_residual[i_month], gamma_prms[i_month] = _fit_gamma(
-                factors[i_month]["f_prevs"], factors[i_month]["f_nexts"],
-                prm, "gen", month)
-        else:
-            mean_residual[i_month], gamma_prms[i_month] = None, None
+    # fit norm
+    if len(f_prev_gen) > 0:
+        mean_residual, residual_distribution_prms = _fit_residual_distribution(
+            factors["f_prevs"], factors["f_nexts"],
+            prm, "gen")
 
-    return factors, mean_residual, gamma_prms, n_transitions
+    return factors, mean_residual, residual_distribution_prms, n_transitions
 
 
 def _get_factors_stats(prm, days, banks):
@@ -422,13 +415,13 @@ def scaling_factors(prm, banks, days, n_data_type):
     """
     _get_factors_stats(prm, days, banks)
 
-    factors, mean_residual, gamma_prms, n_transitions \
+    factors, mean_residual, residual_distribution_prms, n_transitions \
         = _scaling_factors_behaviour_types(prm, banks)
 
     if "gen" in prm["data_types"]:
         [
             factors["gen"], mean_residual["gen"],
-            gamma_prms["gen"], n_transitions["gen"]
+            residual_distribution_prms["gen"], n_transitions["gen"]
         ] = _scaling_factors_generation(
             n_data_type["gen"], days["gen"], prm
         )
@@ -443,8 +436,8 @@ def scaling_factors(prm, banks, days, n_data_type):
             pickle.dump(obj, file)
 
     for property_, obj in zip(
-            ["mean_residual", "gamma_prms"],
-            [mean_residual, gamma_prms]
+            ["mean_residual", "residual_distribution_prms"],
+            [mean_residual, residual_distribution_prms]
     ):
         with open(folder_path / f"{property_}.pickle", "wb") as file:
             pickle.dump(obj, file)

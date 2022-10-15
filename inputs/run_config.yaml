@@ -1,5 +1,4 @@
 # run configuration
-results_path_HEDGE: '/Users/floracharbonnier/Documents/GitHub/private_HEDGE/results'
 
 n: 48  # number of time intervals per day
 n_intervals: 50  # number of intervals in EV factor transition matrix
@@ -19,8 +18,8 @@ n_rows: # number of rows to import xin each data file (limit numbers e.g. for de
   EV: all  # 4449164 all
 
 fill_type: # interpolate linearly to fill in errors instead of looking at day/week before
-  gen: day_week
-  loads: day_week
+  gen: lin_interp
+  loads: lin_interp
 
 prob_test_filling_in: 0.01  # number between 0 and 1 ; what proportion of points we evaluate
 
@@ -30,11 +29,11 @@ n_clus:
   loads: 4
   EV: 3
 
-data_types: ["loads", "gen", "EV"] # ,
+data_types: ["EV", "loads", "gen"] # ,
 plots: True
-do_test_filling_in: True
+do_test_filling_in: False
 parallel: False
-do_heat_map: False  # plot data available from NTS - this is computationally expensive
+do_heat_map: True  # plot data available - this is computationally expensive
 test_factor_distr: True
 candidate_factor_distributions:
 save_intermediate_outs: True
