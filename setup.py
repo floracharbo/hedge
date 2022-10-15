@@ -1,14 +1,13 @@
 """Set up repository."""
-import pathlib
 
+import pathlib
+from pip.req import parse_requirements
 from setuptools import find_packages, setup
 
 REPO_ROOT = pathlib.Path(__file__).parent
 
 with open(REPO_ROOT / "README.md", encoding="utf-8") as f:
     README = f.read()
-
-REQUIREMENTS = ["pandas"]
 
 setup(
     name="data_preparation",
@@ -17,9 +16,9 @@ setup(
     long_description_content_type="text/markdown",
     author="Flora Charbonnier",
     author_email="flora.charbonnier@eng.ox.ac.uk",
-    url="https://github.com/floracharbo/data_preparation",
-    license="MIT",
+    url="https://github.com/floracharbo/hedge",
+    license="GNU Affero General Public License v3.0",
     packages=find_packages(),
-    install_requires=REQUIREMENTS,
+    install_requires=parse_requirements('requirements.txt', session='hack'),
     python_requires=">=3.7",
 )

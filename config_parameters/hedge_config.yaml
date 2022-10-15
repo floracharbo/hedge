@@ -1,0 +1,11 @@
+# run configuration
+str_path_inputs:
+day_week0: 1
+data_types: ["loads", "gen", "car"]
+max_discharge:
+f_std_share: 1
+clust_dist_share: 1
+month: 1
+inputs_HEDGE: 'data/hedge_inputs'
+save_day_path: 'data/save_days'
+n: 24

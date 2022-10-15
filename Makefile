@@ -6,16 +6,14 @@ install:
 	pip install -r requirements.txt  -e .
 
 lint:
-	pydocstyle .
-	flake8 .
-	isort .
+	isort src
+	flake8 --max-line-length=100 src
+	pylama --ignore=E501 src
+	pylint src
 	mypy --ignore-missing-imports --no-strict-optional --disable-error-code call-overload --disable-error-code arg-type \
 	--disable-error-code attr-defined --disable-error-code assignment \
 	--disable-error-code operator --disable-error-code index --disable-error-code misc \
-	--show-error-codes .
-	pylama .
-	pylint --disable W1514 *.py
-
+	--show-error-codes src
 
 test:
 	pytest tests

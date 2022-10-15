@@ -13,15 +13,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 
-from filling_in import stats_filling_in
-from utils import data_id, initialise_dict
+from src.data_preparation.filling_in import stats_filling_in
+from src.utils import data_id, initialise_dict
 
 
 def _load_out(prm, data_type, chunk_rows):
     out = []
     for label in prm["outs_labels"]:
-        with open(prm["outs_path"] / f"{label}_{data_id(prm, data_type)}_{chunk_rows[0]}.pickle", "rb") \
-                as file:
+        with open(
+                prm["outs_path"] / f"{label}_{data_id(prm, data_type)}_{chunk_rows[0]}.pickle",
+                "rb"
+        ) as file:
             out.append(pickle.load(file))
 
     return out
@@ -57,7 +59,7 @@ def _get_indexes_blocks(prm, data_type, n_rows):
 
     # for cutting up the overall data
     # we are aiming for equivalent burden per CPU
-    path = prm["save_path"] \
+    path = prm["save_other"] \
         / f"block_indexes_{data_type}_n_rows{n_rows[data_type]}.pickle"
     with open(path, "wb") as file:
         pickle.dump(
@@ -73,7 +75,7 @@ def get_n_rows(
         prm: dict,
 ) -> int:
     """Obtain the number of rows of data."""
-    path_n_rows = prm["save_path"] / f"n_rows_all_{data_type}.npy"
+    path_n_rows = prm["save_other"] / f"n_rows_all_{data_type}.npy"
     if os.path.exists(path_n_rows):
         n_rows = int(np.load(path_n_rows))
     else:
@@ -90,22 +92,23 @@ def get_n_rows(
     return n_rows
 
 
-def add_out(prm,
-            out: Tuple[List,
-                       List[float],
-                       Dict[str, int],
-                       np.ndarray,
-                       List[int]],
-            days: list,
-            all_abs_error: Dict[str, np.ndarray],
-            types_replaced: dict,
-            all_data: np.ndarray,
-            data_type: str,
-            granularities: List[int],
-            range_dates: list,
-            n_ids: int,
-            chunk_rows
-            ) -> list:
+def add_out(
+        prm,
+        out: Tuple[List,
+                   List[float],
+                   Dict[str, int],
+                   np.ndarray,
+                   List[int]],
+        days: list,
+        all_abs_error: Dict[str, np.ndarray],
+        types_replaced: dict,
+        all_data: np.ndarray,
+        data_type: str,
+        granularities: List[int],
+        range_dates: list,
+        n_ids: int,
+        chunk_rows
+) -> list:
     """Concatenate import_segments outputs that were imported separately."""
     print(f"add_out {chunk_rows}")
     if out[0] is None:
@@ -157,7 +160,7 @@ def save_outs(outs, prm, data_type, chunks_rows):
         types_replaced[fill_type] \
             = initialise_dict(prm["replacement_types"], "zero")
 
-    all_data = np.zeros((prm["n"], 366)) if data_type == "EV" else None
+    all_data = np.zeros((prm["n"], 366))
     granularities = []
     range_dates = [1e6, - 1e6]
     n_ids = 0
@@ -171,7 +174,7 @@ def save_outs(outs, prm, data_type, chunks_rows):
 
     if prm["data_type_source"][data_type] == "CLNR":
         np.save(
-            prm["save_path"] / f"granularities_{data_type}",
+            prm["outs_path"] / f"granularities_{data_type}",
             granularities
         )
 
@@ -180,7 +183,7 @@ def save_outs(outs, prm, data_type, chunks_rows):
             fig = plt.figure()
             ax = sns.heatmap(all_data)
             ax.set_title("existing data trips")
-            fig.savefig(prm["save_path"] / f"existing_data_{data_type}")
+            fig.savefig(prm["save_other"] / f"existing_data_{data_type}")
         else:
             print(f"{data_type} np.shape(all_data) {np.shape(all_data)}")
     if (
@@ -190,9 +193,9 @@ def save_outs(outs, prm, data_type, chunks_rows):
         stats_filling_in(
             prm, data_type, all_abs_error, types_replaced)
 
-    np.save(prm["save_path"] / f"len_all_days_{data_type}", len(days_))
-    np.save(prm["save_path"] / f"n_ids_{data_type}", n_ids)
-    np.save(prm["save_path"] / f"range_dates_{data_type}", range_dates)
+    np.save(prm["outs_path"] / f"len_all_days_{data_type}", len(days_))
+    np.save(prm["outs_path"] / f"n_ids_{data_type}", n_ids)
+    np.save(prm["outs_path"] / f"range_dates_{data_type}", range_dates)
 
     assert len(days_) > 0, f"in save_outs len(days_) {len(days_)}"
 
@@ -210,7 +213,7 @@ def save_intermediate_out(prm, out, chunk_rows, data_type):
     if prm["save_intermediate_outs"]:
         for obj, label in zip(out, prm["outs_labels"]):
             with open(
-                    prm["outs_path"] / f"{label}_{data_id(prm, data_type)}_{chunk_rows[0]}.pickle", "wb"
+                prm["outs_path"] / f"{label}_{data_id(prm, data_type)}_{chunk_rows[0]}.pickle", "wb"
             ) as file:
                 pickle.dump(obj, file)
 
@@ -226,9 +229,9 @@ def get_data_chunks(prm, data_type):
     Without interrupting id sequences.
     """
     unique_ids_path \
-        = prm["save_path"] / f"unique_ids_{data_type}_{prm['n_rows'][data_type]}.npy"
+        = prm["save_other"] / f"unique_ids_{data_type}_{prm['n_rows'][data_type]}.npy"
     chunks_path \
-        = prm["save_path"] / f"chunks_rows_{data_type}_{prm['n_rows'][data_type]}.npy"
+        = prm["save_other"] / f"chunks_rows_{data_type}_{prm['n_rows'][data_type]}.npy"
     if unique_ids_path.is_file() and chunks_path.is_file():
         # if the unique_ids have already been computed, load them
         print("load chunks_rows")
@@ -274,7 +277,7 @@ def _get_rows_ids(prm, data_type, unique_ids_path):
     unique_ids = list(set(ids))
     np.save(unique_ids_path, unique_ids)
     np.save(
-        prm["save_path"] / f"n_ids_0_{data_id(prm, data_type)}",
+        prm["save_other"] / f"n_ids_0_{data_id(prm, data_type)}",
         len(unique_ids)
     )
 

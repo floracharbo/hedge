@@ -8,7 +8,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 
-from utils import dmy_to_cum_day, initialise_dict, str_to_cum_day
+from src.utils import dmy_to_cum_day, initialise_dict, str_to_cum_day
 
 
 def _make_data(
@@ -61,10 +61,10 @@ def _make_data(
             home_type[id_] = home_data["home_type"][row]
 
     for label, obj in zip(str_save, [start_id, end_id, test_cell]):
-        with open(prm["save_path"] / f"{label}.pickle", "wb") as file:
+        with open(prm["save_other"] / f"{label}.pickle", "wb") as file:
             pickle.dump(obj, file)
     if data_source == "NTS":
-        with open(prm["save_path"] / "home_type_NTS.pickle", "wb") as file:
+        with open(prm["save_other"] / "home_type_NTS.pickle", "wb") as file:
             pickle.dump(home_type, file)
 
     return [start_id, end_id], test_cell, home_type
@@ -114,10 +114,10 @@ def import_homes_data(prm: dict) -> Tuple[dict, List[dict], dict]:
     for data_source in prm["data_sources"]:
         str_save = [str_ + str(data_source) for str_ in str_save_root]
         make_homes_data = not os.path.exists(
-            prm["save_path"] / f"start_avails_{data_source}.npy"
+            prm["save_other"] / f"start_avails_{data_source}.npy"
         )
         if data_source == "NTS" and not os.path.exists(
-            prm["data_path"] / "homes_type_NTS.npy"
+            prm["save_other"] / "homes_type_NTS.npy"
         ):
             make_homes_data = True
 
@@ -129,7 +129,7 @@ def import_homes_data(prm: dict) -> Tuple[dict, List[dict], dict]:
                 home_type = home_type_
         else:
             start_end_id, test_cell, home_type = _load_data(
-                prm["save_path"], str_save, data_source, home_type
+                prm["save_other"], str_save, data_source, home_type
             )
 
         start_ids[data_source], end_ids[data_source] = start_end_id

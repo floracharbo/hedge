@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 
-from utils import initialise_dict
+from src.utils import initialise_dict
 
 
 def _number_missing_points(step_len: int, time: int, mins: List[int]) \
@@ -272,7 +272,11 @@ def _assess_filling_in(
 
 
 def fill_whole_days(
-        prm, days: list, data_type: str, sequences: dict, save_path: Path
+        prm,
+        days: list,
+        data_type: str,
+        sequences: dict,
+        save_path: Path
 ) -> Tuple[list, List[int], Optional[List[float]], Optional[Dict[str, int]]]:
     """Loop through days, fill in or throw."""
     to_throw: List[int] = []
@@ -369,7 +373,7 @@ def stats_filling_in(
             f"data_type = {data_type}, sum_share = {sum_share} " \
             f"types_replaced[{fill_type}] = {types_replaced}"
 
-    with open(prm["save_path"] / f"filling_in_{data_type}.pickle", "wb") as file:
+    with open(prm["save_other"] / f"filling_in_{data_type}.pickle", "wb") as file:
         pickle.dump(filling_in, file)
 
     return None

@@ -8,7 +8,7 @@ import numpy as np
 from matplotlib.colors import LogNorm
 from scipy.stats import norm, pearsonr
 
-from utils import initialise_dict
+from src.utils import initialise_dict
 
 
 def _plot_f_next_vs_prev(prm, factors_path, f_prevs, f_nexts, label):
@@ -53,7 +53,7 @@ def _get_correlation(
         return None
 
     factors = {}
-    if data_type == "EV":
+    if data_type == "car":
         mask_nones = \
             np.isnan(f_prevs_all.astype(float)) \
             | np.isnan(f_nexts_all.astype(float))
@@ -72,7 +72,7 @@ def _get_correlation(
 
     factors["corr"], _ = pearsonr(f_prevs, f_nexts)
 
-    factors_path = prm["save_path"] / "factors"
+    factors_path = prm["save_other"] / "factors"
 
     _plot_f_next_vs_prev(
         prm, factors_path, f_prevs, f_nexts, f"{data_type} {label}"
@@ -148,8 +148,8 @@ def _transition_intervals(
     )
 
     labels_prob = [
-        "EV non zero factor transition probabilities",
-        "EV factor probabilities after a day without trips",
+        "car non zero factor transition probabilities",
+        "car factor probabilities after a day without trips",
     ]
 
     for trans_prob, label_prob in zip([p_pos, p_zero2pos], labels_prob):
@@ -171,7 +171,7 @@ def _transition_intervals(
             ax.set_yticklabels(tick_labels)
             ax.set_xlabel("f(t + 1)")
             ax.set_ylabel("f(t)")
-            fig.savefig(prm["save_path"] / "factors" / title.replace(" ", "_"))
+            fig.savefig(prm["save_other"] / "factors" / title.replace(" ", "_"))
 
     return p_pos, p_zero2pos, fs_brackets, mid_fs_brackets
 
@@ -193,15 +193,17 @@ def _compare_factor_error_distributions(prm, errors, save_label):
         sum_log_likelihood[label] = 0
         for error in errors:
             sum_log_likelihood[label] += np.log(distr.pdf(error, *prms[label]))
-    for item_label, item in zip(['sum_log_likelihood','all_distribution_prms'], [sum_log_likelihood, prms]):
+    for item_label, item in zip(
+            ['sum_log_likelihood', 'all_distribution_prms'],
+            [sum_log_likelihood, prms]
+    ):
         with open(
-                prm["save_path"]
+                prm["save_other"]
                 / "factors"
                 / f"{item_label}_{save_label}.pickle",
                 "wb"
         ) as file:
             pickle.dump(item, file)
-
 
 
 def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
@@ -236,7 +238,7 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
             f"perfect correlation {data_type} {label}"
         )
         plt.title(title)
-        fig.savefig(prm["save_path"] / "factors" / title.replace(" ", "_"))
+        fig.savefig(prm["save_other"] / "factors" / title.replace(" ", "_"))
         plt.close("all")
 
     mean_residual = norm.stats(*residual_distribution_prms, moments="m")
@@ -257,8 +259,8 @@ def _ev_transitions(prm, factors):
 
     for transition in prm["day_trans"]:
         f_prevs, f_nexts \
-            = [factors["EV"][transition][f] for f in ["f_prevs", "f_nexts"]]
-        # EV transitions
+            = [factors["car"][transition][f] for f in ["f_prevs", "f_nexts"]]
+        # car transitions
         [p_pos[transition], p_zero2pos[transition],
          fs_brackets[transition], mid_fs_brackets[transition]] \
             = _transition_intervals(f_prevs, f_nexts, transition, prm)
@@ -266,7 +268,7 @@ def _ev_transitions(prm, factors):
     labels = ["p_pos", "p_zero2pos", "fs_brackets", "mid_fs_brackets"]
     for dictionary, label in zip(dictionaries, labels):
         with open(
-                prm["save_path"] / "factors" / f"EV_{label}.pickle", "wb"
+                prm["save_hedge"] / "factors" / f"car_{label}.pickle", "wb"
         ) as file:
             pickle.dump(dictionary, file)
 
@@ -325,8 +327,8 @@ def _scaling_factors_behaviour_types(
                 print(f"np.shape(f_prevs) = {np.shape(f_prevs)}")
                 print(f"np.shape(f_nexts) = {np.shape(f_nexts)}")
 
-    if "EV" in prm["data_types"] \
-            and _enough_data(banks["EV"], prm["weekday_type"]):
+    if "car" in prm["data_types"] \
+            and _enough_data(banks["car"], prm["weekday_type"]):
         _ev_transitions(prm, factors)
 
     return factors, mean_residual, residual_distribution_prms, n_transitions
@@ -395,7 +397,7 @@ def _get_factors_stats(prm, days, banks):
         f_min[data_type] = np.min(list_factors)
         f_mean[data_type] = np.mean(list_factors)
 
-    folder_path = prm["save_path"] / "factors"
+    folder_path = prm["save_hedge"] / "factors"
     for property_, obj in zip(
             ["f_min", "f_max", "f_mean"],
             [f_min, f_max, f_mean]
@@ -426,18 +428,20 @@ def scaling_factors(prm, banks, days, n_data_type):
             n_data_type["gen"], days["gen"], prm
         )
 
-    folder_path = prm["save_path"] / "factors"
+    folder_path = prm["save_other"] / "factors"
     for property_, obj in zip(
-            ["n_transitions", "factors"],
-            [n_transitions, factors]
+        ["n_transitions", "residual_distribution_prms"],
+        [n_transitions, residual_distribution_prms]
     ):
         path = folder_path / f"{property_}.pickle"
         with open(path, "wb") as file:
             pickle.dump(obj, file)
 
+    folder_path = prm["save_hedge"] / "factors"
     for property_, obj in zip(
-            ["mean_residual", "residual_distribution_prms"],
-            [mean_residual, residual_distribution_prms]
+        ["mean_residual", "factors"],
+        [mean_residual, factors],
     ):
-        with open(folder_path / f"{property_}.pickle", "wb") as file:
+        path = folder_path / f"{property_}.pickle"
+        with open(path, "wb") as file:
             pickle.dump(obj, file)

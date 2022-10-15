@@ -14,10 +14,10 @@ the reinforcement learning environment
 # import packages
 import datetime
 
-from clustering import clustering
-from importer import import_data
-from parameters import get_parameters
-from scaling_factors import scaling_factors
+from src.data_preparation.clustering import clustering
+from src.data_preparation.importer import import_data
+from src.data_preparation.parameters import get_parameters
+from src.data_preparation.scaling_factors import scaling_factors
 
 if __name__ == "__main__":
     # 1 - initialise variables

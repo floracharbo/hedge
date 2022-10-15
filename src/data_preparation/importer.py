@@ -15,12 +15,13 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from define_blocks import (get_data_chunks, get_n_rows, save_intermediate_out,
-                           save_outs)
-from filling_in import fill_whole_days
-from import_homes_data import import_homes_data
-from utils import (data_id, empty, formatting, get_granularity,
-                   initialise_dict, obtain_time)
+from src.data_preparation.define_blocks import (get_data_chunks, get_n_rows,
+                                                save_intermediate_out,
+                                                save_outs)
+from src.data_preparation.filling_in import fill_whole_days
+from src.data_preparation.import_homes_data import import_homes_data
+from src.utils import (data_id, empty, formatting, get_granularity,
+                       initialise_dict, obtain_time)
 
 
 def keep_column(dtm_no: list, start_avail: list,
@@ -48,7 +49,7 @@ def tag_availability(
         current: dict,
         i_home: int
 ) -> dict:
-    """Tag EV availability based on trips' origins and destinations."""
+    """Tag car availability based on trips' origins and destinations."""
     n_trips = len(list_current["i_start"])
     if n_trips > 0:  # there are trips during the day
         # the first trip does not depart from home,
@@ -71,7 +72,7 @@ def tag_availability(
             current["avail"][idx: n_time_steps] = [0] * (n_time_steps - idx)
     else:
         # if there are no trips,
-        # make sure the EV is set as always available
+        # make sure the car is set as always available
         # rather than never available
         current["avail"] = [1 for _ in range(n_time_steps)]
 
@@ -217,21 +218,21 @@ def add_day_nts(
     # (convert mile to km then apply kWh/10km factor)
     assert len(current["dist"]) == prm["n"], \
         f"error len(current['dist']) = {len(current['dist'])}"
-    current["EV"] = [
+    current["car"] = [
         current["dist"][i] * 1.609344 / 10
         * prm["consfactor"][int(current["triptype"][i])]
         for i in range(len(current["dist"]))
     ]
-    if sum(current["EV"]) == 0:
-        print("sum(current['EV']) = 0")
+    if sum(current["car"]) == 0:
+        print("sum(current['car']) = 0")
         print(f"current['dist'] = {current['dist']}")
 
     # enter in days
     day = {}
     for key in prm["NTS_day_keys"]:
         day[key] = current[key]
-    assert len(day["EV"]) == prm["n"], \
-        f"error len(day['EV']) = {len(day['EV'])}"
+    assert len(day["car"]) == prm["n"], \
+        f"error len(day['car']) = {len(day['car'])}"
     day["id"] = int(id_)
     days.append(day)
 
@@ -273,7 +274,7 @@ def add_no_trips_day(
             else weekday,
             "id": id_,
             "avail": [1 for _ in range(prm["n"])],
-            "EV": [0 for _ in range(prm["n"])],
+            "car": [0 for _ in range(prm["n"])],
         }
         for key in ["mins", "cum_min"]:
             day[key] = [None for _ in range(prm["n"])]
@@ -292,7 +293,7 @@ def new_day_nts(step_len, n_time_steps, t: int, id_: int, sequences: dict) \
     current["mins"] = np.arange(n_time_steps) * step_len
     current["cum_min"] \
         = current["mins"] + sequences[id_]["cum_day"][t] * 24 * 60
-    for key in ["dist", "purposeFrom", "purposeTo", "triptype", "EV"]:
+    for key in ["dist", "purposeFrom", "purposeTo", "triptype", "car"]:
         current[key] = np.zeros(n_time_steps)
     current["avail"] = np.ones(n_time_steps)
     list_current = initialise_dict(
@@ -553,7 +554,7 @@ def append_id_sequences(
 ) -> Tuple[dict, dict]:
     """Add current sequence for given id to sequences dictionary."""
     # reduce granularity & add to sequences
-    if data_type == "EV":
+    if data_type == "car":
         sequences_id = current_sequence
     else:
         sequences_id, granularities = update_granularity(
@@ -689,7 +690,7 @@ def filter_validity(
     )
 
     # set small negative values to zero and remove larger negative values
-    var_label = "dist" if data_type == "EV" else data_type
+    var_label = "dist" if data_type == "car" else data_type
     data[var_label] = data[var_label].map(
         lambda x: x if x > 0 else (0 if x > -1e-2 else None)
     )
@@ -719,9 +720,9 @@ def import_segment(
         prm, chunk_rows, data_type
 ) -> list:
     """In parallel or sequentially, import and process block of data."""
-
+    data_id_ = {data_id(prm, data_type)}
     if all(
-            (prm["outs_path"] / f"{label}_{data_id(prm, data_type)}_{chunk_rows[0]}.pickle").is_file()
+            (prm["outs_path"] / f"{label}_{data_id_}_{chunk_rows[0]}.pickle").is_file()
             for label in prm["outs_labels"]
     ):
         print(f"load previous out {chunk_rows[0]} -> {chunk_rows[1]}")
@@ -754,7 +755,7 @@ def import_segment(
     if data_source == "CLNR":
         # reduce to desired granularity
         days, abs_error, types_replaced_eval = get_days_clnr(
-            prm, sequences, data_type, prm["save_path"]
+            prm, sequences, data_type, prm["save_other"]
         )
 
     if data_source == "NTS":
@@ -828,20 +829,29 @@ def get_data(
 def map_all_data(data_source, data, prm):
     """Check number of data points per time of day and day of year."""
     if prm["do_heat_map"]:
-        all_data = np.zeros((24, 366))
-        data["day_of_year"] = data.apply(
-            lambda x:
-            x.cum_day
-            - (date(x.year, 1, 1) - prm["date0"]).days
-            + 1,
-            axis=1,
-        )
-        for i in range(len(data["start_h"])):
-            start_h, day_of_year = [
-                data[e].iloc[i] for e in ["start_h", "day_of_year"]
-            ]
-            day_of_year_ = (day_of_year - 1) % 365
-            all_data[int(start_h), int(day_of_year_)] += 1
+        all_data = np.zeros((prm['n'], 366))
+
+        if data_source == "NTS":
+            data["day_of_year"] = data.apply(
+                lambda x:
+                x.cum_day
+                - (date(x.year, 1, 1) - prm["date0"]).days
+                + 1,
+                axis=1,
+            )
+            for i in range(len(data["start_h"])):
+                start_h, day_of_year = [
+                    data[e].iloc[i] for e in ["start_h", "day_of_year"]
+                ]
+                day_of_year_ = (day_of_year - 1) % 365
+                all_data[int(start_h), int(day_of_year_)] += 1
+        else:
+            start_h = data['cum_min'].map(lambda x: np.floor((x % (24 * 60))/60))
+            day_of_year = data['cum_day'].map(
+                lambda x: (prm["date0"] + timedelta(days=x)).timetuple().tm_yday - 1
+            )
+            for i in range(len(start_h)):
+                all_data[int(start_h[i]), day_of_year[i]] += 1
     else:
         all_data = None
 
@@ -861,7 +871,7 @@ def get_percentiles(days, prm):
         percentiles[data_type] \
             = [np.percentile(list_data, i) for i in range(101)]
 
-    with open(prm["save_path"] / "percentiles.pickle", "wb") as file:
+    with open(prm["save_hedge"] / "percentiles.pickle", "wb") as file:
         pickle.dump(percentiles, file)
 
     return percentiles
@@ -879,15 +889,12 @@ def import_data(
 
         # identifier for saving data_type-related data
         # savings paths
-        day0_path = prm["save_path"] / f"day0_{data_id(prm, data_type)}.pickle"
         n_data_type_path \
-            = prm["save_path"] / f"n_dt0_{data_id(prm, data_type)}.npy"
+            = prm["save_other"] / f"n_dt0_{data_id(prm, data_type)}.npy"
 
         if prm["n_rows"][data_type] == "all":
             prm["n_rows"][data_type] = get_n_rows(data_type, prm)
-        print(f"got n rows")
         chunks_rows = get_data_chunks(prm, data_type)
-        print(f"got data_chunks")
         if prm["parallel"]:
             pool = mp.Pool(prm["n_cpu"])
             outs = pool.starmap(

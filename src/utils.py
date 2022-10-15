@@ -141,3 +141,13 @@ def get_granularity(step_len: int,
 def data_id(prm, data_type):
     """Return string for identifying current data_type selection."""
     return f"{data_type}_n_rows{prm['n_rows'][data_type]}_n{prm['n']}"
+
+
+def run_id(prm):
+    """Return an identifier to save the current run's results."""
+    run_id = f"n{prm['n']}"
+    if len(prm["data_types"]) < 3 or not all(n_rows == "all" for n_rows in prm['n_rows'].values()):
+        for data_type in prm["data_types"]:
+            run_id += f"_{data_type}_{prm['n_rows'][data_type]}"
+
+    return run_id

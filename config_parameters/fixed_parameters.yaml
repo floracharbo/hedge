@@ -1,6 +1,6 @@
 # variable names
 data_sources: ['CLNR', 'NTS']
-behaviour_types: ['loads', 'EV']
+behaviour_types: ['loads', 'car']
 date_entries: ['dtm_yr', 'dtm_mth', 'dtm_day']  # type of information about date only
 time_entries: ['dtm_hr', 'dtm_min']  # type of information about time
 weekday_type: ['wd', 'we']  # week day types - wd: weekday day and we: weekend day
@@ -57,9 +57,9 @@ sequence_entries_NTS: ['cum_min', 'cum_min_end', 'cum_day', 'dist', 'purposeFrom
 
 dem_intervals: [[0, 7], [7, 11], [11, 14], [14, 17], [17, 21], [21, 24]]
 
-NTS_day_keys: ["cum_day", "weekday", "avail", "EV", "mins",
+NTS_day_keys: ["cum_day", "weekday", "avail", "car", "mins",
                "cum_min", "id", "month"]
-EV:
+car:
   c_max: 22 # kW max battery charge
   d_max: 100 # kW max battery discharge
   SoCmin: 0.1 # minimum state of charge
@@ -80,23 +80,16 @@ test_cell_translation:
 data_type_source:
   gen: 'CLNR'
   loads: 'CLNR'
-  EV: 'NTS'
+  car: 'NTS'
 
 var_file:
   gen: 'TC5/TrialMonitoringData.csv'
   loads: 'TC1a/TrialMonitoringDataHH.csv'
-  EV: 'UKDA-5340-tab/tab/trip_eul_2002-2020.tab'
+  car: 'UKDA-5340-tab/tab/trip_eul_2002-2020.tab'
 
 homes_file:
   CLNR: 'TC1a/CustomerTestCellDefinition.csv'
   NTS: 'UKDA-5340-tab/tab/household_eul_2002-2020.tab' # see ukda_data_dictionaries for info on NTS
-
-NTS_day_file: 'dayeul2017.tab'
-
-save_folder: 'results'
-
-debug_folder: 'debug'
-outs_folder: 'outs'
 
 outs_labels: ['days', 'abs_error', 'types_replaced_eval', 'all_data',
         'granularities', 'range_dates', 'n_ids']

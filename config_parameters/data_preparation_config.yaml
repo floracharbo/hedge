@@ -1,21 +1,12 @@
 # run configuration
 
 n: 48  # number of time intervals per day
-n_intervals: 50  # number of intervals in EV factor transition matrix
-
-# input your root path on your local machine e.g. '/Users/username'
-local: '/Users/floracharbonnier'
-
-# the folder in which the input data is stored.
-# You may have both a local machine and a server path if you run this programme on different machines
-data_path:
-  local: '/Users/floracharbonnier/DPhildownloaded/'
-  remote: '/home/epg/Flora/DataProcessing'
+n_intervals: 50  # number of intervals in car factor transition matrix
 
 n_rows: # number of rows to import xin each data file (limit numbers e.g. for debugging)
-  gen: all  # 172718543 all
-  loads: all  # 300267349 all
-  EV: all  # 4449164 all
+  gen: 1.e+6  # 172718543 all
+  loads: 1.e+6  # 300267349 all
+  car: 1.e+6  # 4449164 all
 
 fill_type: # interpolate linearly to fill in errors instead of looking at day/week before
   gen: lin_interp
@@ -27,9 +18,9 @@ n_cpu:  # to limit the number of CPUs being used
 
 n_clus:
   loads: 4
-  EV: 3
+  car: 3
 
-data_types: ["EV", "loads", "gen"] # ,
+data_types: ["car", "loads", "gen"] # ,
 plots: True
 do_test_filling_in: False
 parallel: False

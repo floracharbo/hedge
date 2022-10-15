@@ -17,7 +17,6 @@ Methods are:
 - _transition_probabilities: Get probabilities of transtioning between
 day types and clusters.
 """
-import os
 import pickle
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -29,7 +28,7 @@ import seaborn as sns
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
-from utils import initialise_dict
+from src.utils import initialise_dict
 
 
 def _get_n_trans(n_data_type, data_type, days, n_trans, banks):
@@ -101,13 +100,13 @@ def _transition_probabilities(
     if prm["plots"]:
         for transition in prm["day_trans"]:
             _plot_heat_map_p_trans(
-                p_trans, transition, data_type, v_min, v_max, prm["save_path"]
+                p_trans, transition, data_type, v_min, v_max, prm["save_other"]
             )
 
         # plot once with the colour bar
         _plot_heat_map_p_trans(
             p_trans, transition, data_type, v_min,
-            v_max, prm["save_path"], colourbar=True
+            v_max, prm["save_other"], colourbar=True
         )
 
     p_clus[data_type] = {}
@@ -258,7 +257,7 @@ def _get_p_clus(vals_k, n_days, data_type, n_zeros):
     for k, val_k in vals_k.items():
         bank[k]["n_clus"] = len(val_k)
         bank[k]["p_clus"] = len(val_k) / n_days
-    if data_type == 'EV':
+    if data_type == 'car':
         bank[n_clus_all - 1]["n_clus"] = n_zeros
         bank[n_clus_all - 1]["p_clus"] = n_zeros / n_days
 
@@ -277,7 +276,7 @@ def _get_profs(
     n_k = max(list(bank.keys())) + 1
     n_steps = len(days_[0][data_type])
     for k, bank_ in bank.items():
-        if data_type == 'EV' and k == n_k - 1:
+        if data_type == 'car' and k == n_k - 1:
             bank_["profs"] = [[0 for _ in range(n_steps)]]
             bank_["dists"] = [[0 for _ in range(n_steps)]]
         else:
@@ -288,7 +287,7 @@ def _get_profs(
                 for prof in bank_["profs"]
             ), f"{data_type} normalised profile should sum to 1"
 
-            if data_type == "EV":
+            if data_type == "car":
                 bank_["avail"] = [days_[i]["avail"] for i in idx_k_all]
             bank_["dists"] \
                 = [cluster_distance[i][k] for i in idx_k_clustered[k]]
@@ -331,7 +330,7 @@ def _cluster_module(
 
 def _elbow_method(transformed_features, data_type, day_type, save_path):
     # elbow method
-    if not os.path.exists(f"Elbow_method_{data_type}_{day_type}.npy"):
+    if not (save_path / "clusters" / "Elbow_method_{data_type}_{day_type}.npy").is_file():
         wcss = []
         maxn_clus = min(10, len(transformed_features))
         for i in range(1, maxn_clus):
@@ -363,7 +362,7 @@ def _get_features(days_, data_type, prm):
         for i in range(len(days_))
         if days_[i][data_type] is not None and sum(days_[i][data_type]) > 0
     ]
-    if data_type == "EV":
+    if data_type == "car":
         i_zeros = [i for i in range(len(days_))
                    if days_[i][data_type] is None
                    or sum(days_[i][data_type]) == 0]
@@ -394,7 +393,7 @@ def _get_features(days_, data_type, prm):
                 print(f"len(to_cluster) " f"= {len(to_cluster)}")
             features.append([peak, t_peak] + values)
 
-        elif data_type == "EV":
+        elif data_type == "car":
             features.append(
                 days_[i][data_type][
                     int(6 * 60 / prm["step_len"]):
@@ -409,10 +408,10 @@ def _get_features(days_, data_type, prm):
 def _initialise_cluster_dicts(prm):
     """Initialise dictionaries for storing cluster info."""
     n_trans, p_trans, p_clus, n_zeros, n_clus_all, banks = [
-        initialise_dict(["loads", "EV"], "empty_dict") for _ in range(6)
+        initialise_dict(["loads", "car"], "empty_dict") for _ in range(6)
     ]
 
-    for data_type in ["loads", "EV"]:
+    for data_type in ["loads", "car"]:
         n_trans[data_type], p_trans[data_type] = [
             initialise_dict(prm["day_trans"]) for _ in range(2)
         ]
@@ -493,22 +492,22 @@ def _save_clustering(
                 assert not np.all(
                     np.array(banks[data_type][day_type][k]["profs"]) == 0
                 ), f"{data_type} {k} {day_type} all zeros"
-                if data_type == "EV":
+                if data_type == "car":
                     path = prof_path / "EV_avail"
                     np.save(
                         path / f"c{k}_{day_type}",
                         banks[data_type][day_type][k]["avail"],
                     )
 
-    if "EV" in prm["data_types"]:
-        k = prm["n_clus"]["EV"]
+    if "car" in prm["data_types"]:
+        k = prm["n_clus"]["car"]
         for day_type in prm["weekday_type"]:
             np.save(
-                prof_path / "EV_avail" / f"c{k}_{day_type}",
+                prof_path / "car_avail" / f"c{k}_{day_type}",
                 [np.ones((prm["n"],))]
             )
             np.save(
-                prof_path / "norm_EV" / f"c{k}_{day_type}",
+                prof_path / "norm_car" / f"c{k}_{day_type}",
                 [np.zeros((prm["n"],))]
             )
 
@@ -530,7 +529,7 @@ def split_day_types(days, prm, n_data_type):
             days[f"{data_type}_{day_type}"] = []
         for i in range(n_data_type[data_type]):
             day = days[data_type][i]
-            if data_type == "EV":
+            if data_type == "car":
                 day_number = day["weekday"]
             else:
                 delta_days = int(day["cum_day"] - 1)
@@ -585,7 +584,7 @@ def clustering(days, prm, n_data_type):
                 continue
             if prm["plots"]:
                 _elbow_method(
-                    transformed_features, data_type, day_type, prm["save_path"]
+                    transformed_features, data_type, day_type, prm["save_other"]
                 )
             [labels, cluster_distance, n_zeros_,
              days[f"{data_type}_{day_type}"]] \
@@ -602,16 +601,16 @@ def clustering(days, prm, n_data_type):
                 to_cluster, banks_, days_, data_type,
                 idx_k_clustered, cluster_distance)
             distances = [bank_["dists"] for bank_ in banks_.values()]
-            if data_type == "EV":
+            if data_type == "car":
                 distances = distances[:-1]
             [banks_,
              min_cdfs[data_type][day_type],
              max_cdfs[data_type][day_type]] = _get_cdfs(
                 distances, f"{data_type} {day_type}",
-                prm["save_path"], banks_, prm["plots"]
+                prm["save_hedge"], banks_, prm["plots"]
             )
             _plot_clusters(transformed_features, norm_vals, data_type,
-                           day_type, banks_, vals_k, prm, prm["save_path"])
+                           day_type, banks_, vals_k, prm, prm["save_other"])
             banks[data_type][day_type] = banks_
             n_zeros[data_type][day_type] = n_zeros_
 
@@ -627,11 +626,11 @@ def clustering(days, prm, n_data_type):
 
     if "gen" in prm["data_types"]:
         banks["gen"], min_cdfs["gen"], max_cdfs["gen"] \
-            = _group_gen_month(days["gen"], prm["save_path"], prm["plots"])
+            = _group_gen_month(days["gen"], prm["save_hedge"], prm["plots"])
 
     # transitions probabilities
     _save_clustering(
-        prm, prm["save_path"], banks, p_clus, p_trans, min_cdfs, max_cdfs
+        prm, prm["save_hedge"], banks, p_clus, p_trans, min_cdfs, max_cdfs
     )
 
     return banks

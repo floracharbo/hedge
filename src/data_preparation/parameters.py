@@ -9,7 +9,7 @@ import numpy as np
 import yaml
 from scipy.stats import alpha, chi, chi2, gamma, maxwell, norm
 
-from utils import initialise_dict
+from src.utils import initialise_dict, run_id
 
 
 def _import_columns_info(prm):
@@ -19,9 +19,9 @@ def _import_columns_info(prm):
         for name_col, i_col in zip(["id", "dtm", data_type],
                                    prm["i_cols_CLNR"]):
             prm["i_cols"][data_type][name_col] = i_col
-    if "EV" in prm["data_types"]:
+    if "car" in prm["data_types"]:
         for name_col, i_col in zip(prm["name_cols_NTS"], prm["i_cols_NTS"]):
-            prm["i_cols"]["EV"][name_col] = i_col
+            prm["i_cols"]["car"][name_col] = i_col
 
     str_to_type = {
         'int': np.int32,
@@ -114,54 +114,51 @@ def _init_data_filling(prm, run_config):
 
 def _update_paths(prm: dict, run_config: dict) \
         -> dict:
-    current_path = os.getcwd()
-    location = (
-        "local"
-        if current_path[0: len(run_config["local"])] == run_config["local"]
-        else "remote"
-    )
-    prm["data_path"] = Path(run_config["data_path"][location])
-    prm["save_folder"] = prm["save_folder"] + f"_n{run_config['n']}"
-    for folder in ["save", "debug", "outs"]:
-        prm[f"{folder}_path"] = Path(current_path) / prm[f"{folder}_folder"]
+    prm["save_hedge"] = Path("data") / "hedge_inputs" / f"{run_id(run_config)}"
+    prm["save_other"] = Path("data") / "other_outputs" / f"{run_id(run_config)}"
     prm["homes_path"] = {}  # the path to the file with homes information
     for data_source in prm["data_sources"]:
         prm["homes_path"][data_source] = (
-            prm["data_path"] / prm["homes_file"][data_source]
+            Path('data') / 'data_preparation_inputs' / prm["homes_file"][data_source]
         )
 
     # paths to the main data files with demand / generation data points
     prm["var_path"] = {}
     for data_type in prm["data_types"]:
         prm["var_path"][data_type] \
-            = prm["data_path"] / prm["var_file"][data_type]
+            = Path('data') / 'data_preparation_inputs' / prm["var_file"][data_type]
+
+    prm["outs_path"] = prm["save_other"] / "outs"
 
     return prm
 
 
 def _make_dirs(prm: dict):
-    for path in ["save_path", "debug_path", "outs_path"]:
+    for folder in ["hedge_inputs", "other_outputs"]:
+        if not os.path.exists(Path("data") / folder):
+            os.mkdir(Path("data") / folder)
+    for path in ["save_hedge", "save_other"]:
         if not os.path.exists(prm[path]):
             os.mkdir(prm[path])
+        for folder in ["profiles", "clusters", "factors"]:
+            path = prm[path] / folder
+            if not os.path.exists(path):
+                os.mkdir(path)
 
-    for folder in ["profiles", "clusters", "factors"]:
-        path = prm['save_path'] / folder
+    if not os.path.exists(prm["outs_path"]):
+        os.mkdir(prm["outs_path"])
+
+    for folder in [f"norm{data_type}" for data_type in prm["data_types"]] + ["car_avail"]:
+        path = prm["save_hedge"] / "profiles" / folder
         if not os.path.exists(path):
             os.mkdir(path)
-    for data_type in prm["data_types"]:
-        path = prm["save_path"] / "profiles" / f"norm_{data_type}"
-        if not os.path.exists(path):
-            os.mkdir(path)
-    path = prm["save_path"] / "profiles" / "EV_avail"
-    if not os.path.exists(path):
-        os.mkdir(path)
 
 
 def get_parameters() -> Tuple[dict, dict]:
     """Load input parameter files and perform pre-processing."""
-    with open("inputs/parameters.yaml") as file:
+    with open("config_parameters/fixed_parameters.yaml") as file:
         prm = yaml.safe_load(file)
-    with open("inputs/run_config.yaml") as file:
+    with open("config_parameters/data_preparation_config.yaml") as file:
         run_config = yaml.safe_load(file)
 
     prm["data_types"] = run_config["data_types"]
@@ -202,8 +199,8 @@ def get_parameters() -> Tuple[dict, dict]:
         prm["sequence_entries"][data_type] \
             = prm["sequence_entries_CLNR"] + [data_type]
 
-    if "EV" in prm["data_types"]:
-        prm["sequence_entries"]["EV"] = prm["sequence_entries_NTS"]
+    if "car" in prm["data_types"]:
+        prm["sequence_entries"]["car"] = prm["sequence_entries_NTS"]
 
     # year                  : survey year
     # id                    : home unique id fo find home-specific data
@@ -225,7 +222,7 @@ def get_parameters() -> Tuple[dict, dict]:
 
     _make_dirs(prm)
 
-    prm["EV"]["min_charge"] = prm["EV"]["cap"] * prm["EV"]["SoCmin"]
+    prm["car"]["min_charge"] = prm["car"]["cap"] * prm["car"]["SoCmin"]
 
     # transfer run_config to prm
     for key in [
