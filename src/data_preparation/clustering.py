@@ -200,7 +200,7 @@ def _get_vals_k(labels, norm_vals, n_clus):
     return vals_k, idx_k_clustered
 
 
-def _get_cdfs(distances, label, save_path, bank, plots):
+def _get_cdfs(distances, label, prm, bank):
     min_cdfs_, max_cdfs_ = [], []
 
     for i, distance in enumerate(distances):
@@ -209,20 +209,24 @@ def _get_cdfs(distances, label, save_path, bank, plots):
             continue
 
         # plot histogram distances around the cluster
-        if plots:
+        if prm["plots"]:
             fig, ax1 = plt.subplots()
-            plt.hist(distance, 100,
-                     density=True, facecolor='k', alpha=0.75, label='data')
+            plt.hist(
+                distance, 100,
+                density=True, facecolor='k', alpha=0.75, label='data'
+            )
             plt.ylabel('Probability', color='k')
             ax2 = ax1.twinx()
-            ax2.hist(distance, 100, density=True, cumulative=True, label='CDF',
-                     histtype='step', alpha=0.8, color='r')
+            ax2.hist(
+                distance, 100, density=True, cumulative=True, label='CDF',
+                histtype='step', alpha=0.8, color='r'
+            )
             plt.ylabel('Cumulative probability', color='r')
             plt.xlabel('Distances to cluster')
             title = f"Histogram of distance to the cluster centers {label} {i}"
             plt.title(title)
             plt.grid(True)
-            fig.savefig(save_path / "clusters" / title.replace(" ", "_"))
+            fig.savefig(prm["other_outputs"] / "clusters" / title.replace(" ", "_"))
             plt.close("all")
 
         # get cumulative probability for each profile
@@ -428,7 +432,7 @@ def _initialise_cluster_dicts(prm):
     return n_trans, p_trans, p_clus, n_zeros, n_clus_all, banks
 
 
-def _group_gen_month(days_, save_path, plots):
+def _group_gen_month(days_, prm):
     bank = initialise_dict(range(12), "empty_dict")
     cluster_distances = []
     for i_month, month in enumerate(range(1, 13)):
@@ -437,7 +441,7 @@ def _group_gen_month(days_, save_path, plots):
         for property_ in ["factor", "id", "cum_day"]:
             bank[i_month][property_] = [days_[i][property_] for i in i_days]
 
-        path = save_path / "profiles" / "norm_gen"
+        path = prm["hedge_inputs"] / "profiles" / "norm_gen"
         np.save(
             path / f"i_month{i_month}",
             bank[i_month]["profs"],
@@ -453,11 +457,11 @@ def _group_gen_month(days_, save_path, plots):
             cluster_distances.append(None)
 
     bank, min_cdfs, max_cdfs \
-        = _get_cdfs(cluster_distances, "gen", save_path, bank, plots)
+        = _get_cdfs(cluster_distances, "gen", prm, bank)
 
     for i_month in range(12):
         np.save(
-            save_path / "clusters"
+            prm["hedge_inputs"] / "clusters"
             / f"cdfs_clus_gen_{i_month}",
             bank[i_month]["cdfs"],
         )
@@ -493,7 +497,7 @@ def _save_clustering(
                     np.array(banks[data_type][day_type][k]["profs"]) == 0
                 ), f"{data_type} {k} {day_type} all zeros"
                 if data_type == "car":
-                    path = prof_path / "EV_avail"
+                    path = prof_path / "car_avail"
                     np.save(
                         path / f"c{k}_{day_type}",
                         banks[data_type][day_type][k]["avail"],
@@ -606,8 +610,7 @@ def clustering(days, prm, n_data_type):
             [banks_,
              min_cdfs[data_type][day_type],
              max_cdfs[data_type][day_type]] = _get_cdfs(
-                distances, f"{data_type} {day_type}",
-                prm["save_hedge"], banks_, prm["plots"]
+                distances, f"{data_type} {day_type}", prm, banks_
             )
             _plot_clusters(transformed_features, norm_vals, data_type,
                            day_type, banks_, vals_k, prm, prm["save_other"])
@@ -626,7 +629,7 @@ def clustering(days, prm, n_data_type):
 
     if "gen" in prm["data_types"]:
         banks["gen"], min_cdfs["gen"], max_cdfs["gen"] \
-            = _group_gen_month(days["gen"], prm["save_hedge"], prm["plots"])
+            = _group_gen_month(days["gen"], prm)
 
     # transitions probabilities
     _save_clustering(

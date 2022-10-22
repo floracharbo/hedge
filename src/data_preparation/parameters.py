@@ -137,18 +137,18 @@ def _make_dirs(prm: dict):
     for folder in ["hedge_inputs", "other_outputs"]:
         if not os.path.exists(Path("data") / folder):
             os.mkdir(Path("data") / folder)
-    for path in ["save_hedge", "save_other"]:
-        if not os.path.exists(prm[path]):
-            os.mkdir(prm[path])
-        for folder in ["profiles", "clusters", "factors"]:
-            path = prm[path] / folder
+    for folder in ["save_hedge", "save_other"]:
+        if not os.path.exists(prm[folder]):
+            os.mkdir(prm[folder])
+        for sub_folder in ["profiles", "clusters", "factors"]:
+            path = prm[folder] / sub_folder
             if not os.path.exists(path):
                 os.mkdir(path)
 
     if not os.path.exists(prm["outs_path"]):
         os.mkdir(prm["outs_path"])
 
-    for folder in [f"norm{data_type}" for data_type in prm["data_types"]] + ["car_avail"]:
+    for folder in [f"norm_{data_type}" for data_type in prm["data_types"]] + ["car_avail"]:
         path = prm["save_hedge"] / "profiles" / folder
         if not os.path.exists(path):
             os.mkdir(path)

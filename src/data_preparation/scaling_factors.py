@@ -428,19 +428,14 @@ def scaling_factors(prm, banks, days, n_data_type):
             n_data_type["gen"], days["gen"], prm
         )
 
-    folder_path = prm["save_other"] / "factors"
-    for property_, obj in zip(
-        ["n_transitions", "residual_distribution_prms"],
-        [n_transitions, residual_distribution_prms]
-    ):
-        path = folder_path / f"{property_}.pickle"
-        with open(path, "wb") as file:
-            pickle.dump(obj, file)
+    path = prm["save_other"] / "factors"  / f"n_transitions.pickle"
+    with open(path, "wb") as file:
+        pickle.dump(n_transitions, file)
 
     folder_path = prm["save_hedge"] / "factors"
     for property_, obj in zip(
-        ["mean_residual", "factors"],
-        [mean_residual, factors],
+        ["mean_residual", "factors", "residual_distribution_prms"],
+        [mean_residual, factors, residual_distribution_prms],
     ):
         path = folder_path / f"{property_}.pickle"
         with open(path, "wb") as file:
