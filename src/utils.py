@@ -1,6 +1,5 @@
 """User-defined tool functions used in the project."""
 
-import array
 import datetime
 from typing import List
 
@@ -8,20 +7,26 @@ import numpy as np
 import pandas as pd
 
 
-def initialise_dict(keys, type_obj="empty_list"):
-    """Initialise empty dict, with entries as specified."""
+def initialise_dict(
+        entries, type_obj='empty_list', n=1,
+        second_level_entries=[], second_type='empty_list'):
+    """Initialise a dictionary with keys 'entries'."""
+    obj_dict = {
+        'empty_list': [],
+        'empty_dict': {},
+        'zeros': np.zeros(n),
+        'zero': 0,
+        'Nones': [None] * n,
+        'empty_np_array': np.array([])
+    }
+    if len(second_level_entries) > 0:
+        type_obj = 'empty_dict'
     obj = {}
-    for key in keys:
-        if type_obj == "empty_list":
-            obj[key] = []
-        elif type_obj == "empty_dict":
-            obj[key] = {}
-        elif type_obj == "zero":
-            obj[key] = 0
-        elif type_obj == 'empty_array':
-            obj[key] = array.array('f')
-        elif type_obj == 'empty_np_array':
-            obj[key] = np.array([])
+    for e in entries:
+        obj[e] = obj_dict[type_obj] if isinstance(obj_dict[type_obj], int) \
+            else obj_dict[type_obj].copy()
+        for e2 in second_level_entries:
+            obj[e][e2] = obj_dict[second_type].copy()
 
     return obj
 
