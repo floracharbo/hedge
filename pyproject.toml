@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "hedge"
+version = "0.0.1"
+authors = [
+  { name="Flora Charbonnier", email="flora.charbonnier@eng.ox.ac.uk" },
+]
+description = "Home Electricity Data Generator."
+readme = "README.md"
+requires-python = ">=3.7"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License : GNU AFFERO GENERAL PUBLIC LICENSE",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/floracharbo/hedge"
+"Bug Tracker" = "https://github.com/floracharbo/hedge/issues"
