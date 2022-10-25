@@ -20,31 +20,28 @@ from src.data_preparation.parameters import get_parameters
 from src.data_preparation.scaling_factors import scaling_factors
 
 if __name__ == "__main__":
-    # 1 - initialise variables
-    print("(1) initialise variables")
+    # 0 - initialise variables
     tic_dtm = datetime.datetime.now()
     prm, run_config = get_parameters()
     dtm_1 = datetime.datetime.now()
-    print(f"(1) done in {dtm_1 - tic_dtm} seconds")
 
-    # %% 2 - import generation and electricity demand data
-    print("(2) import profiles")
+    # 1 - import generation and electricity demand data
+    print("(1) import profiles")
     days, n_data_type = import_data(prm)
     dtm_2 = datetime.datetime.now()
-    print(f"(2) done in {dtm_2 - dtm_1} seconds")
+    print(f"(1) done profiles import in {(dtm_2 - dtm_1)/60} minutes")
 
-    # %% 4 - clustering - for demand and transport
-    print("(3) clustering")
+    # 2 - clustering - for demand and transport
+    print("(2) clustering")
     banks = clustering(days, prm, n_data_type)
     dtm_3 = datetime.datetime.now()
-    print(f"(3) done in {dtm_3 - dtm_2} seconds")
+    print(f"(2) done clustering in {(dtm_3 - dtm_2)/60} minutes")
 
-    # %% 5 - scaling factors
-    print("(4) scaling factors")
+    # 3 - scaling factors
+    print("(3) scaling factors")
     scaling_factors(prm, banks, days, n_data_type)
     dtm_4 = datetime.datetime.now()
-    print(f"(4) done in {dtm_4 - dtm_3} seconds")
+    print(f"(3) done scaling factors in {(dtm_4 - dtm_3)/60} minutes")
 
     toc_dtm = datetime.datetime.now()
-
-    print(f"end duration {toc_dtm - tic_dtm}")
+    print(f"END. Total duration {(toc_dtm - tic_dtm)/60} minutes")

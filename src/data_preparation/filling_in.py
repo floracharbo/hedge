@@ -189,8 +189,8 @@ def _check_fill_missing(
                     to_throw.append(i)
                 if (
                         prm["plots"]
-                        and n_miss_ > 2
-                        and len(day["mins"]) > 10
+                        and n_miss_ == 2
+                        and len(day["mins"]) > 20
                         and not missing_fig_path.is_file()
                 ):
                     _plot_missing_data(
@@ -381,6 +381,7 @@ def stats_filling_in(
 
 def _plot_missing_data(day, data_type, prm, missing_fig_path):
     fig = plt.figure()
+    plt.rcParams['font.size'] = '18'
     times = [min / 60 for min in day["mins"]]
     for time in range(len(day[data_type]) - 1):
         if day["mins"][time] + prm["step_len"] == day["mins"][time + 1]:
@@ -388,7 +389,7 @@ def _plot_missing_data(day, data_type, prm, missing_fig_path):
                 times[time: time + 2],
                 day[data_type][time: time + 2],
                 '-o',
-                color="blue",
+                color="k",
                 lw=3
             )
         else:
@@ -396,7 +397,12 @@ def _plot_missing_data(day, data_type, prm, missing_fig_path):
                 times[time: time + 2],
                 day[data_type][time: time + 2],
                 '--o',
-                color="blue"
+                color="k"
             )
-
-    fig.savefig(missing_fig_path)
+        plt.xlabel("Time [hour]")
+        plt.ylabel("[kWh]")
+    plt.tight_layout()
+    fig.savefig(
+        str(missing_fig_path)[:-4] + '.pdf', bbox_inches='tight',
+        format='pdf', dpi=1200
+    )

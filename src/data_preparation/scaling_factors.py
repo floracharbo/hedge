@@ -359,8 +359,8 @@ def _scaling_factors_generation(n_data_type_, days_, prm):
     n_transitions += len(f_prev_gen)
 
     factors = _get_correlation(
-            f_prev_gen, f_next_gen, prm, "gen"
-        )
+        f_prev_gen, f_next_gen, prm, "gen"
+    )
 
     # fit norm
     if len(f_prev_gen) > 0:
@@ -428,7 +428,7 @@ def scaling_factors(prm, banks, days, n_data_type):
             n_data_type["gen"], days["gen"], prm
         )
 
-    path = prm["save_other"] / "factors"  / f"n_transitions.pickle"
+    path = prm["save_other"] / "factors" / "n_transitions.pickle"
     with open(path, "wb") as file:
         pickle.dump(n_transitions, file)
 

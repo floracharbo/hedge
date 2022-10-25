@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 from src.data_preparation.define_blocks import (get_data_chunks, get_n_rows,
                                                 save_intermediate_out,
@@ -57,19 +58,19 @@ def tag_availability(
         if list_current["purposeFrom"][0] != i_home:
             current["avail"][0: list_current["i_start"][0]] \
                 = [0] * list_current["i_start"][0]
-        for t in range(n_trips - 1):  # after all trips but last one
-            if list_current["purposeTo"][t] != i_home:
+        for step in range(n_trips - 1):  # after all trips but last one
+            if list_current["purposeTo"][step] != i_home:
                 # if the trip does not finish at home
                 current_trip, next_trip = [list_current["i_start"][idx]
-                                           for idx in [t, t + 1]]
+                                           for idx in [step, step + 1]]
                 current["avail"][current_trip: next_trip] = [0] * int(
                     next_trip - current_trip
                 )
 
         if list_current["purposeTo"][n_trips - 1] != i_home:
-            # after the last one
+            # after the last one, the car is back home and available
             idx = list_current["i_start"][n_trips - 1]
-            current["avail"][idx: n_time_steps] = [0] * (n_time_steps - idx)
+            current["avail"][idx: n_time_steps] = [1] * (n_time_steps - idx)
     else:
         # if there are no trips,
         # make sure the car is set as always available
@@ -79,15 +80,15 @@ def tag_availability(
     return current
 
 
-def adjust_i_start_end(prm, t, sequence, i_start, i_end):
+def adjust_i_start_end(prm, step, sequence, i_start, i_end):
     """Check if trip start and end indexes match duration or adjust indexes."""
-    duration_mins = sequence["cum_min_all_end"][t] \
-        - sequence["cum_min_all"][t]
+    duration_mins = sequence["cum_min_all_end"][step] \
+        - sequence["cum_min_all"][step]
     extra_mins = duration_mins - (i_end - i_start) * prm["step_len"]
 
     if extra_mins > prm["step_len"] / 2:  # one more hour closer to truth
-        mins_before_start = sequence["cum_min_all"][t] % prm["step_len"]
-        mins_after_end = prm["step_len"] - sequence["cum_min_all_end"][t] \
+        mins_before_start = sequence["cum_min_all"][step] % prm["step_len"]
+        mins_after_end = prm["step_len"] - sequence["cum_min_all_end"][step] \
             % prm["step_len"]
         if (
                 mins_before_start < mins_after_end
@@ -98,23 +99,23 @@ def adjust_i_start_end(prm, t, sequence, i_start, i_end):
             i_end += 1
     elif extra_mins < prm["step_len"] / 2 and i_end > i_start:
         mins_after_start \
-            = prm["step_len"] - sequence["cum_min_all"][t] % prm["step_len"]
-        mins_before_end = sequence["cum_min_all_end"][t] % prm["step_len"]
+            = prm["step_len"] - sequence["cum_min_all"][step] % prm["step_len"]
+        mins_before_end = sequence["cum_min_all_end"][step] % prm["step_len"]
         if mins_after_start < mins_before_end:
             i_start += 1
         else:
             i_end -= 1
 
     if i_start > i_end:
-        if (sequence["cum_min_all"][t] + sequence["duration"][t]) \
+        if (sequence["cum_min_all"][step] + sequence["duration"][step]) \
                 % (24 * 60) \
-                == sequence["cum_min_all_end"][t]:
+                == sequence["cum_min_all_end"][step]:
             # i_start > i_end because it adds up to the next day
             i_end = prm["n"] - 1
         elif (
-                sequence["cum_min_all"][t]
-                + sequence["duration"][t] > 23.9 * 60
-                and sequence["cum_min_all_end"][t] == 0
+                sequence["cum_min_all"][step]
+                + sequence["duration"][step] > 23.9 * 60
+                and sequence["cum_min_all_end"][step] == 0
         ):
             i_end = prm["n"] - 1
             # it finishes at nearly midnight
@@ -163,8 +164,8 @@ def get_days_clnr(
         if len(sequence[data_type]) == 0:
             continue
         # go through all the data for the current id
-        for t in range(len(sequence["cum_day"])):
-            if t > 0 and sequence["cum_day"][t] != sequence["cum_day"][t - 1]:
+        for step in range(len(sequence["cum_day"])):
+            if step > 0 and sequence["cum_day"][step] != sequence["cum_day"][step - 1]:
                 # if starting a new day
                 current_day["id"] = int(id_)
                 days.append(current_day)
@@ -174,9 +175,9 @@ def get_days_clnr(
                 current_day = initialise_dict(step_keys)
 
             for step_key in step_keys:
-                current_day[step_key].append(sequence[step_key][t])
+                current_day[step_key].append(sequence[step_key][step])
             for day_key in ["cum_day", "month", "id"]:
-                current_day[day_key] = sequence[day_key][t]
+                current_day[day_key] = sequence[day_key][step]
 
         # store final day
         days.append(current_day)
@@ -204,7 +205,7 @@ def add_day_nts(
         list_current: dict,
         current: dict,
         days: list,
-        t: int,
+        step: int,
         sequence: dict,
         sequences: dict,
         n_no_trips: dict,
@@ -236,15 +237,15 @@ def add_day_nts(
     day["id"] = int(id_)
     days.append(day)
 
-    if t == len(sequence["dist"]) - 1 and sequence["weekday"][t] != 7:
+    if step == len(sequence["dist"]) - 1 and sequence["weekday"][step] != 7:
         # missing day(s) with no trips at the end of the week
-        current_n_no_trips = 7 - sequence["weekday"][t]
+        current_n_no_trips = 7 - sequence["weekday"][step]
         days, n_no_trips = add_no_trips_day(
             prm, days, current, current_n_no_trips, n_no_trips, id_
         )
 
     current, list_current \
-        = new_day_nts(prm["step_len"], prm["n"], t, id_, sequences)
+        = new_day_nts(prm["step_len"], prm["n"], step, id_, sequences)
 
     return current, list_current, days, n_no_trips
 
@@ -283,16 +284,16 @@ def add_no_trips_day(
     return days, n_no_trips
 
 
-def new_day_nts(step_len, n_time_steps, t: int, id_: int, sequences: dict) \
+def new_day_nts(step_len, n_time_steps, step: int, id_: int, sequences: dict) \
         -> Tuple[dict, dict]:
     """Initialise variables for a new time slot."""
     current = {}
     for key in ["weekday", "cum_day", "home_type", "month"]:
-        current[key] = sequences[id_][key][t]
+        current[key] = sequences[id_][key][step]
     current["id"] = id_
     current["mins"] = np.arange(n_time_steps) * step_len
     current["cum_min"] \
-        = current["mins"] + sequences[id_]["cum_day"][t] * 24 * 60
+        = current["mins"] + sequences[id_]["cum_day"][step] * 24 * 60
     for key in ["dist", "purposeFrom", "purposeTo", "triptype", "car"]:
         current[key] = np.zeros(n_time_steps)
     current["avail"] = np.ones(n_time_steps)
@@ -302,30 +303,30 @@ def new_day_nts(step_len, n_time_steps, t: int, id_: int, sequences: dict) \
     return current, list_current
 
 
-def _add_trip_current(sequence, current, list_current, t, prm):
-    i_start = int(np.floor(sequence["cum_min_all"][t] / prm["step_len"]))
-    i_end = int(np.floor(sequence["cum_min_all_end"][t] / prm["step_len"]))
+def _add_trip_current(sequence, current, list_current, step, prm):
+    i_start = int(np.floor(sequence["cum_min_all"][step] / prm["step_len"]))
+    i_end = int(np.floor(sequence["cum_min_all_end"][step] / prm["step_len"]))
 
     # additional minutes of trips beyond what is reflected
     # by whole number of hours resulting from i_start and i_end
     i_start, i_end = adjust_i_start_end(
-        prm, t, sequence, i_start, i_end)
+        prm, step, sequence, i_start, i_end)
     list_current["i_start"].append(i_start)
 
     for i in range(i_start, i_end + 1):
         n_slots = i_end + 1 - i_start
-        current["dist"][i] += sequence["dist"][t] / n_slots
+        current["dist"][i] += sequence["dist"][step] / n_slots
         current["avail"][i] = 0
         # motorway if > 10 miles
         # from Crozier 2018 Numerical analysis ...
         current["triptype"][i] = (
-            0 if sequence["dist"][t] > 10 else current["home_type"]
+            0 if sequence["dist"][step] > 10 else current["home_type"]
         )
         for purpose in ["purposeFrom", "purposeTo"]:
-            current[purpose][i] = sequence[purpose][t]
+            current[purpose][i] = sequence[purpose][step]
 
     for purpose in ["purposeFrom", "purposeTo"]:
-        list_current[purpose].append(sequence[purpose][t])
+        list_current[purpose].append(sequence[purpose][step])
 
     return list_current, current
 
@@ -345,10 +346,10 @@ def get_days_nts(prm: dict, sequences: dict) -> list:
             prm["step_len"], prm["n"], 0, id_, sequences)
         assert len(current["dist"]) == prm["n"], \
             f"len(current['dist']) = {len(current['dist'])}"
-        for t in range(len(sequence["dist"])):
-            cum_day_t = sequence["cum_day"][t]
-            if t == 0 and sequence["weekday"][t] != 1:
-                current_n_no_trips = sequence["weekday"][t] - 1
+        for step in range(len(sequence["dist"])):
+            cum_day_t = sequence["cum_day"][step]
+            if step == 0 and sequence["weekday"][step] != 1:
+                current_n_no_trips = sequence["weekday"][step] - 1
                 for i in range(current_n_no_trips):
                     days, n_no_trips = add_no_trips_day(
                         prm,
@@ -361,12 +362,12 @@ def get_days_nts(prm: dict, sequences: dict) -> list:
                         cum_day=cum_day_t - current_n_no_trips + i,
                     )
 
-            elif t > 0:
-                assert sequence["weekday"][t] >= sequence["weekday"][t - 1], \
+            elif step > 0:
+                assert sequence["weekday"][step] >= sequence["weekday"][step - 1], \
                     "days not in the right order"
 
             # if new day / finishing a day
-            if t > 0 and cum_day_t != current["cum_day"]:
+            if step > 0 and cum_day_t != current["cum_day"]:
                 if cum_day_t - current["cum_day"] > 1:
                     # missing day(s) with no trips before current day
                     current_n_no_trips \
@@ -378,16 +379,16 @@ def get_days_nts(prm: dict, sequences: dict) -> list:
 
                 current, list_current, days, n_no_trips \
                     = add_day_nts(
-                        prm, list_current, current, days, t, sequence,
+                        prm, list_current, current, days, step, sequence,
                         sequences, n_no_trips, id_)
 
             # registering trip
             list_current, current \
-                = _add_trip_current(sequence, current, list_current, t, prm)
+                = _add_trip_current(sequence, current, list_current, step, prm)
 
     # add final one
     current, list_current, days, n_no_trips = add_day_nts(
-        prm, list_current, current, days, t, sequence,
+        prm, list_current, current, days, step, sequence,
         sequences, n_no_trips, id_)
 
     return days
@@ -454,16 +455,16 @@ def filter_validity_nts(
 
 
 def new_time_slot_clnr(
-        step_len: int, t: int, sequence: dict
+        step_len: int, step: int, sequence: dict
 ) -> Tuple[List[int], int, int, list]:
     """Initialise variables for a new time slot."""
     # lower bound current slot in cumulative minutes since 01/01/2010
-    min_lb = sequence["cum_min"][t]
+    min_lb = sequence["cum_min"][step]
     min_lb = min_lb - min_lb % step_len  # start of the current slot
     min_ub = min_lb + step_len - 1  # up to one minute before next slot
     # days since 01/01/2010 and minutes since the start of the day
     day, month \
-        = [sequence[e][t] for e in ["cum_day", "month"]]
+        = [sequence[e][step] for e in ["cum_day", "month"]]
 
     # the list of data points in the current time slot
     slot_vals: list[float] = []
@@ -495,8 +496,8 @@ def update_granularity(
     min_bounds, day, month, slot_vals \
         = new_time_slot_clnr(step_len, 0, sequence)
     n_same_min = 0
-    for t, cum_min in enumerate(sequence["cum_min"]):
-        if t == len(sequence["cum_min"]) - 1 or cum_min > min_bounds[1]:
+    for step, cum_min in enumerate(sequence["cum_min"]):
+        if step == len(sequence["cum_min"]) - 1 or cum_min > min_bounds[1]:
             # reaching the end of the current time slot
             target_n = step_len / granularity
             if len(slot_vals) > 0:
@@ -514,7 +515,7 @@ def update_granularity(
                         np.mean(slot_vals) * step_len / 60)
 
                 output["n"].append(len(slot_vals))
-                output["id"].append(sequence["id"][t - 1])
+                output["id"].append(sequence["id"][step - 1])
                 output["cum_min"].append(min_bounds[0])
                 output["cum_day"].append(day)
                 output["month"].append(month)
@@ -522,20 +523,20 @@ def update_granularity(
 
                 # get new time slot boundaries
                 min_bounds, day, month, slot_vals \
-                    = new_time_slot_clnr(step_len, t, sequence)
+                    = new_time_slot_clnr(step_len, step, sequence)
 
-        if t > 0 and cum_min == sequence["cum_min"][t - 1]:
+        if step > 0 and cum_min == sequence["cum_min"][step - 1]:
             n_same_min += 1  # two data points for the same exact time
         else:
             n_same_min = 0
 
         assert n_same_min < 10, \
-            f"n_same_min = {n_same_min} data_type {data_type} t {t}"
-        slot_vals.append(sequence[data_type][t])
+            f"n_same_min = {n_same_min} data_type {data_type} step {step}"
+        slot_vals.append(sequence[data_type][step])
         assert len(slot_vals) <= 10 * step_len, \
             f"len(slot_vals) {len(slot_vals)} > 10 * prm['step_len']"
-        assert not np.isnan(sequence[data_type][t]), \
-            f"np.isnan(sequence[{data_type}][{t}])"
+        assert not np.isnan(sequence[data_type][step]), \
+            f"np.isnan(sequence[{data_type}][{step}])"
 
     # checking it is in the right order
     assert len(output["cum_min"]) == len(output["mins"]), \
@@ -579,17 +580,17 @@ def get_sequences(
 
     id_ = data["id"][0]
     granularities: List[int] = []
-    for t in range(len(data["id"])):
-        if id_ != data["id"][t]:  # change of id
+    for step in range(len(data["id"])):
+        if id_ != data["id"][step]:  # change of id
             current_sequence, sequences[id_] \
                 = append_id_sequences(
                     prm, data_type, current_sequence, granularities)
-            id_ = data["id"][t]
+            id_ = data["id"][step]
         for key in prm["sequence_entries"][data_type]:
             # append id sequence with data
-            current_sequence[key].append(data[key][t])
-            if key == data_type and np.isnan(data[key][t]):
-                print(f"l320 np.isnan(data[{key}][{t}])")
+            current_sequence[key].append(data[key][step])
+            if key == data_type and np.isnan(data[key][step]):
+                print(f"l320 np.isnan(data[{key}][{step}])")
 
     # add the final one to sequences
     _, sequences[id_] \
@@ -727,8 +728,6 @@ def import_segment(
     ):
         print(f"load previous out {chunk_rows[0]} -> {chunk_rows[1]}")
         return [None] * 7
-    else:
-        print(f"import segment {chunk_rows[0]} -> {chunk_rows[1]}")
 
     data_source = prm["data_type_source"][data_type]
     data = pd.read_csv(
@@ -846,7 +845,7 @@ def map_all_data(data_source, data, prm):
                 day_of_year_ = (day_of_year - 1) % 365
                 all_data[int(start_h), int(day_of_year_)] += 1
         else:
-            start_h = data['cum_min'].map(lambda x: np.floor((x % (24 * 60))/60))
+            start_h = data['cum_min'].map(lambda x: np.floor((x % (24 * 60)) / 60))
             day_of_year = data['cum_day'].map(
                 lambda x: (prm["date0"] + timedelta(days=x)).timetuple().tm_yday - 1
             )
@@ -907,7 +906,7 @@ def import_data(
         else:
             outs = [
                 import_segment(prm, chunk_rows, data_type)
-                for chunk_rows in chunks_rows
+                for chunk_rows in tqdm(chunks_rows)
             ]
 
         days[data_type] = save_outs(
@@ -919,14 +918,11 @@ def import_data(
         # print("save days")
         # with open(day0_path, "wb") as file:
         #     pickle.dump(days[data_type], file)
-        print("save n_data_type")
         np.save(n_data_type_path, n_data_type[data_type])
 
         assert len(days[data_type]) > 0, \
             f"all len(days[{data_type}]) {len(days[data_type])}"
 
-    print("get_percentiles")
     get_percentiles(days, prm)
 
-    print("done import data")
     return days, n_data_type

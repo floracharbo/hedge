@@ -157,11 +157,11 @@ def _plot_clusters(
     for k in range(prm["n_clus"][data_type]):
         if bank[k]["n_clus"] != 0:
             d10, d50, d90, mean = [[0] * prm["n"] for _ in range(4)]
-            for t in range(prm["n"]):
-                d10[t] = np.percentile(vals_k[k][:, t], 10)
-                d90[t] = np.percentile(vals_k[k][:, t], 90)
-                d50[t] = np.percentile(vals_k[k][:, t], 50)
-                mean[t] = np.mean(vals_k[k][:, t])
+            for time in range(prm["n"]):
+                d10[time] = np.percentile(vals_k[k][:, time], 10)
+                d90[time] = np.percentile(vals_k[k][:, time], 90)
+                d50[time] = np.percentile(vals_k[k][:, time], 50)
+                mean[time] = np.mean(vals_k[k][:, time])
             if prm["plots"]:
                 for stylised in [True, False]:
                     fig = plt.figure()
@@ -226,7 +226,7 @@ def _get_cdfs(distances, label, prm, bank):
             title = f"Histogram of distance to the cluster centers {label} {i}"
             plt.title(title)
             plt.grid(True)
-            fig.savefig(prm["other_outputs"] / "clusters" / title.replace(" ", "_"))
+            fig.savefig(prm["save_others"] / "clusters" / title.replace(" ", "_"))
             plt.close("all")
 
         # get cumulative probability for each profile

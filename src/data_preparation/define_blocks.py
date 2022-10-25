@@ -110,7 +110,6 @@ def add_out(
         chunk_rows
 ) -> list:
     """Concatenate import_segments outputs that were imported separately."""
-    print(f"add_out {chunk_rows}")
     if out[0] is None:
         out = _load_out(prm, data_type, chunk_rows)
 
@@ -151,7 +150,6 @@ def add_out(
 
 def save_outs(outs, prm, data_type, chunks_rows):
     """Once import_segment is done, bring it all together."""
-    print("save_outs")
     days_ = []
     all_abs_error = initialise_dict(prm["fill_types"], "empty_np_array")
     types_replaced \
@@ -199,8 +197,6 @@ def save_outs(outs, prm, data_type, chunks_rows):
 
     assert len(days_) > 0, f"in save_outs len(days_) {len(days_)}"
 
-    print("done save outs")
-
     return days_
 
 
@@ -234,10 +230,8 @@ def get_data_chunks(prm, data_type):
         = prm["save_other"] / f"chunks_rows_{data_type}_{prm['n_rows'][data_type]}.npy"
     if unique_ids_path.is_file() and chunks_path.is_file():
         # if the unique_ids have already been computed, load them
-        print("load chunks_rows")
         chunks_rows = np.load(chunks_path)
     else:
-        print("make chunks_rows")
         idx, ids = _get_rows_ids(prm, data_type, unique_ids_path)
         chunks_rows = _rows_ids_to_chunks(
             prm, idx, ids, data_type, chunks_path

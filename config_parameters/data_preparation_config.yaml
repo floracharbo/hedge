@@ -20,7 +20,7 @@ n_clus:
   loads: 4
   car: 3
 
-data_types: ["car", "loads", "gen"] # ,
+data_types: ["loads", "gen", "car"]
 plots: True
 do_test_filling_in: False
 parallel: False
