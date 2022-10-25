@@ -1,10 +1,6 @@
 # run configuration
-str_path_inputs:
-day_week0: 1
-max_discharge:
-month: 1
+n: 24  # number of time steps per day
 
-n: 24
 car:
   SoC0: 0.5  # EV battery start state of charge
   cap: 75  # EV battery capacity [kWh]
@@ -16,6 +12,11 @@ paths:
 
 syst:
   data_types: ["loads", "gen", "car"]
+  # what share of the standard deviation around perfect self-correlation of scaling factors to select.
+  # <1 reduces natural variability of the data.
   f_std_share: 1
+  # what share of the deviation around the centre of each behaviour cluster to select.
+  # <1 reduces natural variability of the data.
   clust_dist_share: 1
+  # start date of the simulation
   date0: [2020, 1, 1, 0]

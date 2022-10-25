@@ -16,7 +16,7 @@ prob_test_filling_in: 0.01  # number between 0 and 1 ; what proportion of points
 
 n_cpu:  # to limit the number of CPUs being used
 
-n_clus:
+n_clus:  # number of behavioural clusters
   loads: 4
   car: 3
 
@@ -27,5 +27,5 @@ parallel: False
 do_heat_map: True  # plot data available - this is computationally expensive
 test_factor_distr: True
 candidate_factor_distributions:
-save_intermediate_outs: True
-max_size_chunk: 1.e+7
+save_intermediate_outs: True  # this makes the data generation more tractable
+max_size_chunk: 1.e+7  # reduce the size of individual data chunks that are processed to reduce RAM requirements.
