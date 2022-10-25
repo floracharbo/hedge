@@ -11,3 +11,4 @@ data/hedge_inputs/*
 !data/hedge_inputs/n48_sample
 hedge_extra_functions
 previous_results
+*.icloud
