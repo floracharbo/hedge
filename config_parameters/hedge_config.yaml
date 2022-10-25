@@ -1,0 +1,21 @@
+# run configuration
+str_path_inputs:
+day_week0: 1
+max_discharge:
+month: 1
+
+n: 24
+car:
+  SoC0: 0.5  # EV battery start state of charge
+  cap: 75  # EV battery capacity [kWh]
+  c_max: 22  # max charge [kW]
+
+paths:
+  hedge_inputs_folder: 'data/hedge_inputs'
+  record_folder: 'data/other_outputs'
+
+syst:
+  data_types: ["loads", "gen", "car"]
+  f_std_share: 1
+  clust_dist_share: 1
+  date0: [2020, 1, 1, 0]
