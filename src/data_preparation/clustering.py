@@ -226,7 +226,7 @@ def _get_cdfs(distances, label, prm, bank):
             title = f"Histogram of distance to the cluster centers {label} {i}"
             plt.title(title)
             plt.grid(True)
-            fig.savefig(prm["save_others"] / "clusters" / title.replace(" ", "_"))
+            fig.savefig(prm["save_other"] / "clusters" / title.replace(" ", "_"))
             plt.close("all")
 
         # get cumulative probability for each profile
