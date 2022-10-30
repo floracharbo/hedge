@@ -441,7 +441,7 @@ def _group_gen_month(days_, prm):
         for property_ in ["factor", "id", "cum_day"]:
             bank[i_month][property_] = [days_[i][property_] for i in i_days]
 
-        path = prm["hedge_inputs"] / "profiles" / "norm_gen"
+        path = prm["save_hedge"] / "profiles" / "norm_gen"
         np.save(
             path / f"i_month{i_month}",
             bank[i_month]["profs"],
@@ -461,7 +461,7 @@ def _group_gen_month(days_, prm):
 
     for i_month in range(12):
         np.save(
-            prm["hedge_inputs"] / "clusters"
+            prm["save_hedge"] / "clusters"
             / f"cdfs_clus_gen_{i_month}",
             bank[i_month]["cdfs"],
         )

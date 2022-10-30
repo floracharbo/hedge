@@ -406,3 +406,4 @@ def _plot_missing_data(day, data_type, prm, missing_fig_path):
         str(missing_fig_path)[:-4] + '.pdf', bbox_inches='tight',
         format='pdf', dpi=1200
     )
+    plt.close("all")

@@ -172,6 +172,7 @@ def _transition_intervals(
             ax.set_xlabel("f(t + 1)")
             ax.set_ylabel("f(t)")
             fig.savefig(prm["save_other"] / "factors" / title.replace(" ", "_"))
+            plt.close("all")
 
     return p_pos, p_zero2pos, fs_brackets, mid_fs_brackets
 
@@ -219,10 +220,10 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
     # plot
     if prm["plots"]:
         fig = plt.figure()
-        plt.hist(errors, density=1, alpha=0.5, label="data")
+        plt.hist(errors, density=1, alpha=0.5, label="data", bins=50)
         factor_residuals = np.linspace(
-            norm.ppf(0.0001, *residual_distribution_prms),
-            norm.ppf(0.9999, *residual_distribution_prms),
+            norm.ppf(0.01, *residual_distribution_prms),
+            norm.ppf(0.99, *residual_distribution_prms),
             100,
         )
         plt.plot(

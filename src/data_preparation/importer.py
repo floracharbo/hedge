@@ -721,9 +721,9 @@ def import_segment(
         prm, chunk_rows, data_type
 ) -> list:
     """In parallel or sequentially, import and process block of data."""
-    data_id_ = {data_id(prm, data_type)}
+    data_id_ = data_id(prm, data_type)
     if all(
-            (prm["outs_path"] / f"{label}_{data_id_}_{chunk_rows[0]}.pickle").is_file()
+            (prm["outs_path"] / f"{label}_{data_id_}_{chunk_rows[0]}_{chunk_rows[1]}.pickle").is_file()
             for label in prm["outs_labels"]
     ):
         print(f"load previous out {chunk_rows[0]} -> {chunk_rows[1]}")
