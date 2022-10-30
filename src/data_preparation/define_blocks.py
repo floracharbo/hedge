@@ -21,11 +21,11 @@ def _load_out(prm, data_type, chunk_rows):
     out = []
     for label in prm["outs_labels"]:
         with open(
-                prm["outs_path"] / f"{label}_{data_id(prm, data_type)}_{chunk_rows[0]}_{chunk_rows[1]}.pickle",
+                prm["outs_path"] / f"{label}_{data_id(prm, data_type)}_{chunk_rows[0]}.pickle",
                 "rb"
         ) as file:
             out.append(pickle.load(file))
-
+    # _{chunk_rows[1]}
     return out
 
 
@@ -211,10 +211,10 @@ def save_intermediate_out(prm, out, chunk_rows, data_type):
     if prm["save_intermediate_outs"]:
         for obj, label in zip(out, prm["outs_labels"]):
             with open(
-                prm["outs_path"] / f"{label}_{data_id(prm, data_type)}_{chunk_rows[0]}_{chunk_rows[1]}.pickle", "wb"
+                prm["outs_path"] / f"{label}_{data_id(prm, data_type)}_{chunk_rows[0]}.pickle", "wb"
             ) as file:
                 pickle.dump(obj, file)
-
+        # _{chunk_rows[1]}
         out = [None] * 7
 
     return out
