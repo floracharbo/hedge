@@ -67,6 +67,10 @@ def tag_availability(
                     next_trip - current_trip
                 )
 
+                for step in range(len(current["avail"])):
+                    if current["dist"][step] > 0:
+                        assert not current["avail"][step]
+
         if list_current["purposeTo"][n_trips - 1] != i_home:
             # after the last one, the car is back home and available
             idx = list_current["i_start"][n_trips - 1]
@@ -723,12 +727,12 @@ def import_segment(
     """In parallel or sequentially, import and process block of data."""
     data_id_ = data_id(prm, data_type)
     if all(
-            (prm["outs_path"] / f"{label}_{data_id_}_{chunk_rows[0]}.pickle").is_file()
+            (prm["outs_path"] / f"{label}_{data_id_}_{chunk_rows[0]}_{chunk_rows[1]}.pickle").is_file()
             for label in prm["outs_labels"]
     ):
         print(f"load previous out {chunk_rows[0]} -> {chunk_rows[1]}")
         return [None] * 7
-    # _{chunk_rows[1]}
+
     data_source = prm["data_type_source"][data_type]
     data = pd.read_csv(
         prm["var_path"][data_type],

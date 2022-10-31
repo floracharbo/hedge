@@ -16,6 +16,7 @@ def _plot_f_next_vs_prev(prm, factors_path, f_prevs, f_nexts, label):
     if prm["plots"]:
         for stylised in [True, False]:
             fig = plt.figure()
+            p95 = np.percentile(f_prevs, 95)
             plt.plot(f_prevs, f_nexts, "o", label="data", alpha=0.1)
             title = f"f_prev vs f_next {label}"
             if stylised:
@@ -37,7 +38,8 @@ def _plot_f_next_vs_prev(prm, factors_path, f_prevs, f_nexts, label):
                     label="perfect correlation",
                 )
                 plt.legend()
-
+            plt.xlim([- 1, p95])
+            plt.ylim([- 1, p95])
             fig.savefig(factors_path / title.replace(" ", "_"))
             plt.close("all")
 
@@ -222,8 +224,8 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
         fig = plt.figure()
         plt.hist(errors, density=1, alpha=0.5, label="data", bins=50)
         factor_residuals = np.linspace(
-            norm.ppf(0.01, *residual_distribution_prms),
-            norm.ppf(0.99, *residual_distribution_prms),
+            norm.ppf(0.05, *residual_distribution_prms),
+            norm.ppf(0.95, *residual_distribution_prms),
             100,
         )
         plt.plot(
