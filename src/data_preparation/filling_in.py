@@ -177,7 +177,7 @@ def _check_fill_missing(
     """Loop through days to check which to fill in and which to throw."""
     assert len(set(day["mins"])) == len(day["mins"]), \
         f"mins duplicates {day['mins']}"
-    missing_fig_path = save_path / f"missing_data_{data_type}.png"
+    missing_fig_path = save_path / f"missing_data_{data_type}.pdf"
     to_fill = []
     for time in range(len(day["mins"])):
         n_miss, fill_t \
@@ -403,7 +403,7 @@ def _plot_missing_data(day, data_type, prm, missing_fig_path):
         plt.ylabel("[kWh]")
     plt.tight_layout()
     fig.savefig(
-        str(missing_fig_path)[:-4] + '.pdf', bbox_inches='tight',
+        missing_fig_path, bbox_inches='tight',
         format='pdf', dpi=1200
     )
     plt.close("all")

@@ -48,7 +48,7 @@ make install
 ```sh
 python3 -m src/prepare_data.py
 ```
-Note that this step takes some time due to the large size of the datasets (e.g. ~1 day as performed on an Intel(R) Core(TM) i7-9800X CPU @ 3.80 GHz)
+Note that this step takes some time due to the large size of the datasets (e.g. ~1 day for hourly resolution data, as performed on an Intel(R) Core(TM) i7-9800X CPU @ 3.80 GHz). If you hit RAM issues and the code is unable to run on your machine, you may find that reducing `max_size_chunk` in `config_parameters/data_preparation_config.yaml` may help (though this will increase run time).
 
 ### B. Using the HEDGE tool
 1. Inputs personal parameters in `config_parameters/hedge_config.yaml`
