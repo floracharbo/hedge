@@ -4,7 +4,8 @@ Contact: Flora Charbonnier, flora.charbonnier@eng.ox.ac.uk
 
 ## What is it?
 
-The aim of the HEDGE tool is to randomly generate realistic home photovoltaic (PV) generation, electricity consumption, and electric vehicle (car) consumption and availability daily profiles, based on UK historical datasets.
+The aim of the HEDGE tool is to randomly generate realistic home photovoltaic (PV) generation, electricity consumption, and electric vehicle (car) consumption and availability daily profiles, based on UK historical datasets. 
+It can for example generate data that can be used to train neural networks.
 
 More details on the aims and methodology here:
 
@@ -76,3 +77,5 @@ where day contains the following entries:
 - day['loads'] (n_homes, n) household consumption in kWh for each time interval of the day
 
 an optional parameter to this method is `plotting`, which will save plots of the data that has been generated for each home.
+
+Note that the code was tested on macOS Monterey 12.6, Python 3.9 and on Ubuntu 20.04.5 LTS (Focal Fossa), Python 3.8.10.

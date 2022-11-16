@@ -3,10 +3,12 @@
 import pickle
 from typing import List, Optional, Tuple
 
+import math
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import LogNorm
 from scipy.stats import norm, pearsonr
+import sys
 
 from src.utils import initialise_dict
 
@@ -187,6 +189,42 @@ def _print_error_factors(ex, label, f_prevs, f_nexts):
             print(f"label {label} type(factor) {type(factor)}")
             print(f"np.isnan(f) = {np.isnan(factor)}")
 
+def sinh_archsinh_transformation(x,epsilon,delta):
+    return norm.pdf(np.sinh(delta*np.arcsinh(x)-epsilon))*delta*np.cosh(delta*np.arcsinh(x)-epsilon)/np.sqrt(1+np.power(x,2))
+
+
+def integral_cdf(xs, ps):
+    i_valid = [i for i, (p, x) in enumerate(zip(ps, xs)) if not math.isinf(p) and not np.isnan(p) and not np.isnan(x)]
+    ps = [ps[i] for i in i_valid]
+    xs = [xs[i] for i in i_valid]
+    return sum(ps[i] * (xs[i + 1] - xs[i]) if i < len(xs) - 1 else
+        ps[i] * (xs[i] - xs[i - 1]) for i in range(len(xs)))
+
+
+def change_scale_norm_pdf(new_scale, old_xs, initial_norm_pdf, lb, ub):
+    if not (0.95 < integral_cdf(old_xs, initial_norm_pdf) < 1.02):
+        print(f"integral_cdf(old_xs_valid, initial_norm_pdf_valid) {integral_cdf(old_xs, initial_norm_pdf)}")
+        np.save("initial_norm_pdf", initial_norm_pdf)
+        np.save("old_xs", old_xs)
+        sys.exit()
+    assert 0.95 < integral_cdf(old_xs, initial_norm_pdf)  < 1.02, \
+        f"integral_cdf(old_xs, initial_norm_pdf)  {integral_cdf(old_xs, initial_norm_pdf) }"
+
+    i_keep_xs = [i for i, x in enumerate(old_xs) if lb < x * new_scale < ub]
+    new_xs = [old_xs[i] * new_scale for i in i_keep_xs]
+    new_norm_pdf_2 = [initial_norm_pdf[i] / new_scale for i in i_keep_xs]
+    if not (0.95 < integral_cdf(new_xs, new_norm_pdf_2) < 1.02):
+        np.save("new_norm_pdf_2", new_norm_pdf_2)
+        np.save("new_xs", new_xs)
+        print(f"len(new_xs) {len(new_xs)}")
+        print(f"len(old_xs) {len(old_xs)}")
+        print(f"new_scale {new_scale}")
+        print(f"integral_cdf(new_xs, new_norm_pdf_2) {integral_cdf(new_xs, new_norm_pdf_2)}")
+        sys.exit()
+    assert 0.95 < integral_cdf(new_xs, new_norm_pdf_2) < 1.02, \
+        f"l212 integral_cdf(new_xs, new_norm_pdf_2) {integral_cdf(new_xs, new_norm_pdf_2)}"
+
+    return new_xs, new_norm_pdf_2
 
 def _compare_factor_error_distributions(prm, errors, save_label):
     sum_log_likelihood = {}
@@ -196,6 +234,26 @@ def _compare_factor_error_distributions(prm, errors, save_label):
         sum_log_likelihood[label] = 0
         for error in errors:
             sum_log_likelihood[label] += np.log(distr.pdf(error, *prms[label]))
+    for kurtosis_increase in [1.01, 1.025, 1.05, 1.75, 1.1, 1.15]:
+        # n = int(1e7)
+        pmin = norm.cdf(min(errors) * prms['norm'][1])
+        pmax = 1 - norm.cdf(max(errors) * prms['norm'][1])
+        extreme_p = min([pmin, 1 - pmax])
+        ps = np.linspace(extreme_p, 1 - extreme_p, 1000)
+        xs = [norm.ppf(p, *prms['norm']) for p in ps]
+        new_xs, pdf = change_scale_norm_pdf(prms['norm'][1], xs, sinh_archsinh_transformation(xs, 0, kurtosis_increase), norm.ppf(extreme_p), norm.ppf(1 - extreme_p))
+        sum_log_likelihood[f'norm_kurtosis{kurtosis_increase}'] = 0
+        for error in errors:
+            try:
+                i_before = [i for i, x in enumerate(new_xs) if x  < error][-1]
+                i_after = [i for i, x in enumerate(new_xs) if x  > error][0]
+            except Exception as ex:
+                print(ex)
+                print(f"min(new_xs) {min(new_xs)} max(new_xs) {max(new_xs)} error {error} save_label {save_label}, "
+                      f"prms.keys() {prms.keys()} len(errors) {len(errors)} prms['norm'] = {prms['norm']}")
+                sys.exit()
+            error_pdf = np.mean([pdf[i_before], pdf[i_after]])
+            sum_log_likelihood[f'norm_kurtosis{kurtosis_increase}'] += np.log(error_pdf)
     for item_label, item in zip(
             ['sum_log_likelihood', 'all_distribution_prms'],
             [sum_log_likelihood, prms]
@@ -207,7 +265,27 @@ def _compare_factor_error_distributions(prm, errors, save_label):
                 "wb"
         ) as file:
             pickle.dump(item, file)
+    i_max = np.argmax(list(sum_log_likelihood.values()))
+    distr_max = list(sum_log_likelihood.keys())[i_max]
+    if distr_max != 'norm':
+        print(f"max log likelihood for {distr_max} {save_label}")
 
+    return distr_max
+
+
+def min_max_x_to_kurtosis_pdf(xmin, xmax, norm_prms, kurtosis):
+    pmin = norm.cdf(xmin * norm_prms[1])
+    pmax = 1 - norm.cdf(xmax * norm_prms[1])
+    extreme_p = min([pmin, 1 - pmax])
+    ps = np.linspace(extreme_p, 1 - extreme_p, 1000)
+    xs = [norm.ppf(p, *norm_prms) for p in ps]
+    new_xs, pdf = change_scale_norm_pdf(
+        norm_prms[1], xs,
+        sinh_archsinh_transformation(xs, 0, kurtosis),
+        norm.ppf(extreme_p), norm.ppf(1 - extreme_p)
+    )
+
+    return new_xs, pdf
 
 def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
     assert sum(1 for f_prev in f_prevs if f_prev is None) == 0,\
@@ -217,38 +295,57 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
     f_prev_sort = [f_prev for f_prev, f_next in sorted(zip(f_prevs, f_nexts))]
 
     errors = [f_next_sort[i] - f_prev_sort[i] for i in range(len(f_prevs))]
-    residual_distribution_prms = norm.fit(errors)
+
+    if prm["test_factor_distr"]:
+        distr_str = _compare_factor_error_distributions(
+            prm, errors, f"{data_type}_{label}"
+        )
+    else:
+        distr_str = 'norm'
 
     # plot
     if prm["plots"]:
+        if len(distr_str.split('_')) == 2 and distr_str.split('_')[1][0: len('kurtosis')] == 'kurtosis':
+            norm_prms = norm.fit(errors)
+            kurtosis = float(distr_str.split('_')[1][len('kurtosis'):])
+            factor_residuals, pdf = min_max_x_to_kurtosis_pdf(norm.ppf(0.01), norm.ppf(0.99), norm_prms, kurtosis)
+            mean_residual = norm.stats(*norm_prms, moments="m")
+            residual_distribution_prms = ['kurtosis'] + list(norm_prms) + [kurtosis]
+        else:
+            distr = prm["candidate_factor_distributions"][distr_str]
+            residual_distribution_prms = ['distr_str'] + list(distr.fit(errors))
+            factor_residuals = np.linspace(
+                distr.ppf(0.01, *residual_distribution_prms[1:]),
+                distr.ppf(0.99, *residual_distribution_prms[1:]),
+                100,
+            )
+            pdf = distr.pdf(
+                factor_residuals, *residual_distribution_prms[1:]
+            )
+            mean_residual = distr.stats(*residual_distribution_prms[1:], moments="m")
+
         fig = plt.figure()
         plt.hist(errors, density=1, alpha=0.5, label="data", bins=50)
-        factor_residuals = np.linspace(
-            norm.ppf(0.05, *residual_distribution_prms),
-            norm.ppf(0.95, *residual_distribution_prms),
-            100,
-        )
-        plt.plot(
-            factor_residuals,
-            norm.pdf(
-                factor_residuals, *residual_distribution_prms
-            ),
-            label="norm pdf"
-        )
+        plt.plot(factor_residuals, pdf, label=f"{distr_str} pdf")
+        assert 0.95 < integral_cdf(factor_residuals, pdf) < 1.02, \
+            f"integral_cdf(factor_residuals, pdf) {integral_cdf(factor_residuals, pdf) }"
+
+        if residual_distribution_prms[0] == 'kurtosis':
+            pdf_norm = norm.pdf(
+                factor_residuals, *residual_distribution_prms[1: 3]
+            )
+            plt.plot(factor_residuals, pdf_norm, ls='--', label="norm pdf")
+            assert 0.95 < integral_cdf(factor_residuals, pdf_norm)  < 1.02, \
+                f"integral_cdf(factor_residuals, pdf_norm) {integral_cdf(factor_residuals, pdf_norm)}"
+
         plt.legend(loc="upper right")
         title = (
-            f"fit of norm distribution to error around "
+            f"fit of {distr_str} distribution to error around "
             f"perfect correlation {data_type} {label}"
         )
         plt.title(title)
-        fig.savefig(prm["save_other"] / "factors" / title.replace(" ", "_"))
+        fig.savefig(prm["save_other"] / "factors" / title.replace(" ", "_").replace('.','_'))
         plt.close("all")
-
-    mean_residual = norm.stats(*residual_distribution_prms, moments="m")
-    if prm["test_factor_distr"]:
-        _compare_factor_error_distributions(
-            prm, errors, f"{data_type}_{label}"
-        )
 
     return mean_residual, residual_distribution_prms
 
@@ -321,9 +418,7 @@ def _scaling_factors_behaviour_types(
             assert sum(1 for f_prev in f_prevs if f_prev == 0) == 0, \
                 "need to account for Nones for fit norm"
             mean_residual["loads"][transition], residual_distribution_prms["loads"][transition] \
-                = _fit_residual_distribution(
-                f_prevs, f_nexts, prm, "loads", transition
-            )
+                = _fit_residual_distribution(f_prevs, f_nexts, prm, "loads", transition)
             if mean_residual["loads"][transition] is None:
                 print(f"mean_residual['loads'][{transition}] "
                       f"= {mean_residual['loads'][transition]}")
