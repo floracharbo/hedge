@@ -194,7 +194,7 @@ def sinh_archsinh_transformation(x,epsilon,delta):
 
 
 def integral_cdf(xs, ps):
-    i_valid = [i for i, (p, x) in enumerate(zip(ps, xs)) if not math.isinf(p) and not np.isnan(p) and not np.isnan(x)]
+    i_valid = [i for i, (p, x) in enumerate(zip(ps, xs)) if not math.isinf(p) and not math.isinf(x) and not np.isnan(p) and not np.isnan(x)]
     ps = [ps[i] for i in i_valid]
     xs = [xs[i] for i in i_valid]
     return sum(ps[i] * (xs[i + 1] - xs[i]) if i < len(xs) - 1 else
@@ -210,9 +210,9 @@ def change_scale_norm_pdf(new_scale, old_xs, initial_norm_pdf, lb, ub):
     assert 0.95 < integral_cdf(old_xs, initial_norm_pdf)  < 1.02, \
         f"integral_cdf(old_xs, initial_norm_pdf)  {integral_cdf(old_xs, initial_norm_pdf) }"
 
-    i_keep_xs = [i for i, x in enumerate(old_xs) if lb < x * new_scale < ub]
-    new_xs = [old_xs[i] * new_scale for i in i_keep_xs]
-    new_norm_pdf_2 = [initial_norm_pdf[i] / new_scale for i in i_keep_xs]
+    # i_keep_xs = [i for i, x in enumerate(old_xs) if lb < x * new_scale < ub]
+    new_xs = [old_xs[i] * new_scale for i in range(len(old_xs))]
+    new_norm_pdf_2 = [initial_norm_pdf[i] / new_scale for i in range(len(old_xs))]
     if not (0.95 < integral_cdf(new_xs, new_norm_pdf_2) < 1.02):
         np.save("new_norm_pdf_2", new_norm_pdf_2)
         np.save("new_xs", new_xs)
@@ -250,7 +250,8 @@ def _compare_factor_error_distributions(prm, errors, save_label):
             except Exception as ex:
                 print(ex)
                 print(f"min(new_xs) {min(new_xs)} max(new_xs) {max(new_xs)} error {error} save_label {save_label}, "
-                      f"prms.keys() {prms.keys()} len(errors) {len(errors)} prms['norm'] = {prms['norm']}")
+                      f"prms.keys() {prms.keys()} len(errors) {len(errors)} prms['norm'] = {prms['norm']}"
+                      f"max(errors) {max(errors)}")
                 sys.exit()
             error_pdf = np.mean([pdf[i_before], pdf[i_after]])
             sum_log_likelihood[f'norm_kurtosis{kurtosis_increase}'] += np.log(error_pdf)
@@ -335,6 +336,10 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
                 factor_residuals, *residual_distribution_prms[1: 3]
             )
             plt.plot(factor_residuals, pdf_norm, ls='--', label="norm pdf")
+            if np.isnan(integral_cdf(factor_residuals, pdf_norm)):
+                print(f"integral_cdf(factor_residuals, pdf_norm) {integral_cdf(factor_residuals, pdf_norm)}")
+                np.save('factor_residuals', factor_residuals)
+                np.save('pdf_norm', pdf_norm)
             assert 0.95 < integral_cdf(factor_residuals, pdf_norm)  < 1.02, \
                 f"integral_cdf(factor_residuals, pdf_norm) {integral_cdf(factor_residuals, pdf_norm)}"
 
