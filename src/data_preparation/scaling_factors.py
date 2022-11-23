@@ -210,7 +210,6 @@ def change_scale_norm_pdf(new_scale, old_xs, initial_norm_pdf, lb, ub):
     assert 0.95 < integral_cdf(old_xs, initial_norm_pdf)  < 1.02, \
         f"integral_cdf(old_xs, initial_norm_pdf)  {integral_cdf(old_xs, initial_norm_pdf) }"
 
-    # i_keep_xs = [i for i, x in enumerate(old_xs) if lb < x * new_scale < ub]
     new_xs = [old_xs[i] * new_scale for i in range(len(old_xs))]
     new_norm_pdf_2 = [initial_norm_pdf[i] / new_scale for i in range(len(old_xs))]
     if not (0.95 < integral_cdf(new_xs, new_norm_pdf_2) < 1.02):
@@ -234,27 +233,20 @@ def _compare_factor_error_distributions(prm, errors, save_label):
         sum_log_likelihood[label] = 0
         for error in errors:
             sum_log_likelihood[label] += np.log(distr.pdf(error, *prms[label]))
-    for kurtosis_increase in [1.01, 1.025, 1.05, 1.75, 1.1, 1.15]:
-        # n = int(1e7)
-        pmin = norm.cdf(min(errors) * prms['norm'][1])
-        pmax = 1 - norm.cdf(max(errors) * prms['norm'][1])
-        extreme_p = min([pmin, 1 - pmax])
-        ps = np.linspace(extreme_p, 1 - extreme_p, 1000)
+    extreme_p = 1e-5
+    for kurtosis_increase in [1.05, 1.25, 1.5]:
+        ps = np.linspace(extreme_p, 1 - extreme_p, 10000)
         xs = [norm.ppf(p, *prms['norm']) for p in ps]
         new_xs, pdf = change_scale_norm_pdf(prms['norm'][1], xs, sinh_archsinh_transformation(xs, 0, kurtosis_increase), norm.ppf(extreme_p), norm.ppf(1 - extreme_p))
         sum_log_likelihood[f'norm_kurtosis{kurtosis_increase}'] = 0
         for error in errors:
-            try:
-                i_before = [i for i, x in enumerate(new_xs) if x  < error][-1]
-                i_after = [i for i, x in enumerate(new_xs) if x  > error][0]
-            except Exception as ex:
-                print(ex)
-                print(f"min(new_xs) {min(new_xs)} max(new_xs) {max(new_xs)} error {error} save_label {save_label}, "
-                      f"prms.keys() {prms.keys()} len(errors) {len(errors)} prms['norm'] = {prms['norm']}"
-                      f"max(errors) {max(errors)}")
-                sys.exit()
+            i_befores = [i for i, x in enumerate(new_xs) if x  <= error]
+            i_afters = [i for i, x in enumerate(new_xs) if x  >= error]
+            i_before = i_befores[-1] if len(i_befores) > 0 else 0
+            i_after = i_afters[0] if len(i_afters) > 0 else len(new_xs) - 1
             error_pdf = np.mean([pdf[i_before], pdf[i_after]])
             sum_log_likelihood[f'norm_kurtosis{kurtosis_increase}'] += np.log(error_pdf)
+
     for item_label, item in zip(
             ['sum_log_likelihood', 'all_distribution_prms'],
             [sum_log_likelihood, prms]
@@ -331,6 +323,9 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
         assert 0.95 < integral_cdf(factor_residuals, pdf) < 1.02, \
             f"integral_cdf(factor_residuals, pdf) {integral_cdf(factor_residuals, pdf) }"
 
+        relevant_factors = [factor for i, (factor, pdf) in enumerate(zip(factor_residuals, pdf)) if pdf > 0.005]
+        x_lb, x_ub = [relevant_factors[0], relevant_factors[-1]]
+
         if residual_distribution_prms[0] == 'kurtosis':
             pdf_norm = norm.pdf(
                 factor_residuals, *residual_distribution_prms[1: 3]
@@ -343,6 +338,7 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
             assert 0.95 < integral_cdf(factor_residuals, pdf_norm)  < 1.02, \
                 f"integral_cdf(factor_residuals, pdf_norm) {integral_cdf(factor_residuals, pdf_norm)}"
 
+        plt.xlim([x_lb, x_ub])
         plt.legend(loc="upper right")
         title = (
             f"fit of {distr_str} distribution to error around "
