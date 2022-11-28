@@ -14,12 +14,11 @@ from src.utils import initialise_dict
 
 
 def _plot_f_next_vs_prev(prm, factors_path, f_prevs, f_nexts, label):
-    # plot f_next vs f_prev
     if prm["plots"]:
         for stylised in [True, False]:
             fig = plt.figure()
             p95 = np.percentile(f_prevs, 95)
-            plt.plot(f_prevs, f_nexts, "o", label="data", alpha=0.1)
+            plt.plot(f_prevs, f_nexts, "o", label="data", alpha=0.05)
             title = f"f_prev vs f_next {label}"
             if stylised:
                 title += " stylised"
@@ -284,10 +283,10 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
     assert sum(1 for f_prev in f_prevs if f_prev is None) == 0,\
         "None f_prevs"
 
-    f_next_sort = [f_next for f_prev, f_next in sorted(zip(f_prevs, f_nexts))]
-    f_prev_sort = [f_prev for f_prev, f_next in sorted(zip(f_prevs, f_nexts))]
+    f_next_sort = np.array([f_next for f_prev, f_next in sorted(zip(f_prevs, f_nexts))])
+    f_prev_sort = np.array([f_prev for f_prev, f_next in sorted(zip(f_prevs, f_nexts))])
 
-    errors = [f_next_sort[i] - f_prev_sort[i] for i in range(len(f_prevs))]
+    errors = f_next_sort - f_prev_sort
 
     if prm["test_factor_distr"]:
         distr_str = _compare_factor_error_distributions(
@@ -298,6 +297,7 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
 
     # plot
     if prm["plots"]:
+        p95 = np.percentile(np.where(errors > 0)[0], 95)
         if len(distr_str.split('_')) == 2 and distr_str.split('_')[1][0: len('kurtosis')] == 'kurtosis':
             norm_prms = norm.fit(errors)
             kurtosis = float(distr_str.split('_')[1][len('kurtosis'):])
@@ -338,7 +338,7 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
             assert 0.95 < integral_cdf(factor_residuals, pdf_norm)  < 1.02, \
                 f"integral_cdf(factor_residuals, pdf_norm) {integral_cdf(factor_residuals, pdf_norm)}"
 
-        plt.xlim([x_lb, x_ub])
+        plt.xlim([-p95, p95])
         plt.legend(loc="upper right")
         title = (
             f"fit of {distr_str} distribution to error around "
