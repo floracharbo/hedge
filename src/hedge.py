@@ -75,11 +75,9 @@ class HEDGE:
 
     def make_next_day(
             self,
-            homes: Optional[list] = None,
             plotting: bool = False
     ) -> dict:
         """Generate new day of data (car, gen, loads profiles)."""
-        homes = self.homes if homes is None else homes
         self.date += timedelta(days=1)
         day_type, transition = self._transition_type()
         prev_clusters = self.clusters.copy()
@@ -146,8 +144,7 @@ class HEDGE:
             for data in self.behaviour_types:
                 self.list_clusters[data][home].append(self.clusters[data][home])
 
-        if plotting:
-            self._plotting_profiles(day)
+        self._plotting_profiles(day, plotting)
 
         return day
 
@@ -804,7 +801,9 @@ class HEDGE:
         fig.savefig(self.save_day_path / f"avail_car_a{a}")
         plt.close("all")
 
-    def _plotting_profiles(self, day):
+    def _plotting_profiles(self, day, plotting):
+        if not plotting:
+            return
         if not os.path.exists(self.save_day_path):
             os.mkdir(self.save_day_path)
         y_labels = {
