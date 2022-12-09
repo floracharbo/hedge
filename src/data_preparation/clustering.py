@@ -35,7 +35,7 @@ from tensorflow.keras.layers import Dense
 
 def _get_n_trans(n_data_type, data_type, days, n_trans, banks):
     for i in range(n_data_type[data_type] - 1):
-        day, next_day = [days[data_type][i_] for i_ in [i, i + 2]]
+        day, next_day = [days[data_type][i_] for i_ in [i, i + 1]]
         same_id = day["id"] == next_day["id"]
         subsequent_days = day["cum_day"] + 1 == next_day["cum_day"]
         if same_id and subsequent_days:  # record transition
