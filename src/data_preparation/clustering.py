@@ -70,6 +70,12 @@ def _get_n_trans(n_data_type, data_type, days, n_trans, banks):
     for training_data, label in zip([list_inputs, list_outputs], ["inputs", "outputs"]):
         with open(prm["save_other"] / f"{label}_{data_type}.pickle", "wb") as f:
             pickle.dump(training_data, f)
+    n_test = int(len(list_inputs) * 0.2)
+    test_idx = [print(random.sample(range(len(list_inputs)), n_test))]
+    list_inputs_test = [list_inputs[i] for i in test_idx]
+    list_ouputs_test = [list_outputs[i] for i in test_idx]
+    list_inputs_train = [list_inputs[i] for i in range(len(list_inputs)) if i not in test_idx]
+    list_ouputs_train = [list_outputs[i] for i in range(len(list_inputs)) if i not in test_idx]
 
     # define the keras model
     model = Sequential()
@@ -77,9 +83,9 @@ def _get_n_trans(n_data_type, data_type, days, n_trans, banks):
     model.add(Dense(8, activation='relu'))
     model.add(Dense(1, activation='sigmoid'))
     model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
-    model.fit(list_inputs, list_outputs, epochs=2000, batch_size=10)
+    model.fit(list_inputs_train, list_ouputs_train, epochs=2000, batch_size=10)
     # evaluate the keras model
-    loss, accuracy = model.evaluate(X, y)
+    loss, accuracy = model.evaluate(list_inputs_test, list_ouputs_test)
     print('Accuracy: %.2f' % (accuracy * 100))
     print(f"loss {loss}")
 
