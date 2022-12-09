@@ -47,6 +47,7 @@ class HEDGE:
         self.labels_day = ["wd", "we"]
         self.n_homes = n_homes
         self.homes = range(self.n_homes)
+        self.it_plot = 0
 
         # load input data
         self._load_input_data(prm, other_prm, factors0, clusters0)
@@ -833,6 +834,8 @@ class HEDGE:
             return
         if not os.path.exists(self.save_day_path):
             os.mkdir(self.save_day_path)
+        np.save(self.save_day_path / f"day_{self.it_plot}", day)
+        self.it_plot += 1
         y_labels = {
             "car": "Electric vehicle loads",
             "gen": "PV generation",
@@ -841,22 +844,41 @@ class HEDGE:
         font = {'size': 22}
         matplotlib.rc('font', **font)
         hr_per_t = 24 / self.n_steps
-        hours = [i * hr_per_t for i in range(self.n_steps)]
-        for data_type in self.data_types:
-            key = "loads_car" if data_type == "car" else data_type
-            for home in self.homes:
-                fig = plt.figure()
-                plt.plot(hours, day[key][home], color="blue", lw=3)
-                plt.xlabel("Time [hours]")
-                plt.ylabel(f"{y_labels[data_type]} [kWh]")
-                y_fmt = tick.FormatStrFormatter('%.1f')
-                plt.gca().yaxis.set_major_formatter(y_fmt)
-                plt.tight_layout()
-                fig.savefig(self.save_day_path / f"{data_type}_a{home}")
-                plt.close("all")
 
-                if data_type == "car":
-                    self._plot_ev_avail(day, hr_per_t, hours, home)
+        for cumulative_plot in [False, True]:
+            if cumulative_plot:
+                hours = [i * hr_per_t for i in range(self.n_steps * self.it_plot)]
+            else:
+                hours = [i * hr_per_t for i in range(self.n_steps)]
+
+            for data_type in self.data_types:
+                key = "loads_car" if data_type == "car" else data_type
+                for home in self.homes:
+                    if cumulative_plot:
+                        day_plot = []
+                        for i in range(self.it_plot):
+                            day_i = day if i == self.it_plot - 1 else np.load(
+                                self.save_day_path / f"day_{i}.npy",
+                                allow_pickle=True
+                            ).item()
+                            day_plot.extend(day_i)
+                    else:
+                        day_plot = day[key][home]
+                    fig = plt.figure()
+                    plt.plot(hours, day_plot, color="blue", lw=3)
+                    plt.xlabel("Time [hours]")
+                    plt.ylabel(f"{y_labels[data_type]} [kWh]")
+                    y_fmt = tick.FormatStrFormatter('%.1f')
+                    plt.gca().yaxis.set_major_formatter(y_fmt)
+                    plt.tight_layout()
+                    title = f"{data_type}_a{home}"
+                    if cumulative_plot:
+                        title += "_cumulative"
+                    fig.savefig(self.save_day_path / title)
+                    plt.close("all")
+
+                    if data_type == "car":
+                        self._plot_ev_avail(day, hr_per_t, hours, home)
 
     def _init_params(self, prm):
         # add relevant parameters to object properties
