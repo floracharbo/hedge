@@ -55,7 +55,7 @@ def _get_n_trans(n_data_type, data_type, days, n_trans, banks):
     list_inputs = []
     list_outputs = []
     for i in range(n_data_type[data_type] - 2):
-        day0, day1, day2 = [days[data_type][i_] for i_ in [i, i + 3]]
+        day0, day1, day2 = [days[data_type][i_] for i_ in range(i, i + 3)]
         same_id = day0["id"] == day1["id"] and day0["id"] == day2["id"]
         subsequent_days = day0["cum_day"] + 1 == day1["cum_day"] and  day0["cum_day"] + 2 == day2["cum_day"]
         if same_id and subsequent_days:  # record transition

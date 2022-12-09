@@ -13,3 +13,4 @@ hedge_extra_functions
 previous_results
 *.icloud
 hedge_env
+out_*
