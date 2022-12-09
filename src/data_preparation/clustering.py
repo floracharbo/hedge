@@ -66,17 +66,22 @@ def _get_n_trans(n_data_type, data_type, days, n_trans, banks):
             list_inputs.append([day0["factor"], day1["factor"], transition])
             list_outputs.append([day2["factor"]])
 
-    print(f"len(list_inputs) = {len(list_inputs)}")
+    print(f"{data_type} len(list_inputs) = {len(list_inputs)}")
+    for training_data, label in zip([list_inputs, list_outputs], ["inputs", "outputs"]):
+        with open(prm["save_other"] / f"{label}_{data_type}.pickle", "wb") as f:
+            pickle.dump(training_data, f)
+
     # define the keras model
     model = Sequential()
     model.add(Dense(12, input_shape=(3,), activation='relu'))
     model.add(Dense(8, activation='relu'))
     model.add(Dense(1, activation='sigmoid'))
     model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
-    model.fit(list_inputs, list_outputs, epochs=150, batch_size=10)
+    model.fit(list_inputs, list_outputs, epochs=2000, batch_size=10)
     # evaluate the keras model
-    _, accuracy = model.evaluate(X, y)
+    loss, accuracy = model.evaluate(X, y)
     print('Accuracy: %.2f' % (accuracy * 100))
+    print(f"loss {loss}")
 
     return banks, n_trans
 
