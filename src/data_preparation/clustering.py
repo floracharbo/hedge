@@ -33,7 +33,7 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
 
 
-def _get_n_trans(n_data_type, data_type, days, n_trans, banks):
+def _get_n_trans(n_data_type, data_type, days, n_trans, banks, save_other_path):
     for i in range(n_data_type[data_type] - 1):
         day, next_day = [days[data_type][i_] for i_ in [i, i + 1]]
         same_id = day["id"] == next_day["id"]
@@ -68,7 +68,7 @@ def _get_n_trans(n_data_type, data_type, days, n_trans, banks):
 
     print(f"{data_type} len(list_inputs) = {len(list_inputs)}")
     for training_data, label in zip([list_inputs, list_outputs], ["inputs", "outputs"]):
-        with open(prm["save_other"] / f"{label}_{data_type}.pickle", "wb") as f:
+        with open(save_other_path / f"{label}_{data_type}.pickle", "wb") as f:
             pickle.dump(training_data, f)
     n_test = int(len(list_inputs) * 0.2)
     test_idx = [print(random.sample(range(len(list_inputs)), n_test))]
@@ -112,7 +112,7 @@ def _transition_probabilities(
         p_trans[data_type][transition] = np.zeros((n_clus_all_, n_clus_all_))
 
     banks, n_trans = _get_n_trans(
-        n_data_type, data_type, days, n_trans, banks
+        n_data_type, data_type, days, n_trans, banks, prm["save_other"]
     )
 
     for c0 in range(n_clus_all_):
