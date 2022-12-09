@@ -59,7 +59,10 @@ def _get_n_trans(n_data_type, data_type, days, n_trans, banks):
         same_id = day0["id"] == day1["id"] and day0["id"] == day2["id"]
         subsequent_days = day0["cum_day"] + 1 == day1["cum_day"] and  day0["cum_day"] + 2 == day2["cum_day"]
         if same_id and subsequent_days:  # record transition
-            transition = f"{day1['day_type']}2{day2['day_type']}"
+            d1 = 0 if day1['day_type'] == 'wd' else 1
+            d2 = 0 if day2['day_type'] == 'wd' else 1
+            transition = d2 * 2 + d1
+            # transition = f"{day1['day_type']}2{day2['day_type']}"
             list_inputs.append([day0["factor"], day1["factor"], transition])
             list_outputs.append([day2["factor"]])
 
