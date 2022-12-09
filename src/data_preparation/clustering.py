@@ -29,6 +29,8 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
 from src.utils import initialise_dict
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
 
 
 def _get_n_trans(n_data_type, data_type, days, n_trans, banks):
@@ -49,6 +51,29 @@ def _get_n_trans(n_data_type, data_type, days, n_trans, banks):
             for i, day_ in enumerate([day, next_day]):
                 banks[data_type][transition][f"f{i}"].append(
                     day_["factor"])
+
+    list_inputs = []
+    list_outputs = []
+    for i in range(n_data_type[data_type] - 2):
+        day0, day1, day2 = [days[data_type][i_] for i_ in [i, i + 2]]
+        same_id = day0["id"] == day1["id"] and day0["id"] == day2["id"]
+        subsequent_days = day0["cum_day"] + 1 == day1["cum_day"] and  day0["cum_day"] + 2 == day2["cum_day"]
+        if same_id and subsequent_days:  # record transition
+            transition = f"{day1['day_type']}2{day2['day_type']}"
+            list_inputs.append([day0["factor"], day1["factor"], transition])
+            list_outputs.append([day2["factor"]])
+
+    print(f"len(list_inputs) = {len(list_inputs)}")
+    # define the keras model
+    model = Sequential()
+    model.add(Dense(12, input_shape=(3,), activation='relu'))
+    model.add(Dense(8, activation='relu'))
+    model.add(Dense(1, activation='sigmoid'))
+    model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+    model.fit(list_inputs, list_outputs, epochs=150, batch_size=10)
+    # evaluate the keras model
+    _, accuracy = model.evaluate(X, y)
+    print('Accuracy: %.2f' % (accuracy * 100))
 
     return banks, n_trans
 
