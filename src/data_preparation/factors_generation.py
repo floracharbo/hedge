@@ -73,8 +73,8 @@ def training(train_data, normalised, factors_generation_save_path, data_type, n_
             loss_generator.backward()
             optimizer_generator.step()
 
-            losses_generator.append(loss_generator)
-            losses_discriminator.append(loss_discriminator)
+            losses_generator.append(loss_generator.detach().numpy())
+            losses_discriminator.append(loss_discriminator.detach().numpy())
             means_outputs.append(np.mean(generated_outputs.detach().numpy()))
             stds_outputs.append(np.std(generated_outputs.detach().numpy()))
 
@@ -88,8 +88,8 @@ def training(train_data, normalised, factors_generation_save_path, data_type, n_
         fig.savefig(factors_generation_save_path / title)
 
     fig, axs = plt.subplots(3)
-    axs[0].plot(losses_generator.detach().numpy(), label="losses_generator")
-    axs[0].plot(losses_discriminator.detach().numpy(), label="losses_discriminator")
+    axs[0].plot(losses_generator, label="losses_generator")
+    axs[0].plot(losses_discriminator, label="losses_discriminator")
     axs[0].legend()
     axs[1].plot(means_outputs, label="mean output")
     axs[1].legend()
