@@ -142,7 +142,7 @@ class Generator(nn.Module):
 
 def get_factors_generator(n_consecutive_days, list_inputs0, list_outputs0, factors_generation_save_path, data_type):
     train_data_length = len(list_inputs0)
-    list_inputs0 = [[list_inputs0[i][-1]] + list_inputs0[i][:-1] for i in range(train_data_length)]
+    list_inputs0 = np.array([[list_inputs0[i][-1]] + list_inputs0[i][:-1] for i in range(train_data_length)])
     if not factors_generation_save_path.exists():
         os.makedirs(factors_generation_save_path)
 
@@ -155,7 +155,7 @@ def get_factors_generator(n_consecutive_days, list_inputs0, list_outputs0, facto
                 list_outputs[i] = list_outputs0[i]/list_inputs0[i][1]
         fig = plt.figure()
         for i in range(20):
-            plt.plot(list_inputs[i][1:] + list(list_outputs[i]))
+            plt.plot(np.append(list_inputs[i][1:], list_outputs[i]))
         title = "example factor series"
         if normalised:
             title += ' normalised'
