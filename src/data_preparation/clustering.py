@@ -29,11 +29,13 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
 from src.utils import initialise_dict
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense
+from src.data_preparation.factors_generation import get_factors_generator
+# from tensorflow.keras.models import Sequential
+# from tensorflow.keras.layers import Dense
 
 
 def _get_n_trans(n_data_type, data_type, days, n_trans, banks, save_other_path):
+    factors_generation_save_path = save_other_path / "factors_generation"
     for i in range(n_data_type[data_type] - 1):
         day, next_day = [days[data_type][i_] for i_ in [i, i + 1]]
         same_id = day["id"] == next_day["id"]
@@ -52,42 +54,40 @@ def _get_n_trans(n_data_type, data_type, days, n_trans, banks, save_other_path):
                 banks[data_type][transition][f"f{i}"].append(
                     day_["factor"])
 
-    list_inputs = []
-    list_outputs = []
-    for i in range(n_data_type[data_type] - 2):
-        day0, day1, day2 = [days[data_type][i_] for i_ in range(i, i + 3)]
-        same_id = day0["id"] == day1["id"] and day0["id"] == day2["id"]
-        subsequent_days = day0["cum_day"] + 1 == day1["cum_day"] and  day0["cum_day"] + 2 == day2["cum_day"]
-        if same_id and subsequent_days:  # record transition
-            d1 = 0 if day1['day_type'] == 'wd' else 1
-            d2 = 0 if day2['day_type'] == 'wd' else 1
-            transition = d2 * 2 + d1
-            # transition = f"{day1['day_type']}2{day2['day_type']}"
-            list_inputs.append([day0["factor"], day1["factor"], transition])
-            list_outputs.append([day2["factor"]])
 
-    print(f"{data_type} len(list_inputs) = {len(list_inputs)}")
-    for training_data, label in zip([list_inputs, list_outputs], ["inputs", "outputs"]):
-        with open(save_other_path / f"{label}_{data_type}.pickle", "wb") as f:
-            pickle.dump(training_data, f)
-    n_test = int(len(list_inputs) * 0.2)
-    test_idx = [print(random.sample(range(len(list_inputs)), n_test))]
-    list_inputs_test = [list_inputs[i] for i in test_idx]
-    list_ouputs_test = [list_outputs[i] for i in test_idx]
-    list_inputs_train = [list_inputs[i] for i in range(len(list_inputs)) if i not in test_idx]
-    list_ouputs_train = [list_outputs[i] for i in range(len(list_inputs)) if i not in test_idx]
+    for n_consecutive_days in range(3, 7):
+        list_inputs = []
+        list_outputs = []
+        for i in range(n_data_type[data_type] - (n_consecutive_days - 1)):
+            days_ = [days[data_type][i_] for i_ in range(i, i + n_consecutive_days)]
+            same_id = all(days_[1 + i_]["id"] == days_[0]["id"] for i_ in range(n_consecutive_days - 1))
+            subsequent_days = all(days_[0]["cum_day"] + i_ == days_[i_]["cum_day"] for i_ in range(1, n_consecutive_days))
+            if same_id and subsequent_days:  # record transition
+                d1 = 0 if days_[-2]['day_type'] == 'wd' else 1
+                d2 = 0 if days_[-1]['day_type'] == 'wd' else 1
+                transition = d2 * 2 + d1
+                list_inputs.append([days_[i_]['factor'] for i_ in range(n_consecutive_days - 1)] + [transition])
+                list_outputs.append([days_[-1]["factor"]])
+
+        print(f"{data_type} n_consecutive_days {n_consecutive_days} len(list_inputs) = {len(list_inputs)}")
+        for training_data, label in zip([list_inputs, list_outputs], ["inputs", "outputs"]):
+            with open(factors_generation_save_path / f"{label}_{data_type}_n_days{n_consecutive_days}.pickle", "wb") as f:
+                pickle.dump(training_data, f)
+
+        if n_consecutive_days == 3:
+            get_factors_generator(n_consecutive_days, list_inputs, list_outputs, factors_generation_save_path, data_type)
 
     # define the keras model
-    model = Sequential()
-    model.add(Dense(12, input_shape=(3,), activation='relu'))
-    model.add(Dense(8, activation='relu'))
-    model.add(Dense(1, activation='sigmoid'))
-    model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
-    model.fit(list_inputs_train, list_ouputs_train, epochs=2000, batch_size=10)
-    # evaluate the keras model
-    loss, accuracy = model.evaluate(list_inputs_test, list_ouputs_test)
-    print('Accuracy: %.2f' % (accuracy * 100))
-    print(f"loss {loss}")
+    # model = Sequential()
+    # model.add(Dense(12, input_shape=(3,), activation='relu'))
+    # model.add(Dense(8, activation='relu'))
+    # model.add(Dense(1, activation='sigmoid'))
+    # model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+    # model.fit(list_inputs_train, list_ouputs_train, epochs=2000, batch_size=10)
+    # # evaluate the keras model
+    # loss, accuracy = model.evaluate(list_inputs_test, list_ouputs_test)
+    # print('Accuracy: %.2f' % (accuracy * 100))
+    # print(f"loss {loss}")
 
     return banks, n_trans
 

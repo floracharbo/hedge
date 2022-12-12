@@ -53,9 +53,11 @@ class HEDGE:
         self._load_input_data(prm, other_prm, factors0, clusters0)
 
     def _load_input_data(self, prm, other_prm, factors0, clusters0):
+        self.factors0 = factors0
+        self.clusters0 = clusters0
         prm = self._load_inputs(prm, other_prm)
-        self._init_factors(factors0)
-        self._init_clusters(clusters0)
+        self._init_factors()
+        self._init_clusters()
         self.profs = self._load_profiles(prm)
 
         # number of time steps per day
@@ -78,11 +80,21 @@ class HEDGE:
         prev_clusters = self.clusters.copy()
 
         # obtain scaling factors
-        factors, interval_f_ev = self._next_factors(transition, prev_clusters)
+        # factors, interval_f_ev = self._next_factors(transition, prev_clusters)
 
         # obtain clusters
         clusters = self._next_clusters(transition, prev_clusters)
-
+        self._init_factors()
+        # self._init_clusters()
+        factors = self.factors
+        interval_f_ev = [
+            [
+                i for i in range(len(self.fs_brackets[transition]) - 1)
+                if self.fs_brackets[transition][i]
+                   <= self.factors["car"][home]
+            ]
+            [-1] for home in self.homes
+        ]
         # obtain profile indexes
         i_month = self.date.month - 1
         i_profiles = {}
@@ -151,8 +163,8 @@ class HEDGE:
     def _import_dem(self, prm):
         # possible types of transition between week day types (week/weekend)
         day_trans = []
-        for prev_day in prm["syst"]["weekday_types"]:
-            for next_day in prm["syst"]["weekday_types"]:
+        for prev_day in prm["syst"]["weekday_type"]:
+            for next_day in prm["syst"]["weekday_type"]:
                 day_trans.append(f"{prev_day}2{next_day}")
 
         for transition in day_trans:
@@ -162,7 +174,7 @@ class HEDGE:
                 = list(self.residual_distribution_prms["loads"][transition])
             self.residual_distribution_prms["loads"][transition][1] *= prm["syst"]["f_std_share"]
         self.select_cdfs["loads"] = {}
-        for day_type in prm["syst"]["weekday_types"]:
+        for day_type in prm["syst"]["weekday_type"]:
             self.select_cdfs["loads"][day_type] = [
                 min_cdf + prm["syst"]["clust_dist_share"] * (max_cdf - min_cdf)
                 for min_cdf, max_cdf in zip(
@@ -240,10 +252,11 @@ class HEDGE:
 
         return prm
 
-    def _init_factors(self, factors0):
+    def _init_factors(self):
         _, transition = self._transition_type()
         self.factors = {}
-        if factors0 is None:
+        self.list_factors = {}
+        if self.factors0 is None:
             if "loads" in self.data_types:
                 self.factors["loads"] = [
                     self.f_mean["loads"]
@@ -252,6 +265,7 @@ class HEDGE:
                         *self.residual_distribution_prms["loads"][transition])
                     for _ in self.homes
                 ]
+            print(f"self.f_mean['loads'] {self.f_mean['loads']} self.factors['loads'] = {self.factors['loads']}")
 
             if "gen" in self.data_types:
                 self.factors["gen"] = [
@@ -260,6 +274,7 @@ class HEDGE:
                         np.random.rand(),
                         *self.residual_distribution_prms["gen"])
                     for _ in self.homes]
+            print(f"self.f_mean['gen'] {self.f_mean['gen']} self.factors['gen'] = {self.factors['gen']}")
 
             if "car" in self.data_types:
                 randoms = np.random.rand(self.n_homes)
@@ -270,30 +285,37 @@ class HEDGE:
                     )
                     for home in self.homes
                 ]
+                print(f"self.f_mean['car'] {self.f_mean['car']} self.factors['car'] = {self.factors['car']}")
         else:
             for data in self.data_types:
-                if isinstance(factors0[data], int):
-                    self.factors[data] = [factors0[data] for _ in self.homes]
+                if isinstance(self.factors0[data], int):
+                    self.factors[data] = [self.factors0[data] for _ in self.homes]
+                else:
+                    self.factors[data]= self.factors0[data]
 
         self.list_factors = initialise_dict(self.data_types, second_level_entries=self.homes)
         for home in self.homes:
             for data in self.data_types:
                 self.list_factors[data][home] = [self.factors[data][home]]
 
-    def _init_clusters(self, clusters0):
+    def _init_clusters(self):
         day_type, transition = self._transition_type()
         self.clusters = {}
 
-        if clusters0 is None:
+        if self.clusters0 is None:
             for data in self.behaviour_types:
                 self.clusters[data] \
                     = [self._ps_rand_to_choice(
                         self.p_clus[data][day_type], np.random.rand())
                         for _ in self.homes]
+            print(f"self.clusters = {self.clusters}")
+
         else:
             for data in self.behaviour_types:
-                if isinstance(clusters0[data], int):
-                    self.clusters[data] = [clusters0[data] for _ in self.homes]
+                if isinstance(self.clusters0[data], int):
+                    self.clusters[data] = [self.clusters0[data] for _ in self.homes]
+                else:
+                    self.clusters[data] = self.clusters0[data]
 
         self.list_clusters = initialise_dict(self.behaviour_types, second_level_entries=self.homes)
         for home in self.homes:
@@ -398,7 +420,7 @@ class HEDGE:
                              transition, clusters, day_type, i_ev, homes):
         for i_home, home in enumerate(homes):
             it = 0
-            while np.max(day["loads_car"][i_home]) > self.cap[home] and it < 100:
+            while np.max(day["loads_car"][i_home]) > self.car['cap'][home] and it < 100:
                 if it == 99:
                     print("100 iterations _adjust_max_ev_loads")
                 if factors["car"][home] > 0 and interval_f_ev[home] > 0:
@@ -518,7 +540,7 @@ class HEDGE:
         return profiles
 
     def _load_dem_profiles(self, profiles, prm):
-        profiles["loads"] = initialise_dict(prm["syst"]["weekday_types"])
+        profiles["loads"] = initialise_dict(prm["syst"]["weekday_type"])
 
         self.n_prof["loads"] = {}
         clusters = [
@@ -787,11 +809,12 @@ class HEDGE:
 
         return None, None, None
 
-    def _plot_ev_avail(self, day, hr_per_t, hours, home):
+    def _plot_ev_avail(self, day_plot, avail_car_plot, hr_per_t, hours, home, cumulative_plot):
         bands_ev = []
+        n_steps = self.n_steps * self.it_plot if cumulative_plot else self.n_steps
         non_avail = [
-            i for i in range(self.n_steps)
-            if day["avail_car"][home][i] == 0
+            i for i in range(n_steps)
+            if avail_car_plot[i] == 0
         ]
         if len(non_avail) > 0:
             current_band = [non_avail[0] * hr_per_t]
@@ -810,8 +833,8 @@ class HEDGE:
 
         fig, ax = plt.subplots()
         ax.step(
-            hours[0: self.n_steps],
-            day["loads_car"][home][0: self.n_steps],
+            hours[0: n_steps],
+            day_plot[0: n_steps],
             color='k',
             where='post',
             lw=3
@@ -824,9 +847,14 @@ class HEDGE:
             alpha=0.3, color='grey', label='car unavailable')
         ax.legend(handles=[grey_patch], fancybox=True)
         plt.xlabel("Time [hours]")
-        plt.ylabel("car loads and at-home availability")
+        plt.ylabel("car loads [kWh]")
         fig.tight_layout()
-        fig.savefig(self.save_day_path / f"avail_car_home{home}")
+        title = f"avail_car_home{home}"
+        if cumulative_plot:
+            title += "_cumulative"
+            for i in range(self.it_plot):
+                plt.vlines(i * self.n_steps, 0, max(day_plot), ls='--', color='k')
+        fig.savefig(self.save_day_path / title)
         plt.close("all")
 
     def _plotting_profiles(self, day, plotting):
@@ -836,6 +864,7 @@ class HEDGE:
             os.mkdir(self.save_day_path)
         np.save(self.save_day_path / f"day_{self.it_plot}", day)
         self.it_plot += 1
+        print(f"day {self.it_plot} self.list_factors {self.list_factors} self.list_clusters {self.list_clusters}")
         y_labels = {
             "car": "Electric vehicle loads",
             "gen": "PV generation",
@@ -855,17 +884,23 @@ class HEDGE:
                 key = "loads_car" if data_type == "car" else data_type
                 for home in self.homes:
                     if cumulative_plot:
-                        day_plot = []
+                        day_plot = np.array([])
+                        if data_type == "car":
+                            avail_car_plot = np.array([])
                         for i in range(self.it_plot):
                             day_i = day if i == self.it_plot - 1 else np.load(
                                 self.save_day_path / f"day_{i}.npy",
                                 allow_pickle=True
                             ).item()
-                            day_plot.extend(day_i)
+                            day_plot = np.concatenate((day_plot, day_i[key][home]))
+                            if data_type == "car":
+                                avail_car_plot = np.concatenate((avail_car_plot, day_i["avail_car"][home]))
+
                     else:
                         day_plot = day[key][home]
+                        avail_car_plot = day["avail_car"][home]
                     fig = plt.figure()
-                    plt.plot(hours, day_plot, color="blue", lw=3)
+                    plt.plot(hours, day_plot, color="k", lw=3)
                     plt.xlabel("Time [hours]")
                     plt.ylabel(f"{y_labels[data_type]} [kWh]")
                     y_fmt = tick.FormatStrFormatter('%.1f')
@@ -874,11 +909,33 @@ class HEDGE:
                     title = f"{data_type}_a{home}"
                     if cumulative_plot:
                         title += "_cumulative"
+                        for i in range(self.it_plot):
+                            plt.vlines(i * self.n_steps, 0, max(day_plot), ls='--', color='k')
                     fig.savefig(self.save_day_path / title)
                     plt.close("all")
 
                     if data_type == "car":
-                        self._plot_ev_avail(day, hr_per_t, hours, home)
+                        self._plot_ev_avail(day_plot, avail_car_plot, hr_per_t, hours, home, cumulative_plot)
+
+        for data in self.list_factors:
+            fig = plt.figure()
+            for home in self.homes:
+                plt.plot(self.list_factors[data][home])
+            plt.xlabel("Day")
+            plt.ylabel(f"{data} factor")
+            plt.tight_layout()
+            fig.savefig(self.save_day_path / f"{data}_factors")
+            plt.close("all")
+
+        for data in self.list_clusters:
+            fig = plt.figure()
+            for home in self.homes:
+                plt.plot(self.list_clusters[data][home])
+            plt.xlabel("Day")
+            plt.ylabel(f"{data} cluster")
+            plt.tight_layout()
+            fig.savefig(self.save_day_path / f"{data}_clusters")
+            plt.close("all")
 
     def _init_params(self, prm):
         # add relevant parameters to object properties
@@ -887,6 +944,8 @@ class HEDGE:
             data_type for data_type in self.data_types if data_type != "gen"
         ]
         self.car = prm["car"]
+        if isinstance(self.car['cap'], int):
+            self.car['cap'] = [self.car['cap'] for _ in self.homes]
         self.store0 = self.car["SoC0"] * np.array(self.car['cap'])
         # update date and time information
         self.date = datetime(*prm["syst"]["date0"])
