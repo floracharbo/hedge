@@ -36,6 +36,8 @@ from src.data_preparation.factors_generation import get_factors_generator
 
 def _get_n_trans(n_data_type, data_type, days, n_trans, banks, save_other_path):
     factors_generation_save_path = save_other_path / "factors_generation"
+    if not factors_generation_save_path.exists():
+        factors_generation_save_path.mkdir(parents=True)
     for i in range(n_data_type[data_type] - 1):
         day, next_day = [days[data_type][i_] for i_ in [i, i + 1]]
         same_id = day["id"] == next_day["id"]
