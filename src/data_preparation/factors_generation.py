@@ -85,6 +85,7 @@ def training(train_data, normalised, factors_generation_save_path, data_type, n_
         if normalised:
             title += ' normalised'
         plt.title(title)
+        title = title.replace(' ', '_')
         fig.savefig(factors_generation_save_path / title)
 
     fig, axs = plt.subplots(3)
@@ -95,9 +96,10 @@ def training(train_data, normalised, factors_generation_save_path, data_type, n_
     axs[1].legend()
     axs[2].plot(stds_outputs, label="std output")
     axs[2].legend()
-    title = f"{data_type} n_consecutive_days {n_consecutive_days} losses, mean/std over time"
+    title = f"{data_type} n_consecutive_days {n_consecutive_days} losses mean std over time"
     if normalised:
         title += ' normalised'
+    title = title.replace(' ', '_')
     fig.savefig(factors_generation_save_path / title)
 
 class Discriminator(nn.Module):
@@ -158,6 +160,7 @@ def get_factors_generator(n_consecutive_days, list_inputs0, list_outputs0, facto
         if normalised:
             title += ' normalised'
         plt.title(title)
+        title = title.replace(' ', '_')
         fig.savefig(title)
         print(f"data normalised {normalised}: mean output {np.mean(list_outputs)} std {np.std(list_outputs)}")
         train_data = th.zeros((train_data_length, n_consecutive_days + 1))
