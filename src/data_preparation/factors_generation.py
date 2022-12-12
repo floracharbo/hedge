@@ -6,13 +6,17 @@ import numpy as np
 from tqdm import tqdm
 from pathlib import Path
 import os
+import sys
 
 import math
 import matplotlib.pyplot as plt
 
 th.manual_seed(111)
 
-def training(train_data, normalised, factors_generation_save_path, data_type, n_consecutive_days):
+def training(
+        train_data, normalised, factors_generation_save_path,
+        data_type, n_consecutive_days, mean_real_output, std_real_output
+):
     batch_size = 32
     train_loader = th.utils.data.DataLoader(
         train_data, batch_size=batch_size, shuffle=True
@@ -55,9 +59,18 @@ def training(train_data, normalised, factors_generation_save_path, data_type, n_
             # Training the discriminator
             discriminator.zero_grad()
             output_discriminator = discriminator(all_samples)
-            loss_discriminator = loss_function(
-                output_discriminator, all_samples_labels
-            )
+            try:
+                loss_discriminator = loss_function(
+                    output_discriminator, all_samples_labels
+                )
+            except Exception as ex:
+                print(ex)
+                print(
+                    f"output_discriminator {output_discriminator} "
+                    f"output_discriminator.size() {output_discriminator.size()}"
+                )
+                sys.exit()
+
             loss_discriminator.backward()
             optimizer_discriminator.step()
 
@@ -94,8 +107,11 @@ def training(train_data, normalised, factors_generation_save_path, data_type, n_
     axs[0].legend()
     axs[1].plot(means_outputs, label="mean output")
     axs[1].legend()
+    axs[1].hlines(mean_real_output, 0, len(means_outputs))
     axs[2].plot(stds_outputs, label="std output")
     axs[2].legend()
+    axs[2].hlines(std_real_output, 0, len(means_outputs))
+
     title = f"{data_type} n_consecutive_days {n_consecutive_days} losses mean std over time"
     if normalised:
         title += ' normalised'
@@ -151,8 +167,8 @@ def get_factors_generator(n_consecutive_days, list_inputs0, list_outputs0, facto
         list_outputs = copy.deepcopy(list_outputs0)
         if normalised:
             for i in range(train_data_length):
-                list_inputs[i][1:] = list_inputs0[i][1:]/list_inputs0[i][1]
-                list_outputs[i] = list_outputs0[i]/list_inputs0[i][1]
+                list_inputs[i][1:] = list_inputs0[i][1:] / list_inputs0[i][1]
+                list_outputs[i] = list_outputs0[i] / list_inputs0[i][1]
         fig = plt.figure()
         for i in range(20):
             plt.plot(np.append(list_inputs[i][1:], list_outputs[i]))
@@ -162,12 +178,16 @@ def get_factors_generator(n_consecutive_days, list_inputs0, list_outputs0, facto
         plt.title(title)
         title = title.replace(' ', '_')
         fig.savefig(title)
-        print(f"data normalised {normalised}: mean output {np.mean(list_outputs)} std {np.std(list_outputs)}")
+        mean_real_output = np.mean(list_outputs)
+        std_real_output = np.std(list_outputs)
         train_data = th.zeros((train_data_length, n_consecutive_days + 1))
         train_data[:, :-1] = th.tensor(list_inputs)
         train_data[:, -1] = th.tensor(np.array(list_outputs)).view_as(train_data[:, -1])
 
-        training(train_data, normalised, factors_generation_save_path, data_type, n_consecutive_days)
+        training(
+            train_data, normalised, factors_generation_save_path,
+            data_type, n_consecutive_days, mean_real_output, std_real_output
+        )
 
 
 # save_other_path = Path("data/other_outputs/n24_loads_10000000_gen_10000000_car_10000000")
