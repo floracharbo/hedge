@@ -67,6 +67,7 @@ def training(
                 print(ex)
                 print(
                     f"output_discriminator {output_discriminator} "
+                    f"all_samples {all_samples} "
                     f"output_discriminator.size() {output_discriminator.size()}"
                 )
                 sys.exit()
