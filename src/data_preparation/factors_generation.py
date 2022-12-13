@@ -46,13 +46,22 @@ def training(
 
             generated_outputs = generator(real_inputs)
             generated_samples_labels = th.zeros((batch_size_, 1))
-            try:
-                real_samples = th.cat((real_inputs.view((batch_size_, n_consecutive_days)), real_outputs.view((batch_size_, 1))), dim=1)
-            except Exception as ex:
-                print(ex)
+            real_samples = th.cat((real_inputs.view((batch_size_, n_consecutive_days)), real_outputs.view((batch_size_, 1))), dim=1)
+            if any(any(th.isnan(real_inputs_i)) for real_inputs_i in real_inputs):
+                print('nan in real_inputs')
+                sys.exit()
+            if any(th.isnan(real_outputs)):
+                print('nan in real_outputs')
+                sys.exit()
+            if any(th.isnan(generated_outputs)):
+                print('nan in generated_outputs')
+                sys.exit()
             generated_samples = th.cat((real_inputs.view((batch_size_, n_consecutive_days)), generated_outputs.view((batch_size_, 1))),
                                        dim=1)
             all_samples = th.cat((real_samples, generated_samples))
+            if any(any(th.isnan(real_samples_i)) for real_samples_i in real_samples):
+                print('nan in real_samples')
+                sys.exit()
             all_samples_labels = th.cat(
                 (real_samples_labels, generated_samples_labels)
             )
@@ -70,6 +79,11 @@ def training(
                     f"all_samples {all_samples} "
                     f"output_discriminator.size() {output_discriminator.size()}"
                 )
+                if any(any(th.isnan(real_samples_i)) for real_samples_i in real_samples):
+                    print('nan in real_samples')
+                if any(any(th.isnan(generated_samples_i)) for generated_samples_i in generated_samples):
+                    print('nan in generated_samples')
+                print(f"all_samples[9][1].isnan() {all_samples[9][1].isnan()}")
                 sys.exit()
 
             loss_discriminator.backward()
