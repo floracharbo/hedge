@@ -18,11 +18,12 @@ def training(
         data_type, n_consecutive_days, mean_real_output, std_real_output
 ):
     batch_size = 32
+    train_data = [train_data_i for train_data_i in train_data if not any(th.isnan(train_data_i))]
     train_loader = th.utils.data.DataLoader(
         train_data, batch_size=batch_size, shuffle=True
     )
-    generator = Generator()
-    discriminator = Discriminator()
+    generator = Generator(n_consecutive_days)
+    discriminator = Discriminator(n_consecutive_days)
 
     lr = 0.001
     num_epochs = 20
@@ -92,7 +93,7 @@ def training(
             # Training the generator
             generator.zero_grad()
             generated_outputs = generator(real_inputs)
-            generated_samples = th.cat((real_inputs.view((batch_size_, 3)), generated_outputs.view((batch_size_, 1))),
+            generated_samples = th.cat((real_inputs.view((batch_size_, n_consecutive_days)), generated_outputs.view((batch_size_, 1))),
                                        dim=1)
             output_discriminator_generated = discriminator(generated_samples)
             loss_generator = loss_function(
@@ -122,22 +123,35 @@ def training(
     axs[0].legend()
     axs[1].plot(means_outputs, label="mean output")
     axs[1].legend()
-    axs[1].hlines(mean_real_output, 0, len(means_outputs))
+    axs[1].hlines(mean_real_output, 0, len(means_outputs), color='red', linestyle='dashed')
     axs[2].plot(stds_outputs, label="std output")
     axs[2].legend()
-    axs[2].hlines(std_real_output, 0, len(means_outputs))
-
+    axs[2].hlines(std_real_output, 0, len(means_outputs), color='red', linestyle='dashed')
     title = f"{data_type} n_consecutive_days {n_consecutive_days} losses mean std over time"
     if normalised:
         title += ' normalised'
     title = title.replace(' ', '_')
     fig.savefig(factors_generation_save_path / title)
+    print(f"Saved {title}, mean_real_output {mean_real_output}, std_real_output {std_real_output}")
+    print(f"mean generated outputs last 10: {np.mean(means_outputs[-10:])}, std {np.mean(stds_outputs[-10:])}")
+
+    fig = plt.figure()
+    plt.hist(generated_outputs.detach().numpy(), bins=100, alpha=0.5, label='generated')
+    plt.hist(real_outputs, bins=100, alpha=0.5, label='real')
+    plt.legend()
+    title = f"{data_type} n_consecutive_days {n_consecutive_days} hist generated vs real"
+    if normalised:
+        title += ' normalised'
+    title = title.replace(' ', '_')
+    fig.savefig(factors_generation_save_path / title)
+
+    th.save(generator.model, factors_generation_save_path / f"generator_{data_type}_n_consecutive_days_{n_consecutive_days}.pt")
 
 class Discriminator(nn.Module):
-    def __init__(self):
+    def __init__(self, n_consecutive_days):
         super().__init__()
         self.model = nn.Sequential(
-            nn.Linear(4, 256),
+            nn.Linear(n_consecutive_days + 1, 256),
             nn.ReLU(),
             nn.Dropout(0.3),
             nn.Linear(256, 128),
@@ -156,10 +170,10 @@ class Discriminator(nn.Module):
 
 
 class Generator(nn.Module):
-    def __init__(self):
+    def __init__(self, n_consecutive_days):
         super().__init__()
         self.model = nn.Sequential(
-            nn.Linear(3, 16),
+            nn.Linear(n_consecutive_days, 16),
             nn.ReLU(),
             nn.Linear(16, 32),
             nn.ReLU(),
@@ -172,8 +186,15 @@ class Generator(nn.Module):
 
 
 def get_factors_generator(n_consecutive_days, list_inputs0, list_outputs0, factors_generation_save_path, data_type):
+    list_inputs0 = np.array([[list_inputs0[i][-1]] + list_inputs0[i][:-1] for i in range(len(list_inputs0))])
+    i_keep = [
+        i for i in range(len(list_inputs0))
+        if not any(f == 0 for f in list_inputs0[i][1:]) and list_outputs0[i] != 0
+    ]
+    list_inputs0 = list_inputs0[i_keep]
+    list_outputs0 = np.array(list_outputs0)[i_keep]
     train_data_length = len(list_inputs0)
-    list_inputs0 = np.array([[list_inputs0[i][-1]] + list_inputs0[i][:-1] for i in range(train_data_length)])
+
     if not factors_generation_save_path.exists():
         os.makedirs(factors_generation_save_path)
 
@@ -187,14 +208,14 @@ def get_factors_generator(n_consecutive_days, list_inputs0, list_outputs0, facto
         fig = plt.figure()
         for i in range(20):
             plt.plot(np.append(list_inputs[i][1:], list_outputs[i]))
-        title = "example factor series"
+        title = f"{data_type} n_consecutive_days {n_consecutive_days} example factor series"
         if normalised:
             title += ' normalised'
         plt.title(title)
         title = title.replace(' ', '_')
-        fig.savefig(title)
-        mean_real_output = np.mean(list_outputs)
-        std_real_output = np.std(list_outputs)
+        fig.savefig(factors_generation_save_path / title)
+        mean_real_output = np.nanmean(list_outputs)
+        std_real_output = np.nanstd(list_outputs)
         train_data = th.zeros((train_data_length, n_consecutive_days + 1))
         train_data[:, :-1] = th.tensor(list_inputs)
         train_data[:, -1] = th.tensor(np.array(list_outputs)).view_as(train_data[:, -1])
@@ -203,7 +224,6 @@ def get_factors_generator(n_consecutive_days, list_inputs0, list_outputs0, facto
             train_data, normalised, factors_generation_save_path,
             data_type, n_consecutive_days, mean_real_output, std_real_output
         )
-
 
 # save_other_path = Path("data/other_outputs/n24_loads_10000000_gen_10000000_car_10000000")
 

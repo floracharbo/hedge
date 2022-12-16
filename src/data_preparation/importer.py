@@ -730,7 +730,8 @@ def import_segment(
             (prm["outs_path"] / f"{label}_{data_id_}_{chunk_rows[0]}_{chunk_rows[1]}.pickle").is_file()
             for label in prm["outs_labels"]
     ):
-        print(f"load previous out {chunk_rows[0]} -> {chunk_rows[1]}")
+        if chunk_rows[0] == 0:
+            print("load previously saved chunks of data")
         return [None] * 7
 
     data_source = prm["data_type_source"][data_type]

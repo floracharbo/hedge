@@ -583,8 +583,7 @@ class HEDGE:
 
         # car profiles
         if "car" in self.data_types:
-            profiles \
-                = self._load_ev_profiles(self.inputs_path, profiles)
+            profiles = self._load_ev_profiles(self.inputs_path, profiles)
 
         # loads profiles
         if "loads" in self.data_types:
@@ -949,4 +948,4 @@ class HEDGE:
         self.store0 = self.car["SoC0"] * np.array(self.car['cap'])
         # update date and time information
         self.date = datetime(*prm["syst"]["date0"])
-        self.save_day_path = Path(prm["paths"]["record_folder"])
+        self.save_day_path = Path(prm["paths"]["record_folder"]) / "hedge_days"

@@ -57,7 +57,7 @@ def _get_n_trans(n_data_type, data_type, days, n_trans, banks, save_other_path):
                     day_["factor"])
 
 
-    for n_consecutive_days in range(3, 7):
+    for n_consecutive_days in range(3, 4):
         list_inputs = []
         list_outputs = []
         for i in range(n_data_type[data_type] - (n_consecutive_days - 1)):
@@ -76,7 +76,7 @@ def _get_n_trans(n_data_type, data_type, days, n_trans, banks, save_other_path):
             with open(factors_generation_save_path / f"{label}_{data_type}_n_days{n_consecutive_days}.pickle", "wb") as f:
                 pickle.dump(training_data, f)
 
-        if n_consecutive_days == 3:
+        if n_consecutive_days in [3, 4]:
             get_factors_generator(n_consecutive_days, list_inputs, list_outputs, factors_generation_save_path, data_type)
 
     # define the keras model
