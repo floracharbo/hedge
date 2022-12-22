@@ -54,6 +54,8 @@ class Generator(nn.Module):
         output = self.model(x)
         noise = th.randn(output.shape) * self.noise_factor
         output = output + noise
+        output = th.exp(output)
+
         return output
 
 
