@@ -29,55 +29,28 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
 from src.utils import initialise_dict
-from src.data_preparation.factors_generation import get_factors_generator
+from src.data_preparation.factors_generation import get_factors_generator, compute_profile_generator
 # from tensorflow.keras.models import Sequential
 # from tensorflow.keras.layers import Dense
 
 
-def _get_n_trans(n_data_type, data_type, days, n_trans, banks, save_other_path):
-    factors_generation_save_path = save_other_path / "factors_generation"
-    if not factors_generation_save_path.exists():
-        factors_generation_save_path.mkdir(parents=True)
+def _get_n_trans(n_data_type, data_type, days, n_trans, banks):
     for i in range(n_data_type[data_type] - 1):
         day, next_day = [days[data_type][i_] for i_ in [i, i + 1]]
         same_id = day["id"] == next_day["id"]
         subsequent_days = day["cum_day"] + 1 == next_day["cum_day"]
+
         if same_id and subsequent_days:  # record transition
             day_types, index_wdt = [
                 [day_[key] for day_ in [day, next_day]]
                 for key in ["day_type", "index_wdt"]
             ]
             transition = f"{day_types[0]}2{day_types[1]}"
-            clusters = [days[f"{data_type}_{day_types[i]}"][
-                        index_wdt[i]]["cluster"]
-                        for i in range(2)]
+            clusters = [days[f"{data_type}_{day_types[i]}"][index_wdt[i]]["cluster"] for i in range(2)]
             n_trans[data_type][transition][clusters[0], clusters[1]] += 1
             for i, day_ in enumerate([day, next_day]):
-                banks[data_type][transition][f"f{i}"].append(
-                    day_["factor"])
+                banks[data_type][transition][f"f{i}"].append(day_["factor"])
 
-
-    for n_consecutive_days in range(3, 4):
-        list_inputs = []
-        list_outputs = []
-        for i in range(n_data_type[data_type] - (n_consecutive_days - 1)):
-            days_ = [days[data_type][i_] for i_ in range(i, i + n_consecutive_days)]
-            same_id = all(days_[1 + i_]["id"] == days_[0]["id"] for i_ in range(n_consecutive_days - 1))
-            subsequent_days = all(days_[0]["cum_day"] + i_ == days_[i_]["cum_day"] for i_ in range(1, n_consecutive_days))
-            if same_id and subsequent_days:  # record transition
-                d1 = 0 if days_[-2]['day_type'] == 'wd' else 1
-                d2 = 0 if days_[-1]['day_type'] == 'wd' else 1
-                transition = d2 * 2 + d1
-                list_inputs.append([days_[i_]['factor'] for i_ in range(n_consecutive_days - 1)] + [transition])
-                list_outputs.append([days_[-1]["factor"]])
-
-        print(f"{data_type} n_consecutive_days {n_consecutive_days} len(list_inputs) = {len(list_inputs)}")
-        for training_data, label in zip([list_inputs, list_outputs], ["inputs", "outputs"]):
-            with open(factors_generation_save_path / f"{label}_{data_type}_n_days{n_consecutive_days}.pickle", "wb") as f:
-                pickle.dump(training_data, f)
-
-        if n_consecutive_days in [3, 4]:
-            get_factors_generator(n_consecutive_days, list_inputs, list_outputs, factors_generation_save_path, data_type)
 
     # define the keras model
     # model = Sequential()
@@ -92,6 +65,45 @@ def _get_n_trans(n_data_type, data_type, days, n_trans, banks, save_other_path):
     # print(f"loss {loss}")
 
     return banks, n_trans
+
+
+def prepare_and_obtain_factors_generator(n_data_type, data_type, days, save_other_path):
+    factors_generation_save_path = save_other_path / "factors_generation"
+    if not factors_generation_save_path.exists():
+        factors_generation_save_path.mkdir(parents=True)
+    n_consecutive_days = 3
+    list_inputs, list_outputs = [initialise_dict(['factors', 'clusters']) for _ in range(2)]
+    for i in range(n_data_type[data_type] - (n_consecutive_days - 1)):
+        days_ = [days[data_type][i_] for i_ in range(i, i + n_consecutive_days)]
+        same_id = all(days_[1 + i_]["id"] == days_[0]["id"] for i_ in range(n_consecutive_days - 1))
+        subsequent_days = all(days_[0]["cum_day"] + i_ == days_[i_]["cum_day"] for i_ in range(1, n_consecutive_days))
+        if same_id and subsequent_days:  # record transition
+            d1 = 0 if days_[-2]['day_type'] == 'wd' else 1
+            d2 = 0 if days_[-1]['day_type'] == 'wd' else 1
+            transition = d2 * 2 + d1
+
+            # factors
+            list_inputs['factors'].append([transition] + [days_[i_]['factor'] for i_ in range(n_consecutive_days - 1)])
+            list_outputs['factors'].append([days_[-1]["factor"]])
+
+            # clusters
+            day_types, index_wdt = [
+                [day_[key] for day_ in days_]
+                for key in ["day_type", "index_wdt"]
+            ]
+            clusters = [days[f"{data_type}_{day_types[i]}"][index_wdt[i]]["cluster"] for i in range(n_consecutive_days)]
+            list_inputs['clusters'].append([transition] + clusters[:-1])
+            list_outputs['clusters'].append([clusters[-1]])
+
+    for value_type in ['factors', 'clusters']:
+        for training_data, label in zip([list_inputs, list_outputs], ["inputs", "outputs"]):
+            file_name = f"{label}_{data_type}_n_days{n_consecutive_days}_{value_type}.pickle"
+            with open(factors_generation_save_path / file_name, "wb") as f:
+                pickle.dump(training_data, f)
+        get_factors_generator(
+            n_consecutive_days, list_inputs[value_type], list_outputs[value_type],
+            factors_generation_save_path, data_type, value_type
+        )
 
 
 def _transition_probabilities(
@@ -114,8 +126,9 @@ def _transition_probabilities(
         p_trans[data_type][transition] = np.zeros((n_clus_all_, n_clus_all_))
 
     banks, n_trans = _get_n_trans(
-        n_data_type, data_type, days, n_trans, banks, prm["save_other"]
+        n_data_type, data_type, days, n_trans, banks
     )
+    prepare_and_obtain_factors_generator(n_data_type, data_type, days, prm["save_other"])
 
     for c0 in range(n_clus_all_):
         for c1 in range(n_clus_all_):
@@ -195,33 +208,36 @@ def _plot_clusters(
             f"check np.shape(norm_vals) = {np.shape(norm_vals)} "
             f"same as ({len(transformed_features)}, {prm['n']})"
         )
+    statistical_indicators = {k: {} for k in range(prm["n_clus"][data_type])}
     for k in range(prm["n_clus"][data_type]):
         if bank[k]["n_clus"] != 0:
-            d10, d50, d90, mean = [[0] * prm["n"] for _ in range(4)]
+            for statistical_indicator in ['p10', 'p50', 'p90', 'mean']:
+                statistical_indicators[k][statistical_indicator]= np.zeros(prm["n"])
             for time in range(prm["n"]):
-                d10[time] = np.percentile(vals_k[k][:, time], 10)
-                d90[time] = np.percentile(vals_k[k][:, time], 90)
-                d50[time] = np.percentile(vals_k[k][:, time], 50)
-                mean[time] = np.mean(vals_k[k][:, time])
+                for percentile in [10, 50, 90]:
+                    statistical_indicators[k][f'p{percentile}'][time] = np.percentile(
+                        vals_k[k][:, time], percentile
+                    )
+                statistical_indicators[k]['mean'][time] = np.mean(vals_k[k][:, time])
             if prm["plots"]:
                 for stylised in [True, False]:
                     fig = plt.figure()
                     plt.fill_between(
                         xs,
-                        d90,
+                        statistical_indicators[k]['p90'],
                         color="blue",
                         alpha=0.1,
                         label="10th to 90th percentile",
                     )
-                    plt.fill_between(xs, d10, color="w")
+                    plt.fill_between(xs, statistical_indicators[k]['p10'], color="w")
                     if stylised:
                         title = f"Cluster {k} demand {day_type} stylised"
-                        plt.plot(xs, mean, color="blue", label="mean", lw=3)
+                        plt.plot(xs, statistical_indicators[k]['mean'], color="blue", label="mean", lw=3)
                         plt.tight_layout()
                         plt.axis('off')
                     else:
-                        plt.plot(xs, d50, color="red", label="median")
-                        plt.plot(xs, mean, color="blue", label="mean")
+                        plt.plot(xs, statistical_indicators[k]['p50'], color="red", label="median")
+                        plt.plot(xs, statistical_indicators[k]['mean'], color="blue", label="mean")
                         plt.legend()
                         title = f"Cluster {k} demand {day_type}"
                         plt.title(title)
@@ -230,12 +246,13 @@ def _plot_clusters(
                     )
                 plt.close("all")
 
+    return statistical_indicators
+
 
 def _get_vals_k(labels, norm_vals, n_clus):
     vals_k, idx_k_clustered = {}, {}
     for k in range(n_clus):
-        idx_k_clustered[k] \
-            = [i for i, label in enumerate(labels) if label == k]
+        idx_k_clustered[k] = [i for i, label in enumerate(labels) if label == k]
         vals_k[k] = np.array([norm_vals[i] for i in idx_k_clustered[k]])
 
     return vals_k, idx_k_clustered
@@ -331,11 +348,9 @@ def _get_profs(
                 sum(prof) == 0 or abs(sum(prof) - 1) < 1e-3
                 for prof in bank_["profs"]
             ), f"{data_type} normalised profile should sum to 1"
-
             if data_type == "car":
                 bank_["avail"] = [days_[i]["avail"] for i in idx_k_all]
-            bank_["dists"] \
-                = [cluster_distance[i][k] for i in idx_k_clustered[k]]
+            bank_["dists"] = [cluster_distance[i][k] for i in idx_k_clustered[k]]
 
     return bank
 
@@ -348,11 +363,10 @@ def _cluster_module(
         i_zeros: list,
 ) -> Tuple[list, list, int, list]:
     # actual clustering
-    clusobj = KMeans(n_clusters=n_clus, n_init=100)
+    clusobj = KMeans(n_clusters=n_clus, n_init=100, random_state=0)
     obj = clusobj.fit(transformed_features)
 
     n_zeros = len(days_) - len(to_cluster)
-
     # obtain main centroids of each cluster
     # centers_unordered = obj.cluster_centers_
     # centers_alloc = obj.fit_predict(centers_unordered)
@@ -631,30 +645,40 @@ def clustering(days, prm, n_data_type):
                 _elbow_method(
                     transformed_features, data_type, day_type, prm["save_other"]
                 )
-            [labels, cluster_distance, n_zeros_,
-             days[f"{data_type}_{day_type}"]] \
-                = _cluster_module(
+            [labels, cluster_distance, n_zeros_, days[f"{data_type}_{day_type}"]] = _cluster_module(
                 transformed_features, prm["n_clus"][data_type],
-                to_cluster, days_, i_zeros)
-            vals_k, idx_k_clustered \
-                = _get_vals_k(labels, norm_vals,
-                              prm["n_clus"][data_type])
+                to_cluster, days_, i_zeros
+            )
+            vals_k, idx_k_clustered = _get_vals_k(
+                labels, norm_vals,
+                prm["n_clus"][data_type]
+            )
+
             banks_, n_clus_all[data_type] = _get_p_clus(
                 vals_k, n_day_type[data_type][day_type],
-                data_type, n_zeros_)
+                data_type, n_zeros_
+            )
             banks_ = _get_profs(
                 to_cluster, banks_, days_, data_type,
-                idx_k_clustered, cluster_distance)
+                idx_k_clustered, cluster_distance
+            )
             distances = [bank_["dists"] for bank_ in banks_.values()]
             if data_type == "car":
                 distances = distances[:-1]
-            [banks_,
-             min_cdfs[data_type][day_type],
-             max_cdfs[data_type][day_type]] = _get_cdfs(
+            [banks_, min_cdfs[data_type][day_type], max_cdfs[data_type][day_type]] = _get_cdfs(
                 distances, f"{data_type} {day_type}", prm, banks_
             )
-            _plot_clusters(transformed_features, norm_vals, data_type,
-                           day_type, banks_, vals_k, prm, prm["save_other"])
+            statistical_indicators = _plot_clusters(
+                transformed_features, norm_vals, data_type,
+                day_type, banks_, vals_k, prm, prm["save_other"]
+            )
+            for k in range(prm["n_clus"][data_type]):
+                compute_profile_generator(
+                    vals_k[k],
+                    prm["save_other"] / "profiles_generation",
+                    label_saving=f"profile {data_type} n {prm['n']} k {k}",
+                    n=prm["n"], k=k, statistical_indicators=statistical_indicators
+                )
             banks[data_type][day_type] = banks_
             n_zeros[data_type][day_type] = n_zeros_
 
@@ -669,8 +693,7 @@ def clustering(days, prm, n_data_type):
         )
 
     if "gen" in prm["data_types"]:
-        banks["gen"], min_cdfs["gen"], max_cdfs["gen"] \
-            = _group_gen_month(days["gen"], prm)
+        banks["gen"], min_cdfs["gen"], max_cdfs["gen"] = _group_gen_month(days["gen"], prm)
 
     # transitions probabilities
     _save_clustering(
