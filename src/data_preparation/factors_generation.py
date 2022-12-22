@@ -52,7 +52,7 @@ class Generator(nn.Module):
 
     def forward(self, x):
         output = self.model(x)
-        noise = th.rand(output.shape) * self.noise_factor
+        noise = th.randn(output.shape) * self.noise_factor
         output = output + noise
         return output
 
@@ -105,7 +105,7 @@ def training(
         for n, train_data in enumerate(train_loader):
             batch_size_ = len(train_data)
             if profiles:
-                real_inputs = th.rand(batch_size_, 1)
+                real_inputs = th.randn(batch_size_, 1)
                 real_outputs = train_data
             else:
                 real_inputs = train_data[:, :size_input_generator]
