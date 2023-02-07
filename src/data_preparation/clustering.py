@@ -28,8 +28,10 @@ import seaborn as sns
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
+from src.data_preparation.factors_generation import (
+    compute_factors_clusters_generators, compute_profile_generators)
 from src.utils import initialise_dict
-from src.data_preparation.factors_generation import get_factors_generator, compute_profile_generator
+
 # from tensorflow.keras.models import Sequential
 # from tensorflow.keras.layers import Dense
 
@@ -46,64 +48,14 @@ def _get_n_trans(n_data_type, data_type, days, n_trans, banks):
                 for key in ["day_type", "index_wdt"]
             ]
             transition = f"{day_types[0]}2{day_types[1]}"
-            clusters = [days[f"{data_type}_{day_types[i]}"][index_wdt[i]]["cluster"] for i in range(2)]
+            clusters = [
+                days[f"{data_type}_{day_types[i]}"][index_wdt[i]]["cluster"] for i in range(2)
+            ]
             n_trans[data_type][transition][clusters[0], clusters[1]] += 1
             for i, day_ in enumerate([day, next_day]):
                 banks[data_type][transition][f"f{i}"].append(day_["factor"])
 
-
-    # define the keras model
-    # model = Sequential()
-    # model.add(Dense(12, input_shape=(3,), activation='relu'))
-    # model.add(Dense(8, activation='relu'))
-    # model.add(Dense(1, activation='sigmoid'))
-    # model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
-    # model.fit(list_inputs_train, list_ouputs_train, epochs=2000, batch_size=10)
-    # # evaluate the keras model
-    # loss, accuracy = model.evaluate(list_inputs_test, list_ouputs_test)
-    # print('Accuracy: %.2f' % (accuracy * 100))
-    # print(f"loss {loss}")
-
     return banks, n_trans
-
-
-def prepare_and_obtain_factors_generator(n_data_type, data_type, days, save_other_path):
-    factors_generation_save_path = save_other_path / "factors_generation"
-    if not factors_generation_save_path.exists():
-        factors_generation_save_path.mkdir(parents=True)
-    n_consecutive_days = 3
-    list_inputs, list_outputs = [initialise_dict(['factors', 'clusters']) for _ in range(2)]
-    for i in range(n_data_type[data_type] - (n_consecutive_days - 1)):
-        days_ = [days[data_type][i_] for i_ in range(i, i + n_consecutive_days)]
-        same_id = all(days_[1 + i_]["id"] == days_[0]["id"] for i_ in range(n_consecutive_days - 1))
-        subsequent_days = all(days_[0]["cum_day"] + i_ == days_[i_]["cum_day"] for i_ in range(1, n_consecutive_days))
-        if same_id and subsequent_days:  # record transition
-            d1 = 0 if days_[-2]['day_type'] == 'wd' else 1
-            d2 = 0 if days_[-1]['day_type'] == 'wd' else 1
-            transition = d2 * 2 + d1
-
-            # factors
-            list_inputs['factors'].append([transition] + [days_[i_]['factor'] for i_ in range(n_consecutive_days - 1)])
-            list_outputs['factors'].append([days_[-1]["factor"]])
-
-            # clusters
-            day_types, index_wdt = [
-                [day_[key] for day_ in days_]
-                for key in ["day_type", "index_wdt"]
-            ]
-            clusters = [days[f"{data_type}_{day_types[i]}"][index_wdt[i]]["cluster"] for i in range(n_consecutive_days)]
-            list_inputs['clusters'].append([transition] + clusters[:-1])
-            list_outputs['clusters'].append([clusters[-1]])
-
-    for value_type in ['factors', 'clusters']:
-        for training_data, label in zip([list_inputs, list_outputs], ["inputs", "outputs"]):
-            file_name = f"{label}_{data_type}_n_days{n_consecutive_days}_{value_type}.pickle"
-            with open(factors_generation_save_path / file_name, "wb") as f:
-                pickle.dump(training_data, f)
-        get_factors_generator(
-            n_consecutive_days, list_inputs[value_type], list_outputs[value_type],
-            factors_generation_save_path, data_type, value_type
-        )
 
 
 def _transition_probabilities(
@@ -128,7 +80,6 @@ def _transition_probabilities(
     banks, n_trans = _get_n_trans(
         n_data_type, data_type, days, n_trans, banks
     )
-    prepare_and_obtain_factors_generator(n_data_type, data_type, days, prm["save_other"])
 
     for c0 in range(n_clus_all_):
         for c1 in range(n_clus_all_):
@@ -169,6 +120,10 @@ def _transition_probabilities(
             banks[data_type][day_type][k]["p_clus"] for k in range(n_clus_all_)
         ]
         p_clus[data_type][day_type] = pcluss
+    if prm['gan_generation']:
+        compute_factors_clusters_generators(
+            prm, n_data_type, data_type, days, p_clus, p_trans, n_clus_all_
+        )
 
     return p_clus, p_trans, n_trans, banks
 
@@ -212,7 +167,7 @@ def _plot_clusters(
     for k in range(prm["n_clus"][data_type]):
         if bank[k]["n_clus"] != 0:
             for statistical_indicator in ['p10', 'p50', 'p90', 'mean']:
-                statistical_indicators[k][statistical_indicator]= np.zeros(prm["n"])
+                statistical_indicators[k][statistical_indicator] = np.zeros(prm["n"])
             for time in range(prm["n"]):
                 for percentile in [10, 50, 90]:
                     statistical_indicators[k][f'p{percentile}'][time] = np.percentile(
@@ -232,7 +187,10 @@ def _plot_clusters(
                     plt.fill_between(xs, statistical_indicators[k]['p10'], color="w")
                     if stylised:
                         title = f"Cluster {k} demand {day_type} stylised"
-                        plt.plot(xs, statistical_indicators[k]['mean'], color="blue", label="mean", lw=3)
+                        plt.plot(
+                            xs, statistical_indicators[k]['mean'],
+                            color="blue", label="mean", lw=3
+                        )
                         plt.tight_layout()
                         plt.axis('off')
                     else:
@@ -505,14 +463,13 @@ def _group_gen_month(days_, prm):
         if len(bank[i_month]["profs"]) > 0:
             transformed_features \
                 = StandardScaler().fit_transform(bank[i_month]["profs"])
-            clusobj = KMeans(n_clusters=1, n_init=100)
+            clusobj = KMeans(n_clusters=1, n_init=100, random_state=0)
             obj = clusobj.fit(transformed_features)
             cluster_distances.append(obj.transform(transformed_features))
         else:
             cluster_distances.append(None)
 
-    bank, min_cdfs, max_cdfs \
-        = _get_cdfs(cluster_distances, "gen", prm, bank)
+    bank, min_cdfs, max_cdfs = _get_cdfs(cluster_distances, "gen", prm, bank)
 
     for i_month in range(12):
         np.save(
@@ -625,15 +582,19 @@ def clustering(days, prm, n_data_type):
     ) = _initialise_cluster_dicts(prm)
 
     enough_data = {}
-    min_cdfs, max_cdfs = [initialise_dict(prm["data_types"], "empty_dict")
-                          for _ in range(2)]
+    min_cdfs, max_cdfs = [
+        initialise_dict(prm["data_types"], "empty_dict") for _ in range(2)
+    ]
     # n_clus_all includes zeros
     for data_type in prm["behaviour_types"]:
+        print(f"data_type {data_type}")
         enough_data[data_type] = True
         for day_type in prm["weekday_type"]:
+            print(f"day_type {day_type}")
             days_ = days[f"{data_type}_{day_type}"]
-            transformed_features, to_cluster, i_zeros, norm_vals \
-                = _get_features(days_, data_type, prm)
+            transformed_features, to_cluster, i_zeros, norm_vals = _get_features(
+                days_, data_type, prm
+            )
             if len(transformed_features) < 2:
                 print(f"len(transformed_features) {len(transformed_features)} "
                       f"data_type {data_type} "
@@ -672,13 +633,13 @@ def clustering(days, prm, n_data_type):
                 transformed_features, norm_vals, data_type,
                 day_type, banks_, vals_k, prm, prm["save_other"]
             )
-            for k in range(prm["n_clus"][data_type]):
-                compute_profile_generator(
-                    vals_k[k],
-                    prm["save_other"] / "profiles_generation",
-                    label_saving=f"profile {data_type} n {prm['n']} k {k}",
-                    n=prm["n"], k=k, statistical_indicators=statistical_indicators
-                )
+            if prm['gan_generation']:
+                for k in range(prm["n_clus"][data_type]):
+                    print(f"k {k}")
+                    compute_profile_generators(
+                        vals_k[k], prm["n"], k, statistical_indicators, data_type, prm['save_other']
+                    )
+
             banks[data_type][day_type] = banks_
             n_zeros[data_type][day_type] = n_zeros_
 
