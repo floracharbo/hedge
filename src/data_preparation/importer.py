@@ -727,8 +727,8 @@ def import_segment(
     """In parallel or sequentially, import and process block of data."""
     data_id_ = data_id(prm, data_type)
     if all(
-            (prm["outs_path"] / f"{label}_{data_id_}_{chunk_rows[0]}_{chunk_rows[1]}.pickle").is_file()
-            for label in prm["outs_labels"]
+        (prm["outs_path"] / f"{label}_{data_id_}_{chunk_rows[0]}_{chunk_rows[1]}.pickle").is_file()
+        for label in prm["outs_labels"]
     ):
         if chunk_rows[0] == 0:
             print("load previously saved chunks of data")
