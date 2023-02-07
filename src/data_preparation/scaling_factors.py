@@ -1,14 +1,15 @@
 """Get scaling factor transitions characteristics."""
 
+import math
 import pickle
+import sys
 from typing import List, Optional, Tuple
 
-import math
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import LogNorm
 from scipy.stats import norm, pearsonr
-import sys
+import pandas as pd
 
 from src.utils import initialise_dict
 
@@ -108,26 +109,49 @@ def _count_transitions(
            and f_next > 0]
     for i in i_non_zeros:
         i_prev = [
-            j for j in range(n_intervals - 1) if f_prevs[i] >= fs_brackets[j]
+            j for j in range(n_intervals) if f_prevs[i] >= fs_brackets[j]
         ][-1]
         i_next = [
-            j for j in range(n_intervals - 1) if f_nexts[i] >= fs_brackets[j]
+            j for j in range(n_intervals) if f_nexts[i] >= fs_brackets[j]
         ][-1]
         n_pos[i_prev, i_next] += 1
     for i in i_zero_to_nonzero:
         i_next = [
-            j for j in range(n_intervals - 1) if f_nexts[i] >= fs_brackets[j]
+            j for j in range(n_intervals) if f_nexts[i] >= fs_brackets[j]
         ][-1]
         n_zero2pos[i_next] += 1
 
-    for i_prev in range(n_intervals - 1):
-        sum_next = sum(n_pos[i_prev])
-        p_pos[i_prev] = [m / sum_next for m in n_pos[i_prev]] if sum_next > 0 \
-            else None
-    p_zero2pos = [n / sum(n_zero2pos) if sum(n_zero2pos) > 0
-                  else np.nan
-                  for n in n_zero2pos]
-    p_zero2pos = np.reshape(p_zero2pos, (1, n_intervals))
+    if np.sum(n_pos) > 0:
+        for i_prev in range(n_intervals):
+            sum_next = sum(n_pos[i_prev])
+            if sum_next > 0:
+                p_pos[i_prev] = n_pos[i_prev] / sum_next
+            else:
+                print(f"i_prev {i_prev} sum_next {sum_next}")
+                p_pos[i_prev] = np.empty((1, n_intervals))
+        for i_next in range(n_intervals):
+            print(f"i_next {i_next} p_pos[:, i_next] {p_pos[:, i_next]}")
+            interpolated_column = pd.Series(p_pos[:, i_next]).interpolate().tolist()
+            p_pos[:, i_next] = interpolated_column
+            print(f"new interpolated_column {interpolated_column} p_pos[:, i_next] {p_pos[:, i_next]}")
+
+        for i in range(len(p_pos)):
+            assert abs(sum(p_pos[i]) - 1) < 1e-3, f"sum(p_pos[{i}]) {sum(p_pos[i])}"
+    else:
+        p_pos = n_pos
+
+    print(f"p_pos {p_pos}")
+
+    if np.sum(n_zero2pos) > 0:
+        p_zero2pos = n_zero2pos / sum(n_zero2pos) if sum(n_zero2pos) > 0 else np.zeros((1, n_intervals))
+        p_zero2pos = np.reshape(p_zero2pos, (1, n_intervals))
+
+        assert abs(np.sum(p_zero2pos) - 1) < 1e-3, f"sum(p_zero2pos) {sum(p_zero2pos)}"
+
+    else:
+        p_zero2pos = n_zero2pos
+
+    print(f"p_zero2pos {p_zero2pos}")
 
     return p_pos, p_zero2pos
 
@@ -143,9 +167,10 @@ def _transition_intervals(
         max(max(f_prevs), max(f_nexts)),
         prm["n_intervals"] + 1
     )
-    mid_fs_brackets \
-        = [np.mean(fs_brackets[i: i + 2]) for i in range(prm["n_intervals"])]
-
+    mid_fs_brackets = [
+        np.mean(fs_brackets[i: i + 2]) for i in range(prm["n_intervals"])
+    ]
+    print(transition)
     p_pos, p_zero2pos = _count_transitions(
         f_prevs, f_nexts, prm["n_intervals"], fs_brackets
     )
@@ -157,9 +182,11 @@ def _transition_intervals(
 
     for trans_prob, label_prob in zip([p_pos, p_zero2pos], labels_prob):
         # trans_prob: transition probabililites
+        print(F"np.shape(trans_prob) {np.shape(trans_prob)}")
+        if len(np.shape(trans_prob)) == 1:
+            trans_prob = np.reshape(trans_prob, (1, len(trans_prob)))
         trans_prob[(trans_prob == 0) | (np.isnan(trans_prob))] = 1e-5
         assert (trans_prob >= 0).all(), "error not (trans_prob >= 0).all()"
-
         if prm["plots"]:
             fig, ax = plt.subplots()
             ax.imshow(trans_prob, norm=LogNorm())
@@ -188,25 +215,36 @@ def _print_error_factors(ex, label, f_prevs, f_nexts):
             print(f"label {label} type(factor) {type(factor)}")
             print(f"np.isnan(f) = {np.isnan(factor)}")
 
-def sinh_archsinh_transformation(x,epsilon,delta):
-    return norm.pdf(np.sinh(delta*np.arcsinh(x)-epsilon))*delta*np.cosh(delta*np.arcsinh(x)-epsilon)/np.sqrt(1+np.power(x,2))
+
+def sinh_archsinh_transformation(x, epsilon, delta):
+    return norm.pdf(
+        np.sinh(delta * np.arcsinh(x) - epsilon)
+    ) * delta * np.cosh(delta * np.arcsinh(x) - epsilon)/np.sqrt(1 + np.power(x, 2))
 
 
 def integral_cdf(xs, ps):
-    i_valid = [i for i, (p, x) in enumerate(zip(ps, xs)) if not math.isinf(p) and not math.isinf(x) and not np.isnan(p) and not np.isnan(x)]
+    i_valid = [
+        i for i, (p, x) in enumerate(zip(ps, xs))
+        if not math.isinf(p) and not math.isinf(x) and not np.isnan(p) and not np.isnan(x)
+    ]
     ps = [ps[i] for i in i_valid]
     xs = [xs[i] for i in i_valid]
-    return sum(ps[i] * (xs[i + 1] - xs[i]) if i < len(xs) - 1 else
-        ps[i] * (xs[i] - xs[i - 1]) for i in range(len(xs)))
+    return sum(
+        ps[i] * (xs[i + 1] - xs[i]) if i < len(xs) - 1 else ps[i] * (xs[i] - xs[i - 1])
+        for i in range(len(xs))
+    )
 
 
 def change_scale_norm_pdf(new_scale, old_xs, initial_norm_pdf, lb, ub):
     if not (0.95 < integral_cdf(old_xs, initial_norm_pdf) < 1.02):
-        print(f"integral_cdf(old_xs_valid, initial_norm_pdf_valid) {integral_cdf(old_xs, initial_norm_pdf)}")
+        print(
+            f"integral_cdf(old_xs_valid, initial_norm_pdf_valid) "
+            f"{integral_cdf(old_xs, initial_norm_pdf)}"
+        )
         np.save("initial_norm_pdf", initial_norm_pdf)
         np.save("old_xs", old_xs)
         sys.exit()
-    assert 0.95 < integral_cdf(old_xs, initial_norm_pdf)  < 1.02, \
+    assert 0.95 < integral_cdf(old_xs, initial_norm_pdf) < 1.02, \
         f"integral_cdf(old_xs, initial_norm_pdf)  {integral_cdf(old_xs, initial_norm_pdf) }"
 
     new_xs = [old_xs[i] * new_scale for i in range(len(old_xs))]
@@ -224,6 +262,7 @@ def change_scale_norm_pdf(new_scale, old_xs, initial_norm_pdf, lb, ub):
 
     return new_xs, new_norm_pdf_2
 
+
 def _compare_factor_error_distributions(prm, errors, save_label):
     sum_log_likelihood = {}
     prms = {}
@@ -233,18 +272,25 @@ def _compare_factor_error_distributions(prm, errors, save_label):
         for error in errors:
             sum_log_likelihood[label] += np.log(distr.pdf(error, *prms[label]))
     extreme_p = 1e-5
-    for kurtosis_increase in [1.05, 1.25, 1.5]:
-        ps = np.linspace(extreme_p, 1 - extreme_p, 10000)
-        xs = [norm.ppf(p, *prms['norm']) for p in ps]
-        new_xs, pdf = change_scale_norm_pdf(prms['norm'][1], xs, sinh_archsinh_transformation(xs, 0, kurtosis_increase), norm.ppf(extreme_p), norm.ppf(1 - extreme_p))
-        sum_log_likelihood[f'norm_kurtosis{kurtosis_increase}'] = 0
-        for error in errors:
-            i_befores = [i for i, x in enumerate(new_xs) if x  <= error]
-            i_afters = [i for i, x in enumerate(new_xs) if x  >= error]
-            i_before = i_befores[-1] if len(i_befores) > 0 else 0
-            i_after = i_afters[0] if len(i_afters) > 0 else len(new_xs) - 1
-            error_pdf = np.mean([pdf[i_before], pdf[i_after]])
-            sum_log_likelihood[f'norm_kurtosis{kurtosis_increase}'] += np.log(error_pdf)
+    if prm['kurtosis']:
+        for kurtosis_increase in [1.05, 1.25, 1.5]:
+            ps = np.linspace(extreme_p, 1 - extreme_p, 10000)
+            xs = [norm.ppf(p, *prms['norm']) for p in ps]
+            new_xs, pdf = change_scale_norm_pdf(
+                prms['norm'][1],
+                xs,
+                sinh_archsinh_transformation(xs, 0, kurtosis_increase),
+                norm.ppf(extreme_p),
+                norm.ppf(1 - extreme_p)
+            )
+            sum_log_likelihood[f'norm_kurtosis{kurtosis_increase}'] = 0
+            for error in errors:
+                i_befores = [i for i, x in enumerate(new_xs) if x <= error]
+                i_afters = [i for i, x in enumerate(new_xs) if x >= error]
+                i_before = i_befores[-1] if len(i_befores) > 0 else 0
+                i_after = i_afters[0] if len(i_afters) > 0 else len(new_xs) - 1
+                error_pdf = np.mean([pdf[i_before], pdf[i_after]])
+                sum_log_likelihood[f'norm_kurtosis{kurtosis_increase}'] += np.log(error_pdf)
 
     for item_label, item in zip(
             ['sum_log_likelihood', 'all_distribution_prms'],
@@ -279,6 +325,7 @@ def min_max_x_to_kurtosis_pdf(xmin, xmax, norm_prms, kurtosis):
 
     return new_xs, pdf
 
+
 def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
     assert sum(1 for f_prev in f_prevs if f_prev is None) == 0,\
         "None f_prevs"
@@ -298,10 +345,15 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
     # plot
     if prm["plots"]:
         p95 = np.percentile(np.where(errors > 0)[0], 95)
-        if len(distr_str.split('_')) == 2 and distr_str.split('_')[1][0: len('kurtosis')] == 'kurtosis':
+        if (    prm['kurtosis']
+                and len(distr_str.split('_')) == 2
+                and distr_str.split('_')[1][0: len('kurtosis')] == 'kurtosis'
+        ):
             norm_prms = norm.fit(errors)
             kurtosis = float(distr_str.split('_')[1][len('kurtosis'):])
-            factor_residuals, pdf = min_max_x_to_kurtosis_pdf(norm.ppf(0.01), norm.ppf(0.99), norm_prms, kurtosis)
+            factor_residuals, pdf = min_max_x_to_kurtosis_pdf(
+                norm.ppf(0.01), norm.ppf(0.99), norm_prms, kurtosis
+            )
             mean_residual = norm.stats(*norm_prms, moments="m")
             residual_distribution_prms = ['kurtosis'] + list(norm_prms) + [kurtosis]
         else:
@@ -323,20 +375,21 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
         assert 0.95 < integral_cdf(factor_residuals, pdf) < 1.02, \
             f"integral_cdf(factor_residuals, pdf) {integral_cdf(factor_residuals, pdf) }"
 
-        relevant_factors = [factor for i, (factor, pdf) in enumerate(zip(factor_residuals, pdf)) if pdf > 0.005]
-        x_lb, x_ub = [relevant_factors[0], relevant_factors[-1]]
-
-        if residual_distribution_prms[0] == 'kurtosis':
+        if prm['kurtosis'] and residual_distribution_prms[0] == 'kurtosis':
             pdf_norm = norm.pdf(
                 factor_residuals, *residual_distribution_prms[1: 3]
             )
             plt.plot(factor_residuals, pdf_norm, ls='--', label="norm pdf")
             if np.isnan(integral_cdf(factor_residuals, pdf_norm)):
-                print(f"integral_cdf(factor_residuals, pdf_norm) {integral_cdf(factor_residuals, pdf_norm)}")
+                print(
+                    f"integral_cdf(factor_residuals, pdf_norm) "
+                    f"{integral_cdf(factor_residuals, pdf_norm)}"
+                )
                 np.save('factor_residuals', factor_residuals)
                 np.save('pdf_norm', pdf_norm)
-            assert 0.95 < integral_cdf(factor_residuals, pdf_norm)  < 1.02, \
-                f"integral_cdf(factor_residuals, pdf_norm) {integral_cdf(factor_residuals, pdf_norm)}"
+            assert 0.95 < integral_cdf(factor_residuals, pdf_norm) < 1.02, \
+                f"integral_cdf(factor_residuals, pdf_norm) " \
+                f"{integral_cdf(factor_residuals, pdf_norm)}"
 
         plt.xlim([-p95, p95])
         plt.legend(loc="upper right")
@@ -345,7 +398,7 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
             f"perfect correlation {data_type} {label}"
         )
         plt.title(title)
-        fig.savefig(prm["save_other"] / "factors" / title.replace(" ", "_").replace('.','_'))
+        fig.savefig(prm["save_other"] / "factors" / title.replace(" ", "_").replace('.', '_'))
         plt.close("all")
 
     return mean_residual, residual_distribution_prms
@@ -365,6 +418,16 @@ def _ev_transitions(prm, factors):
         [p_pos[transition], p_zero2pos[transition],
          fs_brackets[transition], mid_fs_brackets[transition]] \
             = _transition_intervals(f_prevs, f_nexts, transition, prm)
+
+    all_f_prevs, all_f_nexts = np.array([]), np.array([])
+
+    for transition in prm["day_trans"]:
+        all_f_prevs = np.concatenate((all_f_prevs, factors["car"][transition]['f_prevs']))
+        all_f_nexts = np.concatenate((all_f_nexts, factors["car"][transition]['f_nexts']))
+
+    [p_pos['all'], p_zero2pos['all'],
+     fs_brackets['all'], mid_fs_brackets['all']] \
+        = _transition_intervals(all_f_prevs, all_f_nexts, 'all', prm)
     dictionaries = p_pos, p_zero2pos, fs_brackets, mid_fs_brackets
     labels = ["p_pos", "p_zero2pos", "fs_brackets", "mid_fs_brackets"]
     for dictionary, label in zip(dictionaries, labels):
