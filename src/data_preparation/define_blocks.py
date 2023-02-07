@@ -21,8 +21,9 @@ def _load_out(prm, data_type, chunk_rows):
     out = []
     for label in prm["outs_labels"]:
         with open(
-                prm["outs_path"] / f"{label}_{data_id(prm, data_type)}_{chunk_rows[0]}_{chunk_rows[1]}.pickle",
-                "rb"
+            prm["outs_path"]
+            / f"{label}_{data_id(prm, data_type)}_{chunk_rows[0]}_{chunk_rows[1]}.pickle",
+            "rb"
         ) as file:
             out.append(pickle.load(file))
     return out
@@ -210,7 +211,9 @@ def save_intermediate_out(prm, out, chunk_rows, data_type):
     if prm["save_intermediate_outs"]:
         for obj, label in zip(out, prm["outs_labels"]):
             with open(
-                prm["outs_path"] / f"{label}_{data_id(prm, data_type)}_{chunk_rows[0]}_{chunk_rows[1]}.pickle", "wb"
+                prm["outs_path"]
+                / f"{label}_{data_id(prm, data_type)}_{chunk_rows[0]}_{chunk_rows[1]}.pickle",
+                "wb"
             ) as file:
                 pickle.dump(obj, file)
         out = [None] * 7
@@ -225,9 +228,11 @@ def get_data_chunks(prm, data_type):
     Without interrupting id sequences.
     """
     unique_ids_path \
-        = prm["save_other"] / f"unique_ids_{data_type}_{prm['n_rows'][data_type]}.npy"
+        = prm["save_other"] \
+        / f"unique_ids_{data_type}_{prm['n_rows'][data_type]}.npy"
     chunks_path \
-        = prm["save_other"] / f"chunks_rows_{data_type}_{prm['n_rows'][data_type]}_max{prm['max_size_chunk']}.npy"
+        = prm["save_other"] \
+        / f"chunks_rows_{data_type}_{prm['n_rows'][data_type]}_max{prm['max_size_chunk']}.npy"
     if unique_ids_path.is_file() and chunks_path.is_file():
         # if the unique_ids have already been computed, load them
         chunks_rows = np.load(chunks_path)
