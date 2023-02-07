@@ -238,7 +238,9 @@ def get_parameters() -> Tuple[dict, dict]:
         "plots",
         "test_factor_distr",
         "save_intermediate_outs",
-        "max_size_chunk"
+        "max_size_chunk",
+        'gan_generation',
+        'kurtosis'
     ]:
         prm[key] = run_config[key]
 
