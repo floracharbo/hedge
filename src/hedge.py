@@ -90,8 +90,7 @@ class HEDGE:
         interval_f_ev = [
             [
                 i for i in range(len(self.fs_brackets[transition]) - 1)
-                if self.fs_brackets[transition][i]
-                   <= self.factors["car"][home]
+                if self.fs_brackets[transition][i] <= self.factors["car"][home]
             ]
             [-1] for home in self.homes
         ]
@@ -265,7 +264,6 @@ class HEDGE:
                         *self.residual_distribution_prms["loads"][transition])
                     for _ in self.homes
                 ]
-            print(f"self.f_mean['loads'] {self.f_mean['loads']} self.factors['loads'] = {self.factors['loads']}")
 
             if "gen" in self.data_types:
                 self.factors["gen"] = [
@@ -273,8 +271,8 @@ class HEDGE:
                     + norm.ppf(
                         np.random.rand(),
                         *self.residual_distribution_prms["gen"])
-                    for _ in self.homes]
-            print(f"self.f_mean['gen'] {self.f_mean['gen']} self.factors['gen'] = {self.factors['gen']}")
+                    for _ in self.homes
+                ]
 
             if "car" in self.data_types:
                 randoms = np.random.rand(self.n_homes)
@@ -285,13 +283,13 @@ class HEDGE:
                     )
                     for home in self.homes
                 ]
-                print(f"self.f_mean['car'] {self.f_mean['car']} self.factors['car'] = {self.factors['car']}")
+
         else:
             for data in self.data_types:
                 if isinstance(self.factors0[data], int):
                     self.factors[data] = [self.factors0[data] for _ in self.homes]
                 else:
-                    self.factors[data]= self.factors0[data]
+                    self.factors[data] = self.factors0[data]
 
         self.list_factors = initialise_dict(self.data_types, second_level_entries=self.homes)
         for home in self.homes:
@@ -308,8 +306,6 @@ class HEDGE:
                     = [self._ps_rand_to_choice(
                         self.p_clus[data][day_type], np.random.rand())
                         for _ in self.homes]
-            print(f"self.clusters = {self.clusters}")
-
         else:
             for data in self.behaviour_types:
                 if isinstance(self.clusters0[data], int):
@@ -863,7 +859,6 @@ class HEDGE:
             os.mkdir(self.save_day_path)
         np.save(self.save_day_path / f"day_{self.it_plot}", day)
         self.it_plot += 1
-        print(f"day {self.it_plot} self.list_factors {self.list_factors} self.list_clusters {self.list_clusters}")
         y_labels = {
             "car": "Electric vehicle loads",
             "gen": "PV generation",
@@ -893,7 +888,9 @@ class HEDGE:
                             ).item()
                             day_plot = np.concatenate((day_plot, day_i[key][home]))
                             if data_type == "car":
-                                avail_car_plot = np.concatenate((avail_car_plot, day_i["avail_car"][home]))
+                                avail_car_plot = np.concatenate(
+                                    (avail_car_plot, day_i["avail_car"][home])
+                                )
 
                     else:
                         day_plot = day[key][home]
@@ -914,7 +911,9 @@ class HEDGE:
                     plt.close("all")
 
                     if data_type == "car":
-                        self._plot_ev_avail(day_plot, avail_car_plot, hr_per_t, hours, home, cumulative_plot)
+                        self._plot_ev_avail(
+                            day_plot, avail_car_plot, hr_per_t, hours, home, cumulative_plot
+                        )
 
         for data in self.list_factors:
             fig = plt.figure()
