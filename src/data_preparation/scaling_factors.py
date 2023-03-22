@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import LogNorm
 from scipy.stats import norm, pearsonr
+from scipy import interpolate
 import pandas as pd
 
 from src.utils import initialise_dict
@@ -54,6 +55,7 @@ def _get_correlation(
         label: Optional[str] = None):
 
     if len(f_prevs_all) == 0:
+        print(f"len(f_prevs_all) == 0 in _get_correlation")
         return None
 
     factors = {}
@@ -130,17 +132,17 @@ def _count_transitions(
                 print(f"i_prev {i_prev} sum_next {sum_next}")
                 p_pos[i_prev] = np.empty((1, n_intervals))
         for i_next in range(n_intervals):
-            print(f"i_next {i_next} p_pos[:, i_next] {p_pos[:, i_next]}")
-            interpolated_column = pd.Series(p_pos[:, i_next]).interpolate().tolist()
-            p_pos[:, i_next] = interpolated_column
-            print(f"new interpolated_column {interpolated_column} p_pos[:, i_next] {p_pos[:, i_next]}")
-
+            assert isinstance(p_pos[i_next], np.ndarray)
+            non0 = np.where(p_pos[:, i_next] != 0)[0]
+            if len(non0) > 1:
+                f = interpolate.interp1d(non0, p_pos[non0, i_next])
+                new_xs = range(min(non0), max(non0))
+                p_pos[new_xs, i_next] = f(new_xs)
         for i in range(len(p_pos)):
-            assert abs(sum(p_pos[i]) - 1) < 1e-3, f"sum(p_pos[{i}]) {sum(p_pos[i])}"
+            if abs(sum(p_pos[i]) - 1) > 1e-3:
+                p_pos[i] /= sum(p_pos[i])
     else:
         p_pos = n_pos
-
-    print(f"p_pos {p_pos}")
 
     if np.sum(n_zero2pos) > 0:
         p_zero2pos = n_zero2pos / sum(n_zero2pos) if sum(n_zero2pos) > 0 else np.zeros((1, n_intervals))
@@ -161,6 +163,7 @@ def _transition_intervals(
         f_nexts: List[float],
         transition: str,
         prm: int,
+        data_type: str,
 ) -> Tuple[np.ndarray, List[float], np.ndarray, List[float]]:
     fs_brackets = np.linspace(
         min(min(f_prevs), min(f_nexts)),
@@ -176,8 +179,8 @@ def _transition_intervals(
     )
 
     labels_prob = [
-        "car non zero factor transition probabilities",
-        "car factor probabilities after a day without trips",
+        f"{data_type} non zero factor transition probabilities",
+        f"{data_type} factor probabilities after a day without trips",
     ]
 
     for trans_prob, label_prob in zip([p_pos, p_zero2pos], labels_prob):
@@ -195,7 +198,7 @@ def _transition_intervals(
                 [0] + [fs_brackets[int(i - 1)] for i in ax.get_xticks()][1:]
             ]
             title \
-                = f"{label_prob} {transition} n_intervals {prm['n_intervals']}"
+                = f"{data_type} {label_prob} {transition} n_intervals {prm['n_intervals']}"
             plt.title(title)
             ax.set_xticklabels(tick_labels)
             ax.set_yticklabels(tick_labels)
@@ -405,34 +408,45 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
 
 
 def _enough_data(banks_, weekday_type):
-    return sum(banks_[day_type] is None for day_type in weekday_type) == 0
+    day_types = all(day_type in banks_ for day_type in weekday_type)
+    return not day_types or sum(banks_[day_type] is None for day_type in weekday_type) == 0
 
 
-def _ev_transitions(prm, factors):
+def _ev_transitions(prm, factors, data_type):
     p_pos, p_zero2pos, fs_brackets, mid_fs_brackets = [{} for _ in range(4)]
 
-    for transition in prm["day_trans"]:
-        f_prevs, f_nexts \
-            = [factors["car"][transition][f] for f in ["f_prevs", "f_nexts"]]
-        # car transitions
-        [p_pos[transition], p_zero2pos[transition],
-         fs_brackets[transition], mid_fs_brackets[transition]] \
-            = _transition_intervals(f_prevs, f_nexts, transition, prm)
+    transitions_specific = prm["day_trans"][0] in factors[data_type]
+    if transitions_specific:
+        for transition in prm["day_trans"]:
+            if factors[data_type][transition] is None:
+                print(F"factors[{data_type}][{transition}] is None")
+            else:
+                print(f"data_type {data_type} transition {transition}")
+                f_prevs, f_nexts = [
+                    factors[data_type][transition][f] for f in ["f_prevs", "f_nexts"]
+                ]
+                # car transitions
+                [p_pos[transition], p_zero2pos[transition],
+                 fs_brackets[transition], mid_fs_brackets[transition]] \
+                    = _transition_intervals(f_prevs, f_nexts, transition, prm, data_type)
 
-    all_f_prevs, all_f_nexts = np.array([]), np.array([])
+        all_f_prevs, all_f_nexts = np.array([]), np.array([])
 
-    for transition in prm["day_trans"]:
-        all_f_prevs = np.concatenate((all_f_prevs, factors["car"][transition]['f_prevs']))
-        all_f_nexts = np.concatenate((all_f_nexts, factors["car"][transition]['f_nexts']))
-
-    [p_pos['all'], p_zero2pos['all'],
-     fs_brackets['all'], mid_fs_brackets['all']] \
-        = _transition_intervals(all_f_prevs, all_f_nexts, 'all', prm)
+        for transition in prm["day_trans"]:
+            all_f_prevs = np.concatenate((all_f_prevs, factors[data_type][transition]['f_prevs']))
+            all_f_nexts = np.concatenate((all_f_nexts, factors[data_type][transition]['f_nexts']))
+    else:
+        all_f_prevs = factors[data_type]['f_prevs']
+        all_f_nexts = factors[data_type]['f_nexts']
+    [
+        p_pos['all'], p_zero2pos['all'],
+        fs_brackets['all'], mid_fs_brackets['all']
+    ] = _transition_intervals(all_f_prevs, all_f_nexts, 'all', prm, data_type)
     dictionaries = p_pos, p_zero2pos, fs_brackets, mid_fs_brackets
     labels = ["p_pos", "p_zero2pos", "fs_brackets", "mid_fs_brackets"]
     for dictionary, label in zip(dictionaries, labels):
         with open(
-                prm["save_hedge"] / "factors" / f"car_{label}.pickle", "wb"
+                prm["save_hedge"] / "factors" / f"{data_type}_{label}.pickle", "wb"
         ) as file:
             pickle.dump(dictionary, file)
 
@@ -449,12 +463,16 @@ def _scaling_factors_behaviour_types(
 
     for data_type in prm["behaviour_types"]:
         if not _enough_data(banks[data_type], prm["weekday_type"]):
+            print(f"not enough data for {data_type} to get factors")
             continue
         factors[data_type] = initialise_dict(prm["day_trans"], "empty_dict")
         for transition in prm["day_trans"]:
-            f_prevs_all, f_nexts_all \
-                = [np.array(banks[data_type][transition][f"f{i_f}"])
-                   for i_f in range(2)]
+            if len(banks[data_type][transition]["f0"]) == 0:
+                print(F"len(banks[{data_type}][{transition}]['f0']) == 0")
+            f_prevs_all, f_nexts_all = [
+                np.array(banks[data_type][transition][f"f{i_f}"])
+                for i_f in range(2)
+            ]
             if len(f_prevs_all) == 0:
                 print(
                     f"{data_type} transition {transition} "
@@ -464,6 +482,11 @@ def _scaling_factors_behaviour_types(
                 f_prevs_all, f_nexts_all, prm,
                 data_type, transition
             )
+            if factors[data_type][transition] is None:
+                print(
+                    f"transition {transition} factors[data_type][transition] is None in _scaling_factors_behaviour_types"
+                )
+                continue
             n_transitions[data_type] += len(f_prevs_all)
 
     if "loads" in prm["data_types"]:
@@ -488,10 +511,6 @@ def _scaling_factors_behaviour_types(
                       f"= {mean_residual['loads'][transition]}")
                 print(f"np.shape(f_prevs) = {np.shape(f_prevs)}")
                 print(f"np.shape(f_nexts) = {np.shape(f_nexts)}")
-
-    if "car" in prm["data_types"] \
-            and _enough_data(banks["car"], prm["weekday_type"]):
-        _ev_transitions(prm, factors)
 
     return factors, mean_residual, residual_distribution_prms, n_transitions
 
@@ -529,6 +548,8 @@ def _scaling_factors_generation(n_data_type_, days_, prm):
         mean_residual, residual_distribution_prms = _fit_residual_distribution(
             factors["f_prevs"], factors["f_nexts"],
             prm, "gen")
+    else:
+        print(f"_scaling_factors_generation len(f_prev_gen) {len(f_prev_gen)}")
 
     return factors, mean_residual, residual_distribution_prms, n_transitions
 
@@ -577,11 +598,10 @@ def scaling_factors(prm, banks, days, n_data_type):
 
     n_data_type: len of bank per data type
     """
+    print("scaling_factors")
     _get_factors_stats(prm, days, banks)
-
     factors, mean_residual, residual_distribution_prms, n_transitions \
         = _scaling_factors_behaviour_types(prm, banks)
-
     if "gen" in prm["data_types"]:
         [
             factors["gen"], mean_residual["gen"],
@@ -589,6 +609,13 @@ def scaling_factors(prm, banks, days, n_data_type):
         ] = _scaling_factors_generation(
             n_data_type["gen"], days["gen"], prm
         )
+    for data_type in prm["data_types"]:
+        print(data_type)
+        if _enough_data(banks[data_type], prm["weekday_type"]):
+            _ev_transitions(prm, factors, data_type)
+
+
+
 
     path = prm["save_other"] / "factors" / "n_transitions.pickle"
     with open(path, "wb") as file:
