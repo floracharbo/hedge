@@ -36,23 +36,26 @@ from src.utils import initialise_dict
 # from tensorflow.keras.layers import Dense
 
 
-def _get_n_trans(n_data_type, data_type, days, n_trans, banks):
-    for i in range(n_data_type[data_type] - 1):
-        day, next_day = [days[data_type][i_] for i_ in [i, i + 1]]
-        same_id = day["id"] == next_day["id"]
-        subsequent_days = day["cum_day"] + 1 == next_day["cum_day"]
-
+def _get_n_trans(n_data_type, data_type, days, n_trans, banks, n_consecutive_days=2):
+    for i in range(n_data_type[data_type] - (n_consecutive_days - 1)):
+        consecutive_days = [days[data_type][d] for d in [i, i + (n_consecutive_days - 1)]]
+        same_id = all(consecutive_days[d]['id'] == consecutive_days[0]["id"] for d in range(n_consecutive_days))
+        subsequent_days = all(consecutive_days[d]["cum_day"] + d == consecutive_days[0]["cum_day"] for d in range(n_consecutive_days))
         if same_id and subsequent_days:  # record transition
             day_types, index_wdt = [
-                [day_[key] for day_ in [day, next_day]]
+                [day_[key] for day_ in consecutive_days]
                 for key in ["day_type", "index_wdt"]
             ]
-            transition = f"{day_types[0]}2{day_types[1]}"
+            transition = ''
+            for d in range(n_consecutive_days):
+                transition += f"{day_types[d]}2"
+            transition = transition[:-1]
             clusters = [
-                days[f"{data_type}_{day_types[i]}"][index_wdt[i]]["cluster"] for i in range(2)
+                days[f"{data_type}_{day_types[i]}"][index_wdt[i]]["cluster"] for i in range(n_consecutive_days)
             ]
-            n_trans[data_type][transition][clusters[0], clusters[1]] += 1
-            for i, day_ in enumerate([day, next_day]):
+            idx = tuple(clusters[d] for d in range(n_consecutive_days))
+            n_trans[data_type][transition][idx] += 1
+            for i, day_ in enumerate(consecutive_days):
                 banks[data_type][transition][f"f{i}"].append(day_["factor"])
 
     return banks, n_trans
@@ -87,7 +90,7 @@ def _transition_probabilities(
                 p_trans[data_type][transition][c0, c1] = (
                     n_trans[data_type][transition][c0, c1]
                     / sum(n_trans[data_type][transition][c0])
-                )
+                ) if sum(n_trans[data_type][transition][c0]) > 0 else None
 
     v_max = np.max(
         [
@@ -637,7 +640,7 @@ def clustering(days, prm, n_data_type):
                 for k in range(prm["n_clus"][data_type]):
                     print(f"k {k}")
                     compute_profile_generators(
-                        vals_k[k], prm["n"], k, statistical_indicators, data_type, prm['save_other']
+                        vals_k[k], prm["n"], k, statistical_indicators, data_type, prm['save_other'], prm
                     )
 
             banks[data_type][day_type] = banks_
