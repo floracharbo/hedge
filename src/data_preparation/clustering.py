@@ -32,101 +32,129 @@ from src.data_preparation.factors_generation import (
     compute_factors_clusters_generators, compute_profile_generators)
 from src.utils import initialise_dict
 
-# from tensorflow.keras.models import Sequential
-# from tensorflow.keras.layers import Dense
-
 
 def _get_n_trans(n_data_type, data_type, days, n_trans, banks, n_consecutive_days=2):
+    if data_type == 'gen':
+        for month in range(12):
+            for i in range(n_consecutive_days):
+                banks[data_type][month][f"f{i}of{n_consecutive_days}"] = []
+
     for i in range(n_data_type[data_type] - (n_consecutive_days - 1)):
-        consecutive_days = [days[data_type][d] for d in [i, i + (n_consecutive_days - 1)]]
+        consecutive_days = [days[data_type][d] for d in range(i, i + n_consecutive_days)]
         same_id = all(consecutive_days[d]['id'] == consecutive_days[0]["id"] for d in range(n_consecutive_days))
-        subsequent_days = all(consecutive_days[d]["cum_day"] + d == consecutive_days[0]["cum_day"] for d in range(n_consecutive_days))
+        subsequent_days = all(
+            consecutive_days[d]["cum_day"] == consecutive_days[0]["cum_day"] + d for d in range(n_consecutive_days)
+        )
         if same_id and subsequent_days:  # record transition
-            day_types, index_wdt = [
-                [day_[key] for day_ in consecutive_days]
-                for key in ["day_type", "index_wdt"]
-            ]
-            transition = ''
-            for d in range(n_consecutive_days):
-                transition += f"{day_types[d]}2"
-            transition = transition[:-1]
-            clusters = [
-                days[f"{data_type}_{day_types[i]}"][index_wdt[i]]["cluster"] for i in range(n_consecutive_days)
-            ]
-            idx = tuple(clusters[d] for d in range(n_consecutive_days))
-            n_trans[data_type][transition][idx] += 1
-            for i, day_ in enumerate(consecutive_days):
-                banks[data_type][transition][f"f{i}"].append(day_["factor"])
+            if data_type == 'gen':
+                i_month = consecutive_days[0]['month'] - 1
+                for i, day_ in enumerate(consecutive_days):
+                    if day_["factor"] < 0:
+                        print(f"gen {i} Negative factor: {day_['factor']}")
+                    banks[data_type][i_month][f"f{i}of{n_consecutive_days}"].append(day_["factor"])
+            else:
+                day_types, index_wdt = [
+                    [day_[key] for day_ in consecutive_days]
+                    for key in ["day_type", "index_wdt"]
+                ]
+                transition = f"{day_types[-2]}2{day_types[-1]}"
+                clusters = [
+                    consecutive_days[d]["cluster"] for d in range(n_consecutive_days)
+                ]
+                idx = tuple(clusters[d] for d in range(n_consecutive_days))
+                n_trans[data_type][transition][idx] += 1
+                for i, day_ in enumerate(consecutive_days):
+                    banks[data_type][transition][f"f{i}of{n_consecutive_days}"].append(day_["factor"])
 
     return banks, n_trans
 
 
 def _transition_probabilities(
-        data_type: str,
-        days: List[dict],
-        p_clus: Dict[str, Dict[str, float]],
-        n_trans: Dict[str, Dict[str, np.ndarray]],
-        p_trans: Dict[str, Dict[str, np.ndarray]],
-        banks: Dict[str, dict],
-        n_clus_all_: int,
-        prm: Dict[str, Any],
-        n_data_type: Dict[str, int],
-) -> Tuple[Dict[str, Dict[str, float]],
-           Dict[str, Dict[str, np.ndarray]],
-           Dict[str, Dict[str, np.ndarray]],
-           Dict[str, dict]]:
+    data_type: str,
+    days: List[dict],
+    p_clus: Dict[str, Dict[str, float]],
+    n_trans: Dict[str, Dict[str, np.ndarray]],
+    p_trans: Dict[str, Dict[str, np.ndarray]],
+    banks: Dict[str, dict],
+    n_clus_all_: int,
+    prm: Dict[str, Any],
+    n_data_type: Dict[str, int],
+    n_consecutive_days: int,
+) -> Tuple[
+    Dict[str, Dict[str, float]],
+    Dict[str, Dict[str, np.ndarray]],
+    Dict[str, Dict[str, np.ndarray]],
+    Dict[str, dict]
+]:
     """Get probabilities of transtioning between day types and clusters."""
     for transition in prm["day_trans"]:
-        n_trans[data_type][transition] = np.zeros((n_clus_all_, n_clus_all_))
-        p_trans[data_type][transition] = np.zeros((n_clus_all_, n_clus_all_))
+        shape = tuple(n_clus_all_ for _ in range(n_consecutive_days))
+        n_trans[data_type][transition] = np.zeros(shape)
+        p_trans[data_type][transition] = np.zeros(shape)
 
     banks, n_trans = _get_n_trans(
-        n_data_type, data_type, days, n_trans, banks
+        n_data_type, data_type, days, n_trans, banks, n_consecutive_days
     )
+    if len(banks['loads']['wd2wd'][f'f0of{n_consecutive_days}']) == 0:
+        print(f"len(banks['loads']['wd2wd']['f0of{n_consecutive_days}']) == 0 after _get_n_trans")
 
     for c0 in range(n_clus_all_):
         for c1 in range(n_clus_all_):
+            if n_consecutive_days == 2:
+                for transition in prm["day_trans"]:
+                    p_trans[data_type][transition][c0, c1] = (
+                        n_trans[data_type][transition][c0, c1]
+                        / sum(n_trans[data_type][transition][c0])
+                    ) if sum(n_trans[data_type][transition][c0]) > 0 else None
+            elif n_consecutive_days == 3:
+                for c2 in range(n_clus_all_):
+                    for transition in prm["day_trans"]:
+                        p_trans[data_type][transition][c0, c1, c2] = (
+                                n_trans[data_type][transition][c0, c1, c2]
+                                / sum(n_trans[data_type][transition][c0, c1])
+                        ) if sum(n_trans[data_type][transition][c0, c1]) > 0 else None
+            else:
+                print(f"implement n_consecutive_days = {n_consecutive_days}")
+
+    with open(prm["save_hedge"] / "clusters" / f"{data_type}_p_trans_n_consecutive_days{n_consecutive_days}", "wb") as file:
+        pickle.dump(p_trans, file)
+
+    if n_consecutive_days == 2:
+        v_max = np.max(
+            [
+                np.max(p_trans[data_type][transition])
+                for transition in prm["day_trans"]
+            ]
+        )
+        v_min = np.min(
+            [
+                np.min(p_trans[data_type][transition])
+                for transition in prm["day_trans"]
+            ]
+        )
+
+        if prm["plots"]:
             for transition in prm["day_trans"]:
-                p_trans[data_type][transition][c0, c1] = (
-                    n_trans[data_type][transition][c0, c1]
-                    / sum(n_trans[data_type][transition][c0])
-                ) if sum(n_trans[data_type][transition][c0]) > 0 else None
+                _plot_heat_map_p_trans(
+                    p_trans, transition, data_type, v_min, v_max, prm["save_other"]
+                )
 
-    v_max = np.max(
-        [
-            np.max(p_trans[data_type][transition])
-            for transition in prm["day_trans"]
-        ]
-    )
-    v_min = np.min(
-        [
-            np.min(p_trans[data_type][transition])
-            for transition in prm["day_trans"]
-        ]
-    )
-
-    if prm["plots"]:
-        for transition in prm["day_trans"]:
+            # plot once with the colour bar
             _plot_heat_map_p_trans(
-                p_trans, transition, data_type, v_min, v_max, prm["save_other"]
+                p_trans, transition, data_type, v_min,
+                v_max, prm["save_other"], colourbar=True
             )
 
-        # plot once with the colour bar
-        _plot_heat_map_p_trans(
-            p_trans, transition, data_type, v_min,
-            v_max, prm["save_other"], colourbar=True
-        )
-
-    p_clus[data_type] = {}
-    for day_type in prm["weekday_type"]:
-        pcluss = [
-            banks[data_type][day_type][k]["p_clus"] for k in range(n_clus_all_)
-        ]
-        p_clus[data_type][day_type] = pcluss
-    if prm['gan_generation']:
-        compute_factors_clusters_generators(
-            prm, n_data_type, data_type, days, p_clus, p_trans, n_clus_all_
-        )
+        p_clus[data_type] = {}
+        for day_type in prm["weekday_type"]:
+            pcluss = [
+                banks[data_type][day_type][k]["p_clus"] for k in range(n_clus_all_)
+            ]
+            p_clus[data_type][day_type] = pcluss
+        if prm['gan_generation_factors_clusters']:
+            compute_factors_clusters_generators(
+                prm, n_data_type, data_type, days, p_clus, p_trans, n_clus_all_
+            )
 
     return p_clus, p_trans, n_trans, banks
 
@@ -425,27 +453,40 @@ def _get_features(days_, data_type, prm):
     return transformed_features, to_cluster, i_zeros, norm_vals
 
 
-def _initialise_cluster_dicts(prm):
+def _initialise_cluster_transition_dicts(prm, n_consecutive_days, banks):
     """Initialise dictionaries for storing cluster info."""
-    n_trans, p_trans, p_clus, n_zeros, n_clus_all, banks = [
-        initialise_dict(["loads", "car"], "empty_dict") for _ in range(6)
+    n_trans, p_trans = [
+        initialise_dict(["loads", "car"], "empty_dict") for _ in range(2)
     ]
-
     for data_type in ["loads", "car"]:
         n_trans[data_type], p_trans[data_type] = [
             initialise_dict(prm["day_trans"]) for _ in range(2)
         ]
-        p_clus[data_type], n_zeros[data_type] = [
-            initialise_dict(prm["weekday_type"]) for _ in range(2)
-        ]
-        banks[data_type] = initialise_dict(
-            prm["weekday_type"] + prm["day_trans"])
         for transition in prm["day_trans"]:
-            banks[data_type][transition] = initialise_dict(
-                [f"f{i}" for i in range(2)]
-            )
+            for i in range(n_consecutive_days):
+                banks[data_type][transition][f"f{i}of{n_consecutive_days}"] = []
 
-    return n_trans, p_trans, p_clus, n_zeros, n_clus_all, banks
+    return n_trans, p_trans, banks
+
+def _initialise_cluster_dicts(prm):
+    """Initialise dictionaries for storing cluster info."""
+    p_clus, n_zeros, n_clus_all, banks = [
+        {data_type: {} for data_type in ["loads", "car"]}
+        for _ in range(4)
+    ]
+    for data_type in ["loads", "car"]:
+        p_clus[data_type], n_zeros[data_type] = [
+            {weekday_type: [] for weekday_type in prm["weekday_type"]}
+            for _ in range(2)
+        ]
+        banks[data_type] = {day_type: {} for day_type in prm["weekday_type"] + prm["day_trans"]}
+
+    min_cdfs, max_cdfs = [
+        {data_type: {} for data_type in prm["data_types"]}
+        for _ in range(2)
+    ]
+
+    return p_clus, n_zeros, n_clus_all, banks, min_cdfs, max_cdfs
 
 
 def _group_gen_month(days_, prm):
@@ -533,6 +574,8 @@ def _save_clustering(
     path = save_path / "clusters"
     for var, label in zip([p_clus, p_trans, min_cdfs, max_cdfs],
                           ["p_clus", "p_trans", "min_cdfs", "max_cdfs"]):
+        if label == 'min_cdfs':
+            print(f"save min_cdfs {min_cdfs}")
         with open(path / f"{label}.pickle", "wb") as file:
             pickle.dump(var, file)
 
@@ -573,95 +616,97 @@ def split_day_types(days, prm, n_data_type):
 
 def clustering(days, prm, n_data_type):
     """Cluster the data profiles in behaviour groups."""
+    done_clustering = {
+        data_type: {day_type: False for day_type in prm["weekday_type"]}
+        for data_type in prm["behaviour_types"]
+    }
     days, n_day_type = split_day_types(days, prm, n_data_type)
+    p_clus, n_zeros, n_clus_all, banks, min_cdfs, max_cdfs = _initialise_cluster_dicts(prm)
+    for n_consecutive_days in [3, 2]:
+        print(f"clustering with {n_consecutive_days} consecutive days")
+        n_trans, p_trans, banks = _initialise_cluster_transition_dicts(prm, n_consecutive_days, banks)
+        enough_data = {}
 
-    (
-        n_trans,
-        p_trans,
-        p_clus,
-        n_zeros,
-        n_clus_all,
-        banks,
-    ) = _initialise_cluster_dicts(prm)
-
-    enough_data = {}
-    min_cdfs, max_cdfs = [
-        initialise_dict(prm["data_types"], "empty_dict") for _ in range(2)
-    ]
-    # n_clus_all includes zeros
-    for data_type in prm["behaviour_types"]:
-        print(f"data_type {data_type}")
-        enough_data[data_type] = True
-        for day_type in prm["weekday_type"]:
-            print(f"day_type {day_type}")
-            days_ = days[f"{data_type}_{day_type}"]
-            transformed_features, to_cluster, i_zeros, norm_vals = _get_features(
-                days_, data_type, prm
-            )
-            if len(transformed_features) < 2:
-                print(f"len(transformed_features) {len(transformed_features)} "
-                      f"data_type {data_type} "
-                      f"day_type {day_type} insufficient for clustering")
-                banks[data_type][day_type] = None
-                enough_data[data_type] = False
-                continue
-            if prm["plots"]:
-                _elbow_method(
-                    transformed_features, data_type, day_type, prm["save_other"]
-                )
-            [labels, cluster_distance, n_zeros_, days[f"{data_type}_{day_type}"]] = _cluster_module(
-                transformed_features, prm["n_clus"][data_type],
-                to_cluster, days_, i_zeros
-            )
-            vals_k, idx_k_clustered = _get_vals_k(
-                labels, norm_vals,
-                prm["n_clus"][data_type]
-            )
-
-            banks_, n_clus_all[data_type] = _get_p_clus(
-                vals_k, n_day_type[data_type][day_type],
-                data_type, n_zeros_
-            )
-            banks_ = _get_profs(
-                to_cluster, banks_, days_, data_type,
-                idx_k_clustered, cluster_distance
-            )
-            distances = [bank_["dists"] for bank_ in banks_.values()]
-            if data_type == "car":
-                distances = distances[:-1]
-            [banks_, min_cdfs[data_type][day_type], max_cdfs[data_type][day_type]] = _get_cdfs(
-                distances, f"{data_type} {day_type}", prm, banks_
-            )
-            statistical_indicators = _plot_clusters(
-                transformed_features, norm_vals, data_type,
-                day_type, banks_, vals_k, prm, prm["save_other"]
-            )
-            if prm['gan_generation']:
-                for k in range(prm["n_clus"][data_type]):
-                    print(f"k {k}")
-                    compute_profile_generators(
-                        vals_k[k], prm["n"], k, statistical_indicators, data_type, prm['save_other'], prm
+        # n_clus_all includes zeros
+        for data_type in prm["behaviour_types"]:
+            print(f"data_type {data_type}")
+            enough_data[data_type] = True
+            for day_type in prm["weekday_type"]:
+                print(f"day_type {day_type}")
+                days_ = days[f"{data_type}_{day_type}"]
+                if not done_clustering[data_type][day_type]:
+                    transformed_features, to_cluster, i_zeros, norm_vals = _get_features(
+                        days_, data_type, prm
                     )
+                    if len(transformed_features) < 2:
+                        print(f"len(transformed_features) {len(transformed_features)} "
+                              f"data_type {data_type} "
+                              f"day_type {day_type} insufficient for clustering")
+                        banks[data_type][day_type] = None
+                        enough_data[data_type] = False
+                        continue
+                    if prm["plots"]:
+                        _elbow_method(
+                            transformed_features, data_type, day_type, prm["save_other"]
+                        )
+                    [labels, cluster_distance, n_zeros_, days[f"{data_type}_{day_type}"]] = _cluster_module(
+                        transformed_features, prm["n_clus"][data_type],
+                        to_cluster, days_, i_zeros
+                    )
+                    vals_k, idx_k_clustered = _get_vals_k(
+                        labels, norm_vals,
+                        prm["n_clus"][data_type]
+                    )
+                    done_clustering[data_type][day_type] = True
+                    banks_, n_clus_all[data_type] = _get_p_clus(
+                        vals_k, n_day_type[data_type][day_type],
+                        data_type, n_zeros_
+                    )
+                    banks_ = _get_profs(
+                        to_cluster, banks_, days_, data_type,
+                        idx_k_clustered, cluster_distance
+                    )
+                    distances = [bank_["dists"] for bank_ in banks_.values()]
+                    if data_type == "car":
+                        distances = distances[:-1]
+                    [banks_, min_cdfs[data_type][day_type], max_cdfs[data_type][day_type]] = _get_cdfs(
+                        distances, f"{data_type} {day_type}", prm, banks_
+                    )
+                    statistical_indicators = _plot_clusters(
+                        transformed_features, norm_vals, data_type,
+                        day_type, banks_, vals_k, prm, prm["save_other"]
+                    )
+                    if prm['gan_generation_profiles']:
+                        for k in range(prm["n_clus"][data_type]):
+                            print(f"k {k}")
+                            compute_profile_generators(
+                                vals_k[k], prm["n"], k, statistical_indicators, data_type, prm['save_other'], prm
+                            )
 
-            banks[data_type][day_type] = banks_
-            n_zeros[data_type][day_type] = n_zeros_
+                    banks[data_type][day_type] = banks_
+                    n_zeros[data_type][day_type] = n_zeros_
 
-        # obtain probabilities transition between day types and clusters
-        if not enough_data[data_type]:
-            print(f"not enough data {data_type}")
-            continue
+            # obtain probabilities transition between day types and clusters
+            if not enough_data[data_type]:
+                print(f"not enough data {data_type}")
+                continue
 
-        p_clus, p_trans, n_trans, banks = _transition_probabilities(
-            data_type, days, p_clus, n_trans, p_trans,
-            banks, n_clus_all[data_type], prm, n_data_type,
-        )
-
+            p_clus, p_trans, n_trans, banks = _transition_probabilities(
+                data_type, days, p_clus, n_trans, p_trans,
+                banks, n_clus_all[data_type], prm, n_data_type, n_consecutive_days
+            )
     if "gen" in prm["data_types"]:
         banks["gen"], min_cdfs["gen"], max_cdfs["gen"] = _group_gen_month(days["gen"], prm)
+        for n_consecutive_days in [3, 2]:
+            banks, _ = _get_n_trans(
+                n_data_type, 'gen', days, n_trans, banks, n_consecutive_days
+            )
 
     # transitions probabilities
     _save_clustering(
         prm, prm["save_hedge"], banks, p_clus, p_trans, min_cdfs, max_cdfs
     )
+    if len(banks['loads']['wd2wd'][f'f0of{n_consecutive_days}']) == 0:
+        print(f"len(banks['loads']['wd2wd'][f0of{n_consecutive_days}]) == 0 in clustering")
 
     return banks
