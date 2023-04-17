@@ -150,9 +150,17 @@ def data_id(prm, data_type):
 
 def run_id(prm):
     """Return an identifier to save the current run's results."""
+    data_types = prm['data_types'] if 'data_types' in prm else prm['syst']['data_types']
     run_id = f"n{prm['n']}"
-    if len(prm["data_types"]) < 3 or not all(n_rows == "all" for n_rows in prm['n_rows'].values()):
-        for data_type in prm["data_types"]:
-            run_id += f"_{data_type}_{prm['n_rows'][data_type]}"
+    if len(data_types) < 3 or not all(n_rows == "all" for n_rows in prm['n_rows'].values()):
+        for data_type in data_types:
+            run_id += f"_{data_type}_{int(prm['n_rows'][data_type])}"
 
     return run_id
+
+def f_to_interval(f, fs_brackets):
+    interval = [
+        j for j in range(len(fs_brackets) - 1) if f >= fs_brackets[j]
+    ][-1]
+
+    return interval
