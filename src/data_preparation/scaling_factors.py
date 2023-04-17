@@ -7,12 +7,12 @@ from typing import List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.colors import LogNorm
-from scipy.stats import norm, pearsonr
-from scipy import interpolate
 import pandas as pd
+from matplotlib.colors import LogNorm
+from scipy import interpolate
+from scipy.stats import norm, pearsonr
 
-from src.utils import initialise_dict
+from src.utils import f_to_interval, initialise_dict
 
 
 def _plot_f_next_vs_prev(prm, factors_path, f_prevs, f_nexts, label):
@@ -85,120 +85,182 @@ def _get_correlation(
     )
 
     np.save(factors_path / f"corr_{data_type}_{label}", factors["corr"])
-    factors["f_prevs"] = f_prevs
-    factors["f_nexts"] = f_nexts
+    factors["f0of2"] = f_prevs
+    factors["f1of2"] = f_nexts
 
     return factors
 
 
 def _count_transitions(
-        f_prevs: List[float],
-        f_nexts: List[float],
-        n_intervals: int,
-        fs_brackets: List[float]):
-    n_pos, p_pos = [np.zeros((n_intervals, n_intervals)) for _ in range(2)]
+    data_type,
+    consecutive_factors,
+    n_intervals: int,
+    fs_brackets: List[float],
+    n_consecutive_days: int = 2,
+    transition: str = "",
+):
+    shape = tuple(n_intervals for _ in range(n_consecutive_days))
+    n_pos, p_pos = [np.zeros(shape) for _ in range(2)]
     n_zero2pos = np.zeros(n_intervals)
-    i_non_zeros \
-        = [i for i, (f_prev, f_next) in enumerate(zip(f_prevs, f_nexts))
-           if f_prev is not None
-           and f_prev > 0
-           and f_next is not None
-           and f_next > 0]
-    i_zero_to_nonzero \
-        = [i for i, (f_prev, f_next) in enumerate(zip(f_prevs, f_nexts))
-           if (f_prev is None or f_prev == 0)
-           and f_next is not None
-           and f_next > 0]
+    if n_consecutive_days == 2:
+        f_prevs, f_nexts = consecutive_factors[0], consecutive_factors[1]
+        i_non_zeros = [
+            i for i, (f_prev, f_next) in enumerate(zip(f_prevs, f_nexts))
+            if f_prev is not None
+            and f_prev > 0
+            and f_next is not None
+            and f_next > 0
+        ]
+        i_zero_to_nonzero = [
+            i for i, (f_prev, f_next) in enumerate(zip(f_prevs, f_nexts))
+            if (f_prev is None or f_prev == 0)
+               and f_next is not None
+               and f_next > 0
+        ]
+    else:
+        i_non_zeros = list(range(len(consecutive_factors[0])))
+        i_zero_to_nonzero = []
+
+    if not (data_type == 'car' and transition == 'we2wd'):
+        assert len(i_non_zeros) > 0, \
+            f"len(i_non_zeros) == 0, data_type {data_type} transition {transition} n_consecutive_days {n_consecutive_days}"
+
     for i in i_non_zeros:
-        i_prev = [
-            j for j in range(n_intervals) if f_prevs[i] >= fs_brackets[j]
-        ][-1]
-        i_next = [
-            j for j in range(n_intervals) if f_nexts[i] >= fs_brackets[j]
-        ][-1]
-        n_pos[i_prev, i_next] += 1
+        idx = tuple(
+            f_to_interval(f, fs_brackets)
+            for f in consecutive_factors[:, i]
+        )
+        n_pos[idx] += 1
+    if not (data_type == 'car' and transition == 'we2wd'):
+        assert np.sum(n_pos) > 0, \
+            f"np.sum(n_pos) == 0, data_type {data_type} transition {transition} n_consecutive_days {n_consecutive_days}"
+
     for i in i_zero_to_nonzero:
         i_next = [
             j for j in range(n_intervals) if f_nexts[i] >= fs_brackets[j]
         ][-1]
         n_zero2pos[i_next] += 1
 
-    if np.sum(n_pos) > 0:
+    if n_consecutive_days == 2:
         for i_prev in range(n_intervals):
             sum_next = sum(n_pos[i_prev])
             if sum_next > 0:
                 p_pos[i_prev] = n_pos[i_prev] / sum_next
             else:
                 print(f"i_prev {i_prev} sum_next {sum_next}")
-                p_pos[i_prev] = np.empty((1, n_intervals))
-        for i_next in range(n_intervals):
-            assert isinstance(p_pos[i_next], np.ndarray)
-            non0 = np.where(p_pos[:, i_next] != 0)[0]
+                p_pos[i_prev] = np.zeros((1, n_intervals))
+            non0 = np.where(p_pos[i_prev] != 0)[0]
             if len(non0) > 1:
-                f = interpolate.interp1d(non0, p_pos[non0, i_next])
+                interpolate_function = interpolate.interp1d(non0, p_pos[i_prev, non0])
                 new_xs = range(min(non0), max(non0))
-                p_pos[new_xs, i_next] = f(new_xs)
-        for i in range(len(p_pos)):
-            if abs(sum(p_pos[i]) - 1) > 1e-3:
-                p_pos[i] /= sum(p_pos[i])
-    else:
-        p_pos = n_pos
+                p_pos[i_prev, new_xs] = interpolate_function(new_xs)
+            if np.sum(p_pos[i_prev]) != 0 and abs(sum(p_pos[i_prev]) - 1) > 1e-3:
+                p_pos[i_prev] /= sum(p_pos[i_prev])
 
-    if np.sum(n_zero2pos) > 0:
+    elif n_consecutive_days == 3:
+        for i_prev in range(n_intervals):
+            for i_prev2 in range(n_intervals):
+                sum_next = sum(n_pos[i_prev, i_prev2])
+                if sum_next > 0:
+                    p_pos[i_prev, i_prev2] = n_pos[i_prev, i_prev2] / sum_next
+                else:
+                    p_pos[i_prev, i_prev2] = np.zeros((1, n_intervals))
+
+                if not np.all(p_pos >= 0):
+                    print(f"184 p_pos[{i_prev}, {i_prev2}] = {p_pos[i_prev, i_prev2]}")
+                    print(f"n_pos[{i_prev}, {i_prev2}]= {n_pos[i_prev, i_prev2]}")
+                assert np.all(p_pos >= 0), f"{data_type} {transition}"
+                non0 = np.where(p_pos[i_prev, i_prev2] != 0)[0]
+                if len(non0) > 1:
+                    interpolate_function = interpolate.interp1d(non0, p_pos[i_prev, i_prev2, non0])
+                    new_xs = range(min(non0), max(non0))
+                    p_pos[i_prev, i_prev2, new_xs] = interpolate_function(new_xs)
+
+                sum_p_pos = sum(p_pos[i_prev, i_prev2])
+                if sum_p_pos != 0 and abs(sum_p_pos - 1) > 1e-3:
+                    p_pos[i_prev, i_prev2] /= sum_p_pos
+
+    else:
+        print(f"implement n_consecutive_days {n_consecutive_days}")
+
+    if not (data_type == 'car' and transition == 'we2wd'):
+        if not np.all(p_pos >= 0):
+            np.save("p_pos_error", p_pos)
+            i_error = np.where(p_pos < 0)
+            print(f"i_error {i_error} p_pos[i_error] {p_pos[i_error]}")
+            print(f"data_type {data_type} transition {transition} n_consecutive_days {n_consecutive_days}")
+        assert np.all(p_pos >= 0), f"not np.all(p_pos >= 0) {data_type} {transition}"
+    if n_consecutive_days == 2 and np.sum(n_zero2pos) > 0:
+        print(f"np.sum(n_zero2pos) {np.sum(n_zero2pos)} > 0")
         p_zero2pos = n_zero2pos / sum(n_zero2pos) if sum(n_zero2pos) > 0 else np.zeros((1, n_intervals))
         p_zero2pos = np.reshape(p_zero2pos, (1, n_intervals))
 
         assert abs(np.sum(p_zero2pos) - 1) < 1e-3, f"sum(p_zero2pos) {sum(p_zero2pos)}"
 
     else:
+        if n_consecutive_days == 2:
+            print(f"n_consecutive_days = 2 and np.sum(n_zero2pos) {np.sum(n_zero2pos)} == 0")
         p_zero2pos = n_zero2pos
 
-    print(f"p_zero2pos {p_zero2pos}")
+    print(f"data_type {data_type} transition {transition} n_consecutive_days {n_consecutive_days} "
+          f"np.sum(n_pos) {np.sum(n_pos)} "
+          f"p_pos >1e-5 {len(np.where(p_pos>1e-5)[0])}")
 
     return p_pos, p_zero2pos
 
 
 def _transition_intervals(
-        f_prevs: List[float],
-        f_nexts: List[float],
+        consecutive_factors,
         transition: str,
         prm: int,
         data_type: str,
+        n_consecutive_days: int,
 ) -> Tuple[np.ndarray, List[float], np.ndarray, List[float]]:
-    fs_brackets = np.linspace(
-        min(min(f_prevs), min(f_nexts)),
-        max(max(f_prevs), max(f_nexts)),
-        prm["n_intervals"] + 1
-    )
+    consecutive_factors = np.array(consecutive_factors)
+
+    if prm['brackets_definition'] == 'percentile':
+        fs_brackets = np.percentile(
+            consecutive_factors,
+            np.linspace(0, 100, prm["n_intervals"] + 1)
+        )
+    elif prm['brackets_definition'] == 'linspace':
+        fs_brackets = np.linspace(
+            np.min(consecutive_factors), np.max(consecutive_factors), prm["n_intervals"] + 1
+        )
+
     mid_fs_brackets = [
         np.mean(fs_brackets[i: i + 2]) for i in range(prm["n_intervals"])
     ]
     print(transition)
     p_pos, p_zero2pos = _count_transitions(
-        f_prevs, f_nexts, prm["n_intervals"], fs_brackets
+        data_type, consecutive_factors, prm["n_intervals"], fs_brackets,
+        n_consecutive_days=n_consecutive_days, transition=transition
     )
-
     labels_prob = [
         f"{data_type} non zero factor transition probabilities",
         f"{data_type} factor probabilities after a day without trips",
     ]
 
     for trans_prob, label_prob in zip([p_pos, p_zero2pos], labels_prob):
-        # trans_prob: transition probabililites
+        # trans_prob: transition probabilities
         print(F"np.shape(trans_prob) {np.shape(trans_prob)}")
         if len(np.shape(trans_prob)) == 1:
             trans_prob = np.reshape(trans_prob, (1, len(trans_prob)))
         trans_prob[(trans_prob == 0) | (np.isnan(trans_prob))] = 1e-5
-        assert (trans_prob >= 0).all(), "error not (trans_prob >= 0).all()"
-        if prm["plots"]:
+        if not ((trans_prob >= 0).all()):
+            print(f"label_prob {label_prob} not (trans_prob >= 0).all()")
+            if not (data_type == 'car' and transition == 'we2wd'):
+                assert np.sum(trans_prob) > 0, "error not np.sum(trans_prob) > 0"
+        if prm["plots"] and n_consecutive_days == 2:
             fig, ax = plt.subplots()
             ax.imshow(trans_prob, norm=LogNorm())
             tick_labels = [
                 f"{label:.1f}" for label in
                 [0] + [fs_brackets[int(i - 1)] for i in ax.get_xticks()][1:]
             ]
-            title \
-                = f"{data_type} {label_prob} {transition} n_intervals {prm['n_intervals']}"
+            title = \
+                f"{data_type} {label_prob} {transition} n_intervals {prm['n_intervals']} " \
+                f"brackets_definition {prm['brackets_definition']}"
             plt.title(title)
             ax.set_xticklabels(tick_labels)
             ax.set_yticklabels(tick_labels)
@@ -330,6 +392,7 @@ def min_max_x_to_kurtosis_pdf(xmin, xmax, norm_prms, kurtosis):
 
 
 def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
+    print(f"fit_residual_distribution f_prevs {f_prevs} f_nexts {f_nexts}")
     assert sum(1 for f_prev in f_prevs if f_prev is None) == 0,\
         "None f_prevs"
 
@@ -361,7 +424,7 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
             residual_distribution_prms = ['kurtosis'] + list(norm_prms) + [kurtosis]
         else:
             distr = prm["candidate_factor_distributions"][distr_str]
-            residual_distribution_prms = ['distr_str'] + list(distr.fit(errors))
+            residual_distribution_prms = [distr_str] + list(distr.fit(errors))
             factor_residuals = np.linspace(
                 distr.ppf(0.01, *residual_distribution_prms[1:]),
                 distr.ppf(0.99, *residual_distribution_prms[1:]),
@@ -375,6 +438,7 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
         fig = plt.figure()
         plt.hist(errors, density=1, alpha=0.5, label="data", bins=50)
         plt.plot(factor_residuals, pdf, label=f"{distr_str} pdf")
+        print(f"factor_residuals {factor_residuals} pdf {pdf}")
         assert 0.95 < integral_cdf(factor_residuals, pdf) < 1.02, \
             f"integral_cdf(factor_residuals, pdf) {integral_cdf(factor_residuals, pdf) }"
 
@@ -412,7 +476,7 @@ def _enough_data(banks_, weekday_type):
     return not day_types or sum(banks_[day_type] is None for day_type in weekday_type) == 0
 
 
-def _ev_transitions(prm, factors, data_type):
+def _ev_transitions(prm, factors, data_type, n_consecutive_days):
     p_pos, p_zero2pos, fs_brackets, mid_fs_brackets = [{} for _ in range(4)]
 
     transitions_specific = prm["day_trans"][0] in factors[data_type]
@@ -422,66 +486,76 @@ def _ev_transitions(prm, factors, data_type):
                 print(F"factors[{data_type}][{transition}] is None")
             else:
                 print(f"data_type {data_type} transition {transition}")
-                f_prevs, f_nexts = [
-                    factors[data_type][transition][f] for f in ["f_prevs", "f_nexts"]
-                ]
+                consecutive_factors = np.array([
+                    factors[data_type][transition][f"f{f}of{n_consecutive_days}"] for f in range(n_consecutive_days)
+                ])
                 # car transitions
                 [p_pos[transition], p_zero2pos[transition],
-                 fs_brackets[transition], mid_fs_brackets[transition]] \
-                    = _transition_intervals(f_prevs, f_nexts, transition, prm, data_type)
+                 fs_brackets[transition], mid_fs_brackets[transition]] = _transition_intervals(
+                    consecutive_factors, transition, prm, data_type, n_consecutive_days
+                )
 
-        all_f_prevs, all_f_nexts = np.array([]), np.array([])
+        all_consecutive_factors = [[] for f in range(n_consecutive_days)]
 
         for transition in prm["day_trans"]:
-            all_f_prevs = np.concatenate((all_f_prevs, factors[data_type][transition]['f_prevs']))
-            all_f_nexts = np.concatenate((all_f_nexts, factors[data_type][transition]['f_nexts']))
+            for f in range(n_consecutive_days):
+                all_consecutive_factors[f].extend(factors[data_type][transition][f"f{f}of{n_consecutive_days}"])
     else:
-        all_f_prevs = factors[data_type]['f_prevs']
-        all_f_nexts = factors[data_type]['f_nexts']
+        try:
+            all_consecutive_factors = [
+                factors[data_type][f"f{f}of{n_consecutive_days}"] for f in range(n_consecutive_days)
+            ]
+        except Exception as ex:
+            print(f"factors[{data_type}].keys() = {factors[data_type].keys()}")
+            np.save('factors_errors', factors)
+
+    all_consecutive_factors = np.array(all_consecutive_factors)
     [
         p_pos['all'], p_zero2pos['all'],
         fs_brackets['all'], mid_fs_brackets['all']
-    ] = _transition_intervals(all_f_prevs, all_f_nexts, 'all', prm, data_type)
-    dictionaries = p_pos, p_zero2pos, fs_brackets, mid_fs_brackets
-    labels = ["p_pos", "p_zero2pos", "fs_brackets", "mid_fs_brackets"]
-    for dictionary, label in zip(dictionaries, labels):
-        with open(
-                prm["save_hedge"] / "factors" / f"{data_type}_{label}.pickle", "wb"
-        ) as file:
-            pickle.dump(dictionary, file)
+    ] = _transition_intervals(all_consecutive_factors, 'all', prm, data_type, n_consecutive_days)
 
+    return p_pos, p_zero2pos, fs_brackets, mid_fs_brackets
 
 def _scaling_factors_behaviour_types(
-        prm: dict,
-        banks: dict,
+    prm: dict,
+    banks: dict,
+    n_consecutive_days: int,
+    factors: dict,
 ) -> Tuple[dict, dict, dict, dict]:
     mean_residual, residual_distribution_prms = [
         initialise_dict(prm["CLNR_types"], "empty_dict") for _ in range(2)
     ]
-    factors = initialise_dict(prm["data_types"], "empty_dict")
     n_transitions = initialise_dict(prm["data_types"], "zero")
 
     for data_type in prm["behaviour_types"]:
         if not _enough_data(banks[data_type], prm["weekday_type"]):
             print(f"not enough data for {data_type} to get factors")
             continue
-        factors[data_type] = initialise_dict(prm["day_trans"], "empty_dict")
         for transition in prm["day_trans"]:
-            if len(banks[data_type][transition]["f0"]) == 0:
-                print(F"len(banks[{data_type}][{transition}]['f0']) == 0")
-            f_prevs_all, f_nexts_all = [
-                np.array(banks[data_type][transition][f"f{i_f}"])
-                for i_f in range(2)
-            ]
-            if len(f_prevs_all) == 0:
+            if len(banks[data_type][transition][f"f0of{n_consecutive_days}"]) == 0:
+                print(F"len(banks[{data_type}][{transition}]['f0of{n_consecutive_days}']) == 0")
+            all_consecutive_factors = np.array([
+                np.array(banks[data_type][transition][f"f{i_f}of{n_consecutive_days}"])
+                for i_f in range(n_consecutive_days)
+            ])
+            if len(all_consecutive_factors[0]) == 0:
                 print(
                     f"{data_type} transition {transition} "
                     f"len f_prevs_all == 0"
                 )
-            factors[data_type][transition] = _get_correlation(
-                f_prevs_all, f_nexts_all, prm,
-                data_type, transition
-            )
+            f_prevs_all = all_consecutive_factors[0]
+            if n_consecutive_days == 2:
+                all_consecutive_factors = np.array(all_consecutive_factors)
+                f_nexts_all = all_consecutive_factors[1]
+                factors[data_type][transition] = _get_correlation(
+                    f_prevs_all, f_nexts_all, prm, data_type, transition
+                )
+            elif n_consecutive_days == 3:
+                print(f"n_consecutive_days = 3 in _scaling_factors_behaviour_types")
+                for i in range(3):
+                    label = f"f{i}of{n_consecutive_days}"
+                    factors[data_type][transition][label] = banks[data_type][transition][label]
             if factors[data_type][transition] is None:
                 print(
                     f"transition {transition} factors[data_type][transition] is None in _scaling_factors_behaviour_types"
@@ -489,8 +563,9 @@ def _scaling_factors_behaviour_types(
                 continue
             n_transitions[data_type] += len(f_prevs_all)
 
-    if "loads" in prm["data_types"]:
+    if n_consecutive_days == 2 and "loads" in prm["data_types"]:
         for transition in prm["day_trans"]:
+            print(f"loads {transition}")
             # Household demand
             if factors["loads"][transition] is None:
                 mean_residual["loads"][transition] = None
@@ -498,10 +573,12 @@ def _scaling_factors_behaviour_types(
                 print(f"factors['loads'][{transition}] is None")
                 continue
 
-            f_prevs, f_nexts = [
-                factors["loads"][transition][f] for f in ["f_prevs", "f_nexts"]
-            ]
-
+            consecutive_factors = np.array([
+                factors["loads"][transition][f"f{i_f}of{n_consecutive_days}"] for i_f in range(n_consecutive_days)
+            ])
+            print(f"np.shape(consecutive_factors) {np.shape(consecutive_factors)}")
+            f_prevs = consecutive_factors[0]
+            f_nexts = consecutive_factors[1]
             assert sum(1 for f_prev in f_prevs if f_prev == 0) == 0, \
                 "need to account for Nones for fit norm"
             mean_residual["loads"][transition], residual_distribution_prms["loads"][transition] \
@@ -512,44 +589,59 @@ def _scaling_factors_behaviour_types(
                 print(f"np.shape(f_prevs) = {np.shape(f_prevs)}")
                 print(f"np.shape(f_nexts) = {np.shape(f_nexts)}")
 
+    if n_consecutive_days == 3:
+        print(f"n_consecutive_days = 3 in _scaling_factors_behaviour_types")
+        for i in range(3):
+            label = f"f{i}of{n_consecutive_days}"
+            factors['gen'][label] = []
+            for m in range(12):
+                factors['gen'][label].extend(banks['gen'][m][label])
+
     return factors, mean_residual, residual_distribution_prms, n_transitions
 
 
-def _get_month_factors_gen(n_data_type_, days_):
-    f_prev_gen, f_next_gen = [], []
-    for i in range(n_data_type_ - 1):
-        day, next_day = [days_[i_] for i_ in [i, i + 1]]
-        same_id = day["id"] == next_day["id"]
-        subsequent_days = day["cum_day"] + 1 == next_day["cum_day"]
-        if (
-                same_id
-                and subsequent_days
-        ):  # record transition
-            f_prev_gen.append(day["factor"])
-            f_next_gen.append(next_day["factor"])
+def _get_month_factors_gen(n_data_type_, days_, n_consecutive_days):
+    subsequent_factors = []
+    for i in range(n_data_type_ - (n_consecutive_days - 1)):
+        consecutive_days = [days_[i_] for i_ in range(i, i + n_consecutive_days)]
+        same_id = all(consecutive_days[d]["id"] == consecutive_days[0]["id"] for d in range(n_consecutive_days))
+        subsequent_days = all(consecutive_days[0]["cum_day"] + d == consecutive_days[d]["cum_day"] for d in range(n_consecutive_days))
+        if same_id and subsequent_days:
+            subsequent_factors.append([consecutive_days[d]['factor'] for d in range(n_consecutive_days)])
+            # f_prev_gen.append(day["factor"])
+            # f_next_gen.append(next_day["factor"])
+    subsequent_factors = np.array(subsequent_factors)
 
-    return f_prev_gen, f_next_gen
+    return subsequent_factors
 
 
-def _scaling_factors_generation(n_data_type_, days_, prm):
+def _scaling_factors_generation(n_data_type_, days_, prm, n_consecutive_days):
     # generation
     # obtain subsequent factors
     n_transitions = 0
-    f_prev_gen, f_next_gen \
-        = _get_month_factors_gen(n_data_type_, days_)
-    n_transitions += len(f_prev_gen)
+    subsequent_factors = _get_month_factors_gen(n_data_type_, days_, n_consecutive_days)
+    n_transitions += len(subsequent_factors)
 
-    factors = _get_correlation(
-        f_prev_gen, f_next_gen, prm, "gen"
-    )
+    if n_consecutive_days == 2:
+        f_prev_gen = subsequent_factors[:, 0]
+        f_next_gen = subsequent_factors[:, 1]
+        factors = _get_correlation(
+            f_prev_gen, f_next_gen, prm, "gen", n_consecutive_days
+        )
 
-    # fit norm
-    if len(f_prev_gen) > 0:
-        mean_residual, residual_distribution_prms = _fit_residual_distribution(
-            factors["f_prevs"], factors["f_nexts"],
-            prm, "gen")
+        # fit norm
+        if len(f_prev_gen) > 0:
+            mean_residual, residual_distribution_prms = _fit_residual_distribution(
+                factors["f0of2"], factors["f1of2"],
+                prm, "gen")
+        else:
+            print(f"_scaling_factors_generation len(f_prev_gen) {len(f_prev_gen)}")
     else:
-        print(f"_scaling_factors_generation len(f_prev_gen) {len(f_prev_gen)}")
+        mean_residual, residual_distribution_prms = None, None
+        factors = {}
+        for i in range(n_consecutive_days):
+            label = f"f{i}of{n_consecutive_days}"
+            factors[label] = subsequent_factors[:, i]
 
     return factors, mean_residual, residual_distribution_prms, n_transitions
 
@@ -599,23 +691,35 @@ def scaling_factors(prm, banks, days, n_data_type):
     n_data_type: len of bank per data type
     """
     print("scaling_factors")
+    factors = initialise_dict(prm["data_types"], "empty_dict")
+    for data_type in prm['behaviour_types']:
+        factors[data_type] = initialise_dict(prm["day_trans"], "empty_dict")
+
     _get_factors_stats(prm, days, banks)
-    factors, mean_residual, residual_distribution_prms, n_transitions \
-        = _scaling_factors_behaviour_types(prm, banks)
-    if "gen" in prm["data_types"]:
-        [
-            factors["gen"], mean_residual["gen"],
-            residual_distribution_prms["gen"], n_transitions["gen"]
-        ] = _scaling_factors_generation(
-            n_data_type["gen"], days["gen"], prm
-        )
-    for data_type in prm["data_types"]:
-        print(data_type)
-        if _enough_data(banks[data_type], prm["weekday_type"]):
-            _ev_transitions(prm, factors, data_type)
-
-
-
+    for n_consecutive_days in [3, 2]:
+        factors, mean_residual, residual_distribution_prms, n_transitions \
+            = _scaling_factors_behaviour_types(prm, banks, n_consecutive_days, factors)
+        p_pos, p_zero2pos, fs_brackets, mid_fs_brackets = [{} for _ in range(4)]
+        for data_type in prm["data_types"]:
+            print(data_type)
+            if _enough_data(banks[data_type], prm["weekday_type"]):
+                if data_type == 'gen':
+                    [
+                        factors["gen"], mean_residual["gen"],
+                        residual_distribution_prms["gen"], n_transitions["gen"]
+                    ] = _scaling_factors_generation(
+                        n_data_type["gen"], days["gen"], prm, n_consecutive_days
+                    )
+                p_pos[data_type], p_zero2pos[data_type], fs_brackets[data_type], mid_fs_brackets[data_type] = _ev_transitions(
+                    prm, factors, data_type, n_consecutive_days=n_consecutive_days
+                )
+        dictionaries = [p_pos, p_zero2pos, fs_brackets, mid_fs_brackets]
+        labels = ["p_pos", "p_zero2pos", "fs_brackets", "mid_fs_brackets"]
+        for dictionary, label in zip(dictionaries, labels):
+            with open(
+                    prm["save_hedge"] / "factors" / f"{label}_n_consecutive_days{n_consecutive_days}_brackets_definition_{prm['brackets_definition']}.pickle", "wb"
+            ) as file:
+                pickle.dump(dictionary, file)
 
     path = prm["save_other"] / "factors" / "n_transitions.pickle"
     with open(path, "wb") as file:
