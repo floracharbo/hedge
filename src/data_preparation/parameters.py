@@ -188,7 +188,6 @@ def get_parameters() -> Tuple[dict, dict]:
     for prev_day in prm["weekday_type"]:
         for next_day in prm["weekday_type"]:
             prm["day_trans"].append(f"{prev_day}2{next_day}")
-
     # instructions for importing data
     # columns corresponding to each type of information in the data files
     prm = _import_columns_info(prm)
@@ -239,8 +238,10 @@ def get_parameters() -> Tuple[dict, dict]:
         "test_factor_distr",
         "save_intermediate_outs",
         "max_size_chunk",
-        'gan_generation',
-        'kurtosis'
+        'gan_generation_profiles',
+        'gan_generation_factors_clusters',
+        'kurtosis',
+        'brackets_definition'
     ]:
         prm[key] = run_config[key]
 
