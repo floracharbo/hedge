@@ -21,7 +21,7 @@ import numpy as np
 import yaml
 from scipy.stats import norm
 
-from src.utils import initialise_dict
+from src.utils import f_to_interval, initialise_dict, run_id
 
 
 class HEDGE:
@@ -40,7 +40,10 @@ class HEDGE:
         factors0: Optional[dict] = None,
         clusters0: Optional[dict] = None,
         prm: Optional[dict] = None,
-        other_prm: Optional[dict] = None
+        other_prm: Optional[dict] = None,
+        factors_gen: Optional[str] = 'matrix',
+        n_consecutive_days: Optional[int] = 2,
+        brackets_definition: Optional[str] = 'percentile',
     ):
         """Initialise HEDGE object and initial properties."""
         # update object properties
@@ -48,14 +51,17 @@ class HEDGE:
         self.n_homes = n_homes
         self.homes = range(self.n_homes)
         self.it_plot = 0
+        self.factors_gen = factors_gen
+        self.n_consecutive_days = n_consecutive_days
+        self.brackets_definition = brackets_definition
 
         # load input data
-        self._load_input_data(prm, other_prm, factors0, clusters0)
+        self._load_input_data(prm, other_prm, factors0, clusters0, brackets_definition)
 
-    def _load_input_data(self, prm, other_prm, factors0, clusters0):
+    def _load_input_data(self, prm, other_prm, factors0, clusters0, brackets_definition):
         self.factors0 = factors0
         self.clusters0 = clusters0
-        prm = self._load_inputs(prm, other_prm)
+        prm = self._load_inputs(prm, other_prm, brackets_definition)
         self._init_factors()
         self._init_clusters()
         self.profs = self._load_profiles(prm)
@@ -80,17 +86,14 @@ class HEDGE:
         prev_clusters = self.clusters.copy()
 
         # obtain scaling factors
-        # factors, interval_f_ev = self._next_factors(transition, prev_clusters)
+        factors, interval_f = self._next_factors(transition, prev_clusters)
 
         # obtain clusters
         clusters = self._next_clusters(transition, prev_clusters)
-        self._init_factors()
-        # self._init_clusters()
-        factors = self.factors
-        interval_f_ev = [
+        interval_f['car'] = [
             [
-                i for i in range(len(self.fs_brackets[transition]) - 1)
-                if self.fs_brackets[transition][i] <= self.factors["car"][home]
+                i for i in range(len(self.fs_brackets['car'][transition]) - 1)
+                if self.fs_brackets['car'][transition][i] <= self.factors["car"][home]
             ]
             [-1] for home in self.homes
         ]
@@ -128,9 +131,9 @@ class HEDGE:
             ])
 
             # check loads car are consistent with maximum battery load
-            interval_f_ev, factors, day, i_profiles["car"] \
+            interval_f, factors, day, i_profiles["car"] \
                 = self._adjust_max_ev_loads(
-                day, interval_f_ev, factors, transition, clusters,
+                day, interval_f, factors, transition, clusters,
                 day_type, i_profiles["car"], homes
             )
 
@@ -149,40 +152,40 @@ class HEDGE:
         self.clusters = clusters
 
         # save factors and clusters
-        for home in homes:
-            for data in self.data_types:
-                self.list_factors[data][home].append(self.factors[data][home])
-            for data in self.behaviour_types:
-                self.list_clusters[data][home].append(self.clusters[data][home])
+        for data in self.data_types:
+            self.list_factors[data] = np.hstack((self.list_factors[data], np.reshape(self.factors[data], (self.n_homes, 1))))
+        for data in self.behaviour_types:
+            self.list_clusters[data] = np.hstack((self.list_clusters[data], np.reshape(self.clusters[data], (self.n_homes, 1))))
 
         self._plotting_profiles(day, plotting)
 
         return day
 
     def _import_dem(self, prm):
-        # possible types of transition between week day types (week/weekend)
-        day_trans = []
-        for prev_day in prm["syst"]["weekday_type"]:
-            for next_day in prm["syst"]["weekday_type"]:
-                day_trans.append(f"{prev_day}2{next_day}")
+        if 'loads' in self.correlation_transition_types:
+            # possible types of transition between week day types (week/weekend)
+            day_trans = []
+            for prev_day in prm["syst"]["weekday_type"]:
+                for next_day in prm["syst"]["weekday_type"]:
+                    day_trans.append(f"{prev_day}2{next_day}")
 
-        for transition in day_trans:
-            if self.residual_distribution_prms["loads"][transition] is None:
-                continue
-            self.residual_distribution_prms["loads"][transition] \
-                = list(self.residual_distribution_prms["loads"][transition])
-            self.residual_distribution_prms["loads"][transition][1] *= prm["syst"]["f_std_share"]
-        self.select_cdfs["loads"] = {}
-        for day_type in prm["syst"]["weekday_type"]:
-            self.select_cdfs["loads"][day_type] = [
-                min_cdf + prm["syst"]["clust_dist_share"] * (max_cdf - min_cdf)
-                for min_cdf, max_cdf in zip(
-                    self.min_cdfs["loads"][day_type],
-                    self.max_cdfs["loads"][day_type]
-                )
-            ]
+            for transition in day_trans:
+                if self.residual_distribution_prms["loads"][transition] is None:
+                    continue
+                self.residual_distribution_prms["loads"][transition] \
+                    = list(self.residual_distribution_prms["loads"][transition])
+                self.residual_distribution_prms["loads"][transition][1] *= prm["syst"]["f_std_share"]
+            self.select_cdfs["loads"] = {}
+            for day_type in prm["syst"]["weekday_type"]:
+                self.select_cdfs["loads"][day_type] = [
+                    min_cdf + prm["syst"]["clust_dist_share"] * (max_cdf - min_cdf)
+                    for min_cdf, max_cdf in zip(
+                        self.min_cdfs["loads"][day_type],
+                        self.max_cdfs["loads"][day_type]
+                    )
+                ]
 
-    def _load_inputs(self, prm, other_prm):
+    def _load_inputs(self, prm, other_prm, brackets_definition):
         # load inputs
         if prm is None:
             with open("config_parameters/hedge_config.yaml", "rb") as file:
@@ -195,21 +198,29 @@ class HEDGE:
         self._init_params(prm)
 
         # general inputs with all data types
-        inputs_folder = f"n{prm['n']}"
+
+        inputs_folder = run_id(prm)
         if not (Path(prm["paths"]["hedge_inputs_folder"]) / inputs_folder).exists():
-            inputs_folder += "_sample"
+            inputs_folder = f"n{prm['n']}_sample"
             print("Using sample data. See README for how to prepare the total input data.")
 
         self.inputs_path = Path(prm["paths"]["hedge_inputs_folder"]) / inputs_folder
         factors_path = self.inputs_path / "factors"
-        for property_ in ["f_min", "f_max", "f_mean"]:
+
+        properties = ["f_min", "f_max", "f_mean", "residual_distribution_prms"]
+        if self.factors_gen == 'correlation':
+            properties += ["mean_residual"]
+        for property_ in properties:
             path = factors_path / f"{property_}.pickle"
             with open(path, "rb") as file:
                 self.__dict__[property_] = pickle.load(file)
 
-        for property_ in ["mean_residual", "residual_distribution_prms"]:
-            with open(factors_path / f"{property_}.pickle", "rb") as file:
-                self.__dict__[property_] = pickle.load(file)
+        if len(self.matrix_transition_types) > 0:
+            properties = ["p_pos", "p_zero2pos", "mid_fs_brackets", "fs_brackets"]
+            for property_ in properties:
+                path = factors_path / f"{property_}_n_consecutive_days{self.n_consecutive_days}_brackets_definition_{brackets_definition}.pickle"
+                with open(path, "rb") as file:
+                    self.__dict__[property_] = pickle.load(file)
 
         clusters_path = self.inputs_path / "clusters"
         for property_ in ["p_clus", "p_trans", "min_cdfs", "max_cdfs"]:
@@ -219,7 +230,10 @@ class HEDGE:
 
         with open(clusters_path / "n_clus.pickle", "rb") as file:
             prm["n_clus"] = pickle.load(file)
-        self.n_all_clusters_ev = prm["n_clus"]["car"] + 1
+        self.n_all_clusters = {
+            data_type: prm['n_clus'][data_type] + 1 if data_type == 'car' else prm['n_clus'][data_type]
+            for data_type in self.behaviour_types
+        }
 
         self.select_cdfs = {}
         # household demand-specific inputs
@@ -227,16 +241,16 @@ class HEDGE:
             self._import_dem(prm)
 
         # car-specific inputs
-        if "car" in self.data_types:
-            for property_ in ["p_pos", "p_zero2pos", "fs_brackets", "mid_fs_brackets"]:
-                path = factors_path / f"car_{property_}.pickle"
-                with open(path, "rb") as file:
-                    self.__dict__[property_] = pickle.load(file)
+        # if "car" in self.data_types:
+        #     for property_ in ["p_pos", "p_zero2pos", "fs_brackets", "mid_fs_brackets"]:
+        #         path = factors_path / f"car_{property_}.pickle"
+        #         with open(path, "rb") as file:
+        #             self.__dict__[property_] = pickle.load(file)
 
         # PV generation-specific inputs
-        if "gen" in self.data_types:
+        if "gen" in self.correlation_transition_types:
             self.residual_distribution_prms["gen"] = list(self.residual_distribution_prms["gen"])
-            self.residual_distribution_prms["gen"][1] *= prm["syst"]["f_std_share"]
+            self.residual_distribution_prms["gen"][2] *= prm["syst"]["f_std_share"]
 
             self.select_cdfs["gen"] = [
                 min_cdf + prm["syst"]["clust_dist_share"] * (max_cdf - min_cdf)
@@ -253,48 +267,59 @@ class HEDGE:
 
     def _init_factors(self):
         _, transition = self._transition_type()
+        for transition_types in ['matrix_transition_types', 'correlation_transition_types']:
+            self.__dict__[transition_types] = [t for t in self.__dict__[transition_types] if t in self.data_types]
         self.factors = {}
-        self.list_factors = {}
         if self.factors0 is None:
             if "loads" in self.data_types:
                 self.factors["loads"] = [
                     self.f_mean["loads"]
                     + norm.ppf(
                         np.random.rand(),
-                        *self.residual_distribution_prms["loads"][transition])
+                        *self.residual_distribution_prms["loads"][transition][1:]
+                    )
                     for _ in self.homes
                 ]
-
             if "gen" in self.data_types:
                 self.factors["gen"] = [
                     self.f_mean["gen"][self.date.month - 1]
                     + norm.ppf(
                         np.random.rand(),
-                        *self.residual_distribution_prms["gen"])
+                        *self.residual_distribution_prms["gen"][1:])
                     for _ in self.homes
                 ]
+                i_month = self.date.month - 1
+                self.factors["gen"] = np.minimum(
+                    np.maximum(self.f_min['gen'][i_month], np.array(self.factors['gen'])),
+                    self.f_max["gen"][i_month]
+                )
 
             if "car" in self.data_types:
                 randoms = np.random.rand(self.n_homes)
                 self.factors["car"] = [
                     self._ps_rand_to_choice(
-                        self.p_zero2pos[transition],
+                        self.p_zero2pos['car'][transition],
                         randoms[home]
                     )
                     for home in self.homes
                 ]
-
         else:
             for data in self.data_types:
                 if isinstance(self.factors0[data], int):
-                    self.factors[data] = [self.factors0[data] for _ in self.homes]
+                    self.factors[data] = np.full(self.n_homes, self.factors0[data])
                 else:
                     self.factors[data] = self.factors0[data]
-
-        self.list_factors = initialise_dict(self.data_types, second_level_entries=self.homes)
-        for home in self.homes:
-            for data in self.data_types:
-                self.list_factors[data][home] = [self.factors[data][home]]
+        for data_type in self.behaviour_types:
+            self.factors[data_type] = np.minimum(
+                np.maximum(self.f_min[data_type], self.factors[data_type]),
+                self.f_max[data_type]
+            )
+        self.list_factors = {
+            data_type: np.zeros((self.n_homes, self.n_consecutive_days - 1)) for data_type in self.data_types
+        }
+        for data in self.data_types:
+            for home in self.homes:
+                self.list_factors[data][home] = np.full(self.n_consecutive_days - 1, self.factors[data][home])
 
     def _init_clusters(self):
         day_type, transition = self._transition_type()
@@ -313,50 +338,64 @@ class HEDGE:
                 else:
                     self.clusters[data] = self.clusters0[data]
 
-        self.list_clusters = initialise_dict(self.behaviour_types, second_level_entries=self.homes)
-        for home in self.homes:
-            for data in self.behaviour_types:
-                self.list_clusters[data][home] = [self.clusters[data][home]]
+        self.list_clusters = {
+            data_type: np.zeros((self.n_homes, self.n_consecutive_days - 1)) for data_type in self.behaviour_types
+        }
+        for data in self.behaviour_types:
+            for home in self.homes:
+                self.list_clusters[data][home] = np.full(self.n_consecutive_days - 1, self.clusters[data][home])
 
     def _next_factors(self, transition, prev_clusters):
-        prev_factors = self.factors.copy()
-        factors = initialise_dict(self.data_types)
+        prev_factors = {
+            data_type: self.list_factors[data_type][:, -(self.n_consecutive_days - 1):]
+            for data_type in self.data_types
+        }
+        factors = {data_type: [] for data_type in self.data_types}
         random_f = {}
         for data_type in self.data_types:
-            random_f[data_type] = [np.random.rand() for _ in self.homes]
-        interval_f_ev = []
-
+            random_f[data_type] = np.random.rand(self.n_homes)
+        interval_f = {data_type: [] for data_type in self.matrix_transition_types}
         for home in self.homes:
-            if "car" in self.data_types:
-                current_interval \
-                    = [i for i in range(len(self.fs_brackets[transition]) - 1)
-                       if self.fs_brackets[transition][i]
-                       <= prev_factors["car"][home]][-1]
-                if prev_clusters["car"][home] == self.n_all_clusters_ev - 1:
-                    # no trip day
-                    probabilities = self.p_zero2pos[transition]
-                else:
-                    probabilities = self.p_pos[transition][current_interval]
-                interval_f_ev.append(
-                    self._ps_rand_to_choice(
-                        probabilities,
-                        random_f["car"][home],
+            for data_type in self.matrix_transition_types:
+                transition_ = 'all' if data_type == 'gen' else transition
+                try:
+                    previous_intervals = tuple(
+                        f_to_interval(
+                            prev_factors[data_type][home][- (self.n_consecutive_days - 1 - d)],
+                            self.fs_brackets[data_type][transition_]
+                        )
+                        for d in range(self.n_consecutive_days - 1)
                     )
-                )
-                factors["car"].append(
-                    self.mid_fs_brackets[transition][int(interval_f_ev[home])]
+                except Exception as ex:
+                    print(ex)
+                if data_type == 'car' and prev_clusters[data_type][home] == self.n_all_clusters[data_type] - 1:
+                    # no trip day
+                    probabilities = self.p_zero2pos[data_type][transition_]
+                else:
+                    probabilities = self.p_pos[data_type][transition_][previous_intervals]
+                try:
+                    interval_f[data_type].append(
+                        self._ps_rand_to_choice(
+                            probabilities,
+                            random_f[data_type][home],
+                        )
+                    )
+                except Exception as ex:
+                    print(ex)
+                factors[data_type].append(
+                    self.mid_fs_brackets[data_type][transition_][int(interval_f[data_type][home])]
                 )
 
-            if "gen" in self.data_types:
+            if "gen" in self.correlation_transition_types:
                 i_month = self.date.month - 1
                 # factor for generation
                 # without differentiation between day types
                 delta_f = norm.ppf(
                     random_f["gen"][home],
-                    *self.residual_distribution_prms["gen"]
+                    *self.residual_distribution_prms["gen"][1: ]
                 )
                 factors["gen"].append(
-                    prev_factors["gen"][home]
+                    prev_factors["gen"][home, -1]
                     + delta_f
                     - self.mean_residual["gen"]
                 )
@@ -365,16 +404,16 @@ class HEDGE:
                     self.f_max["gen"][i_month]
                 )
 
-            if "loads" in self.data_types:
+            if "loads" in self.correlation_transition_types:
                 # factor for demand - differentiate between day types
                 delta_f = norm.ppf(
                     random_f["loads"][home],
-                    *list(self.residual_distribution_prms["loads"][transition])
+                    *list(self.residual_distribution_prms["loads"][transition_][1:])
                 )
                 factors["loads"].append(
-                    prev_factors["loads"][home]
+                    prev_factors["loads"][home, -1]
                     + delta_f
-                    - self.mean_residual["loads"][transition]
+                    - self.mean_residual["loads"][transition_]
                 )
 
             for data_type in self.behaviour_types:
@@ -383,7 +422,7 @@ class HEDGE:
                     self.f_max[data_type]
                 )
 
-        return factors, interval_f_ev
+        return factors, interval_f
 
     def _next_clusters(self, transition, prev_clusters):
         clusters = initialise_dict(self.behaviour_types)
@@ -412,17 +451,17 @@ class HEDGE:
 
         return day_type, transition
 
-    def _adjust_max_ev_loads(self, day, interval_f_ev, factors,
+    def _adjust_max_ev_loads(self, day, interval_f, factors,
                              transition, clusters, day_type, i_ev, homes):
         for i_home, home in enumerate(homes):
             it = 0
             while np.max(day["loads_car"][i_home]) > self.car['cap'][home] and it < 100:
                 if it == 99:
                     print("100 iterations _adjust_max_ev_loads")
-                if factors["car"][home] > 0 and interval_f_ev[home] > 0:
-                    interval_f_ev[home] -= 1
-                    factors["car"][home] = self.mid_fs_brackets[transition][
-                        int(interval_f_ev[home])]
+                if factors["car"][home] > 0 and interval_f['car'][home] > 0:
+                    interval_f['car'][home] -= 1
+                    factors["car"][home] = self.mid_fs_brackets['car'][transition][
+                        int(interval_f['car'][home])]
                     ev_cons = self.profs["car"]["cons"][day_type][
                         clusters["car"][home]][i_ev[home]]
                     assert sum(ev_cons) == 0 or abs(sum(ev_cons) - 1) < 1e-3, \
@@ -433,7 +472,7 @@ class HEDGE:
                         self.n_prof["car"][day_type][clusters["car"][home]]))
                 it += 1
 
-        return interval_f_ev, factors, day, i_ev
+        return interval_f, factors, day, i_ev
 
     def _compute_number_of_available_profiles(self, data, day_type, i_month):
         if data in self.behaviour_types:
@@ -507,7 +546,8 @@ class HEDGE:
             profiles["car"][data] = initialise_dict(labels_day)
             for day_type in labels_day:
                 profiles["car"][data][day_type] = initialise_dict(
-                    range(self.n_all_clusters_ev))
+                    range(self.n_all_clusters['car'])
+                )
         self.n_prof["car"] = initialise_dict(labels_day)
 
         for data, label in zip(["cons", "avail"], ["norm_car", "car_avail"]):
@@ -530,7 +570,7 @@ class HEDGE:
         for day_type in labels_day:
             self.n_prof["car"][day_type] = [
                 len(profiles["car"]["cons"][day_type][clus])
-                for clus in range(self.n_all_clusters_ev)
+                for clus in range(self.n_all_clusters['car'])
             ]
 
         return profiles
@@ -844,7 +884,9 @@ class HEDGE:
         plt.xlabel("Time [hours]")
         plt.ylabel("car loads [kWh]")
         fig.tight_layout()
-        title = f"avail_car_home{home}"
+        title = \
+            f"avail_car_home{home}_n_consecutive_days{self.n_consecutive_days}_" \
+            f"factors_gen_{self.factors_gen}_brackets_definition_{self.brackets_definition}"
         if cumulative_plot:
             title += "_cumulative"
             for i in range(self.it_plot):
@@ -857,7 +899,10 @@ class HEDGE:
             return
         if not os.path.exists(self.save_day_path):
             os.mkdir(self.save_day_path)
+        factors_gen_str = f"{self.factors_gen}_n_consecutive_days{self.n_consecutive_days}_brackets_definition_{self.brackets_definition}"
         np.save(self.save_day_path / f"day_{self.it_plot}", day)
+        np.save(self.save_day_path / f"list_factors_{self.it_plot}_{factors_gen_str}", self.list_factors)
+        np.save(self.save_day_path / f"list_clusters_{self.it_plot}_n_consecutive_days{self.n_consecutive_days}", self.list_clusters)
         self.it_plot += 1
         y_labels = {
             "car": "Electric vehicle loads",
@@ -871,6 +916,20 @@ class HEDGE:
         for cumulative_plot in [False, True]:
             if cumulative_plot:
                 hours = [i * hr_per_t for i in range(self.n_steps * self.it_plot)]
+                for info in ['factors', 'clusters']:
+                    list_info = getattr(self, f"list_{info}")
+                    for data_type in list_info:
+                        fig = plt.figure()
+                        for home in range(self.n_homes):
+                            plt.plot(list_info[data_type][home])
+                        plt.xlabel("Day")
+                        plt.ylabel(f"{info} {data_type}")
+                        fig.tight_layout()
+                        fig.savefig(
+                            self.save_day_path /
+                            f"{info}_{data_type}_n_consecutive_days{self.n_consecutive_days}_"
+                            f"cumulative_factors_gen_{self.factors_gen}_brackets_definition_{self.brackets_definition}"
+                        )
             else:
                 hours = [i * hr_per_t for i in range(self.n_steps)]
 
@@ -902,7 +961,9 @@ class HEDGE:
                     y_fmt = tick.FormatStrFormatter('%.1f')
                     plt.gca().yaxis.set_major_formatter(y_fmt)
                     plt.tight_layout()
-                    title = f"{data_type}_a{home}"
+                    title = \
+                        f"{data_type}_a{home}_n_consecutive_days{self.n_consecutive_days}_" \
+                        f"factors_gen_{self.factors_gen}_brackets_definition_{self.brackets_definition}"
                     if cumulative_plot:
                         title += "_cumulative"
                         for i in range(self.it_plot):
@@ -941,6 +1002,8 @@ class HEDGE:
         self.behaviour_types = [
             data_type for data_type in self.data_types if data_type != "gen"
         ]
+        self.matrix_transition_types = ['car'] if self.factors_gen == 'correlation' else self.data_types
+        self.correlation_transition_types = ['loads', 'gen'] if self.factors_gen == 'correlation' else []
         self.car = prm["car"]
         if isinstance(self.car['cap'], int):
             self.car['cap'] = [self.car['cap'] for _ in self.homes]
@@ -948,3 +1011,4 @@ class HEDGE:
         # update date and time information
         self.date = datetime(*prm["syst"]["date0"])
         self.save_day_path = Path(prm["paths"]["record_folder"]) / "hedge_days"
+
