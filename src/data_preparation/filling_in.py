@@ -380,30 +380,31 @@ def stats_filling_in(
 
 
 def _plot_missing_data(day, data_type, prm, missing_fig_path):
-    fig = plt.figure()
-    plt.rcParams['font.size'] = '18'
-    times = [min / 60 for min in day["mins"]]
-    for time in range(len(day[data_type]) - 1):
-        if day["mins"][time] + prm["step_len"] == day["mins"][time + 1]:
-            plt.plot(
-                times[time: time + 2],
-                day[data_type][time: time + 2],
-                '-o',
-                color="k",
-                lw=3
-            )
-        else:
-            plt.plot(
-                times[time: time + 2],
-                day[data_type][time: time + 2],
-                '--o',
-                color="k"
-            )
-        plt.xlabel("Time [hour]")
-        plt.ylabel("[kWh]")
-    plt.tight_layout()
-    fig.savefig(
-        missing_fig_path, bbox_inches='tight',
-        format='pdf', dpi=1200
-    )
-    plt.close("all")
+    if prm['plots']:
+        fig = plt.figure()
+        plt.rcParams['font.size'] = '18'
+        times = [min / 60 for min in day["mins"]]
+        for time in range(len(day[data_type]) - 1):
+            if day["mins"][time] + prm["step_len"] == day["mins"][time + 1]:
+                plt.plot(
+                    times[time: time + 2],
+                    day[data_type][time: time + 2],
+                    '-o',
+                    color="k",
+                    lw=3
+                )
+            else:
+                plt.plot(
+                    times[time: time + 2],
+                    day[data_type][time: time + 2],
+                    '--o',
+                    color="k"
+                )
+            plt.xlabel("Time [hour]")
+            plt.ylabel("[kWh]")
+        plt.tight_layout()
+        fig.savefig(
+            missing_fig_path, bbox_inches='tight',
+            format='pdf', dpi=1200
+        )
+        plt.close("all")

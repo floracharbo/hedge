@@ -176,7 +176,7 @@ def save_outs(outs, prm, data_type, chunks_rows):
             granularities
         )
 
-    if prm["do_heat_map"]:
+    if prm["do_heat_map"] and prm['plots']:
         if len(np.shape(all_data)) == 2:
             fig = plt.figure()
             ax = sns.heatmap(all_data)

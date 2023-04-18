@@ -187,12 +187,16 @@ def _count_transitions(
         if not np.all(p_pos >= 0):
             np.save("p_pos_error", p_pos)
             i_error = np.where(p_pos < 0)
-            print(f"i_error {i_error} p_pos[i_error] {p_pos[i_error]}")
-            print(f"data_type {data_type} transition {transition} n_consecutive_days {n_consecutive_days}")
+            print(
+                f"i_error {i_error} p_pos[i_error] {p_pos[i_error]} "
+                f"data_type {data_type} transition {transition} "
+                f"n_consecutive_days {n_consecutive_days}"
+            )
         assert np.all(p_pos >= 0), f"not np.all(p_pos >= 0) {data_type} {transition}"
     if n_consecutive_days == 2 and np.sum(n_zero2pos) > 0:
         print(f"np.sum(n_zero2pos) {np.sum(n_zero2pos)} > 0")
-        p_zero2pos = n_zero2pos / sum(n_zero2pos) if sum(n_zero2pos) > 0 else np.zeros((1, n_intervals))
+        p_zero2pos = n_zero2pos / sum(n_zero2pos) if sum(n_zero2pos) > 0 \
+            else np.zeros((1, n_intervals))
         p_zero2pos = np.reshape(p_zero2pos, (1, n_intervals))
 
         assert abs(np.sum(p_zero2pos) - 1) < 1e-3, f"sum(p_zero2pos) {sum(p_zero2pos)}"
@@ -411,7 +415,8 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
     # plot
     if prm["plots"]:
         p95 = np.percentile(np.where(errors > 0)[0], 95)
-        if (    prm['kurtosis']
+        if (
+                prm['kurtosis']
                 and len(distr_str.split('_')) == 2
                 and distr_str.split('_')[1][0: len('kurtosis')] == 'kurtosis'
         ):
@@ -435,9 +440,10 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
             )
             mean_residual = distr.stats(*residual_distribution_prms[1:], moments="m")
 
-        fig = plt.figure()
-        plt.hist(errors, density=1, alpha=0.5, label="data", bins=50)
-        plt.plot(factor_residuals, pdf, label=f"{distr_str} pdf")
+        if prm['plots']:
+            fig = plt.figure()
+            plt.hist(errors, density=1, alpha=0.5, label="data", bins=50)
+            plt.plot(factor_residuals, pdf, label=f"{distr_str} pdf")
         print(f"factor_residuals {factor_residuals} pdf {pdf}")
         assert 0.95 < integral_cdf(factor_residuals, pdf) < 1.02, \
             f"integral_cdf(factor_residuals, pdf) {integral_cdf(factor_residuals, pdf) }"
@@ -487,7 +493,8 @@ def _ev_transitions(prm, factors, data_type, n_consecutive_days):
             else:
                 print(f"data_type {data_type} transition {transition}")
                 consecutive_factors = np.array([
-                    factors[data_type][transition][f"f{f}of{n_consecutive_days}"] for f in range(n_consecutive_days)
+                    factors[data_type][transition][f"f{f}of{n_consecutive_days}"]
+                    for f in range(n_consecutive_days)
                 ])
                 # car transitions
                 [p_pos[transition], p_zero2pos[transition],
@@ -499,14 +506,16 @@ def _ev_transitions(prm, factors, data_type, n_consecutive_days):
 
         for transition in prm["day_trans"]:
             for f in range(n_consecutive_days):
-                all_consecutive_factors[f].extend(factors[data_type][transition][f"f{f}of{n_consecutive_days}"])
+                all_consecutive_factors[f].extend(
+                    factors[data_type][transition][f"f{f}of{n_consecutive_days}"]
+                )
     else:
         try:
             all_consecutive_factors = [
                 factors[data_type][f"f{f}of{n_consecutive_days}"] for f in range(n_consecutive_days)
             ]
         except Exception as ex:
-            print(f"factors[{data_type}].keys() = {factors[data_type].keys()}")
+            print(f"{ex}: factors[{data_type}].keys() = {factors[data_type].keys()}")
             np.save('factors_errors', factors)
 
     all_consecutive_factors = np.array(all_consecutive_factors)
@@ -516,6 +525,7 @@ def _ev_transitions(prm, factors, data_type, n_consecutive_days):
     ] = _transition_intervals(all_consecutive_factors, 'all', prm, data_type, n_consecutive_days)
 
     return p_pos, p_zero2pos, fs_brackets, mid_fs_brackets
+
 
 def _scaling_factors_behaviour_types(
     prm: dict,
@@ -558,7 +568,8 @@ def _scaling_factors_behaviour_types(
                     factors[data_type][transition][label] = banks[data_type][transition][label]
             if factors[data_type][transition] is None:
                 print(
-                    f"transition {transition} factors[data_type][transition] is None in _scaling_factors_behaviour_types"
+                    f"transition {transition} factors[data_type][transition] is None "
+                    f"in _scaling_factors_behaviour_types"
                 )
                 continue
             n_transitions[data_type] += len(f_prevs_all)
@@ -574,7 +585,8 @@ def _scaling_factors_behaviour_types(
                 continue
 
             consecutive_factors = np.array([
-                factors["loads"][transition][f"f{i_f}of{n_consecutive_days}"] for i_f in range(n_consecutive_days)
+                factors["loads"][transition][f"f{i_f}of{n_consecutive_days}"]
+                for i_f in range(n_consecutive_days)
             ])
             print(f"np.shape(consecutive_factors) {np.shape(consecutive_factors)}")
             f_prevs = consecutive_factors[0]
@@ -590,7 +602,7 @@ def _scaling_factors_behaviour_types(
                 print(f"np.shape(f_nexts) = {np.shape(f_nexts)}")
 
     if n_consecutive_days == 3:
-        print(f"n_consecutive_days = 3 in _scaling_factors_behaviour_types")
+        print("n_consecutive_days = 3 in _scaling_factors_behaviour_types")
         for i in range(3):
             label = f"f{i}of{n_consecutive_days}"
             factors['gen'][label] = []
@@ -604,12 +616,18 @@ def _get_month_factors_gen(n_data_type_, days_, n_consecutive_days):
     subsequent_factors = []
     for i in range(n_data_type_ - (n_consecutive_days - 1)):
         consecutive_days = [days_[i_] for i_ in range(i, i + n_consecutive_days)]
-        same_id = all(consecutive_days[d]["id"] == consecutive_days[0]["id"] for d in range(n_consecutive_days))
-        subsequent_days = all(consecutive_days[0]["cum_day"] + d == consecutive_days[d]["cum_day"] for d in range(n_consecutive_days))
+        same_id = all(
+            consecutive_days[d]["id"] == consecutive_days[0]["id"]
+            for d in range(n_consecutive_days)
+        )
+        subsequent_days = all(
+            consecutive_days[0]["cum_day"] + d == consecutive_days[d]["cum_day"]
+            for d in range(n_consecutive_days)l
+        )
         if same_id and subsequent_days:
-            subsequent_factors.append([consecutive_days[d]['factor'] for d in range(n_consecutive_days)])
-            # f_prev_gen.append(day["factor"])
-            # f_next_gen.append(next_day["factor"])
+            subsequent_factors.append(
+                [consecutive_days[d]['factor'] for d in range(n_consecutive_days)]
+            )
     subsequent_factors = np.array(subsequent_factors)
 
     return subsequent_factors
@@ -710,14 +728,20 @@ def scaling_factors(prm, banks, days, n_data_type):
                     ] = _scaling_factors_generation(
                         n_data_type["gen"], days["gen"], prm, n_consecutive_days
                     )
-                p_pos[data_type], p_zero2pos[data_type], fs_brackets[data_type], mid_fs_brackets[data_type] = _ev_transitions(
+                [
+                    p_pos[data_type], p_zero2pos[data_type],
+                    fs_brackets[data_type], mid_fs_brackets[data_type]
+                ] = _ev_transitions(
                     prm, factors, data_type, n_consecutive_days=n_consecutive_days
                 )
         dictionaries = [p_pos, p_zero2pos, fs_brackets, mid_fs_brackets]
         labels = ["p_pos", "p_zero2pos", "fs_brackets", "mid_fs_brackets"]
         for dictionary, label in zip(dictionaries, labels):
             with open(
-                    prm["save_hedge"] / "factors" / f"{label}_n_consecutive_days{n_consecutive_days}_brackets_definition_{prm['brackets_definition']}.pickle", "wb"
+                    prm["save_hedge"]
+                    / "factors"
+                    / f"{label}_n_consecutive_days{n_consecutive_days}_brackets_definition_"
+                      f"{prm['brackets_definition']}.pickle", "wb"
             ) as file:
                 pickle.dump(dictionary, file)
 

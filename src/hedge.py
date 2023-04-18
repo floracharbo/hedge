@@ -914,7 +914,7 @@ class HEDGE:
         hr_per_t = 24 / self.n_steps
 
         for cumulative_plot in [False, True]:
-            if cumulative_plot:
+            if cumulative_plot and prm['plots']:
                 hours = [i * hr_per_t for i in range(self.n_steps * self.it_plot)]
                 for info in ['factors', 'clusters']:
                     list_info = getattr(self, f"list_{info}")

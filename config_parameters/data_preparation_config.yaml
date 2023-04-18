@@ -21,7 +21,7 @@ n_clus:  # number of behavioural clusters
   car: 3
 
 data_types: ["loads", "gen", "car"]
-plots: True
+plots: False
 do_test_filling_in: False
 parallel: False
 do_heat_map: True  # plot data available - this is computationally expensive

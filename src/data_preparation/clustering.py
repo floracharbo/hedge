@@ -163,19 +163,20 @@ def _plot_heat_map_p_trans(
         p_trans, transition, data_type, v_min,
         v_max, save_path, colourbar=False
 ):
-    fig = plt.figure()
-    sns.heatmap(
-        p_trans[data_type][transition], vmin=v_min, vmax=v_max,
-        cmap="RdBu_r", yticklabels=False,
-        xticklabels=False, cbar=colourbar, square=True
-    )
-    plt.tick_params(left=False, bottom=False)
-    plt.tight_layout()
-    fig.savefig(
-        save_path / "clusters" / f"p_trans_heatmap_{data_type}_{transition}"
-    )
-    plt.gca().tick_params(left=False, bottom=False)
-    plt.close("all")
+    if prm['plots']:
+        fig = plt.figure()
+        sns.heatmap(
+            p_trans[data_type][transition], vmin=v_min, vmax=v_max,
+            cmap="RdBu_r", yticklabels=False,
+            xticklabels=False, cbar=colourbar, square=True
+        )
+        plt.tick_params(left=False, bottom=False)
+        plt.tight_layout()
+        plt.gca().tick_params(left=False, bottom=False)
+        fig.savefig(
+            save_path / "clusters" / f"p_trans_heatmap_{data_type}_{transition}"
+        )
+        plt.close("all")
 
 
 def _plot_clusters(
@@ -391,15 +392,15 @@ def _elbow_method(transformed_features, data_type, day_type, save_path):
             )
             kmeans.fit(transformed_features)
             wcss.append(kmeans.inertia_)
-
-        fig = plt.figure()
-        plt.plot(range(1, maxn_clus), wcss)
-        title = f"Elbow Method {data_type} {day_type}"
-        plt.title(title)
-        plt.xlabel("Number of clusters")
-        plt.ylabel("WCSS")
-        fig.savefig(save_path / "clusters" / title.replace(" ", "_"))
-        plt.close("all")
+        if prm['plots']:
+            fig = plt.figure()
+            plt.plot(range(1, maxn_clus), wcss)
+            title = f"Elbow Method {data_type} {day_type}"
+            plt.title(title)
+            plt.xlabel("Number of clusters")
+            plt.ylabel("WCSS")
+            fig.savefig(save_path / "clusters" / title.replace(" ", "_"))
+            plt.close("all")
 
 
 def _get_features(days_, data_type, prm):
