@@ -288,6 +288,7 @@ class GAN_Trainer():
         # Training the discriminator
         self.discriminator.zero_grad()
         print(f"all_samples.size() {all_samples.size()}")
+        th.save(all_samples, "all_samples")
         output_discriminator = self.discriminator(all_samples.to(th.float32))
         print(f"output_discriminator.size() {output_discriminator.size()}")
         loss_discriminator = self.loss_function(output_discriminator, all_samples_labels)
@@ -326,10 +327,13 @@ class GAN_Trainer():
             generated_outputs = self.cluster_generated_output_to_idx(real_inputs, generated_outputs)
         generated_samples, _ = self.merge_inputs_and_outputs(real_inputs, generated_outputs)
         # generated_samples = th.where(generated_samples < 0, 0, generated_samples)
-        output_discriminator_generated = self.discriminator(generated_samples)
-
+        th.save(generated_samples, "generated_samples")
+        generated_samples_ = th.vstack((generated_samples, generated_samples))
+        output_discriminator_generated = self.discriminator(generated_samples_)
+        print(F"output_discriminator_generated.size() {output_discriminator_generated.size()}")
+        rows = th.arange(0, self.batch_size, dtype=th.int64)
         loss_generator = self.loss_function(
-            output_discriminator_generated, self.get_real_samples_labels()
+            output_discriminator_generated[rows, :], self.get_real_samples_labels()
         )
         if self.profiles:
             loss_generator += (
@@ -533,17 +537,18 @@ class GAN_Trainer():
         for epoch in tqdm(range(self.n_epochs)):
             for n, train_data in enumerate(self.train_loader):
                 self.batch_size_ = len(train_data)
-                real_inputs, real_outputs = self.split_inputs_and_outputs(train_data)
+                if self.batch_size_ == self.batch_size:
+                    real_inputs, real_outputs = self.split_inputs_and_outputs(train_data)
 
-                loss_discriminator = self.train_discriminator(real_inputs, real_outputs)
-                final_n = n == len(self.train_loader) - 1
-                loss_generator, generated_outputs = self.train_generator(
-                    real_inputs, real_outputs, final_n, epoch
-                )
-                losses_generator.append(loss_generator.detach().numpy())
-                losses_discriminator.append(loss_discriminator.detach().numpy())
-                means_outputs.append(np.mean(generated_outputs.detach().numpy()))
-                stds_outputs.append(np.std(generated_outputs.detach().numpy()))
+                    loss_discriminator = self.train_discriminator(real_inputs, real_outputs)
+                    final_n = n == len(self.train_loader) - 2
+                    loss_generator, generated_outputs = self.train_generator(
+                        real_inputs, real_outputs, final_n, epoch
+                    )
+                    losses_generator.append(loss_generator.detach().numpy())
+                    losses_discriminator.append(loss_discriminator.detach().numpy())
+                    means_outputs.append(np.mean(generated_outputs.detach().numpy()))
+                    stds_outputs.append(np.std(generated_outputs.detach().numpy()))
 
             self.update_noise_and_lr_generator(epoch)
 
@@ -576,17 +581,20 @@ class Discriminator(nn.Module):
                 nn.Linear(64, 1),
                 nn.Sigmoid(),
             )
+
         elif nn_type == 'cnn':
             self.model = nn.Sequential(
-                nn.Linear(size_inputs, 256),
-                nn.ReLU(),
-                nn.ReplicationPad1d(1),
+                # nn.Linear(size_inputs, 256),
+                # nn.ReLU(),
+                # nn.ReplicationPad1d(1),
                 nn.Conv1d(200, 200, kernel_size=3),
-                nn.ReLU(),
-                # nn.MaxPool1d(kernel_size=3),
-                nn.BatchNorm1d(num_features=256),
+                # nn.ReLU(),
+                nn.BatchNorm1d(num_features=size_inputs-2),
                 nn.Flatten(),
-                nn.Linear(256, 1),
+                nn.Linear(size_inputs-2, 64),
+                nn.ReLU(),
+                nn.Dropout(0.3),
+                nn.Linear(64, 1),
                 nn.Sigmoid(),
             )
 
