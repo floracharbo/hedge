@@ -89,6 +89,7 @@ class GAN_Trainer():
             saving_label += f" lr_decay {self.lr_decay:.3f}".replace('.', '_')
         if self.nn_type != 'linear':
             saving_label += f" nn_type {self.nn_type}"
+        saving_label += f" noise0{self.noise0:.2f}_noise_end{self.noise_end:.2f}".replace('.', '_')
 
         return saving_label
 
@@ -245,6 +246,8 @@ class GAN_Trainer():
             n_epochs=self.n_epochs,
             nn_type=self.nn_type,
             batch_size=self.batch_size,
+            noise0=self.noise0,
+            noise_end=self.noise_end,
         )
         self.discriminator = Discriminator(
             size_inputs=self.size_input_discriminator,
@@ -258,22 +261,14 @@ class GAN_Trainer():
         self.optimizer_generator = th.optim.Adam(self.generator.parameters(), lr=self.lr_start)
 
     def train_discriminator(self, real_inputs, real_outputs):
-        print(f"real_inputs.size() {real_inputs.size()}")
-        # if self.nn_type == 'cnn':
-        #     real_inputs = real_inputs.view(
-        #         real_inputs.size()[0], 1, real_inputs.size()[1]
-        #     )
         generated_outputs = self.generator(real_inputs.to(th.float32))
+        generated_outputs = generated_outputs.view(self.batch_size_, self.size_output_generator)
         if self.value_type == 'clusters':
             generated_outputs = self.cluster_generated_output_to_idx(real_inputs, generated_outputs)
         generated_samples_labels = th.zeros((self.batch_size_, 1))
 
         checks_nan(real_inputs, real_outputs, generated_outputs)
 
-        print(f"real_inputs.size() {real_inputs.size()} "
-              f"real_outputs.size() {real_outputs.size()} "
-              f"generated_outputs.size() {generated_outputs.size()} "
-              )
         generated_samples, real_samples = self.merge_inputs_and_outputs(
             real_inputs, generated_outputs, real_outputs
         )
@@ -281,16 +276,9 @@ class GAN_Trainer():
         all_samples_labels = th.cat(
             (self.get_real_samples_labels(), generated_samples_labels)
         )
-        print(f"all_samples.size() {all_samples.size()} "
-              f"generated_samples.size() {generated_samples.size()} "
-              f"real_samples.size() {real_samples.size()} "
-              )
         # Training the discriminator
         self.discriminator.zero_grad()
-        print(f"all_samples.size() {all_samples.size()}")
-        th.save(all_samples, "all_samples")
         output_discriminator = self.discriminator(all_samples.to(th.float32))
-        print(f"output_discriminator.size() {output_discriminator.size()}")
         loss_discriminator = self.loss_function(output_discriminator, all_samples_labels)
         loss_discriminator.backward()
         self.optimizer_discriminator.step()
@@ -322,15 +310,14 @@ class GAN_Trainer():
     def train_generator(self, real_inputs, real_outputs, final_n, epoch):
         self.generator.zero_grad()
         generated_outputs = self.generator(real_inputs.to(th.float32))
+        generated_outputs = generated_outputs.view(self.batch_size_, self.size_output_generator)
 
         if self.value_type == 'clusters':
             generated_outputs = self.cluster_generated_output_to_idx(real_inputs, generated_outputs)
         generated_samples, _ = self.merge_inputs_and_outputs(real_inputs, generated_outputs)
         # generated_samples = th.where(generated_samples < 0, 0, generated_samples)
-        th.save(generated_samples, "generated_samples")
         generated_samples_ = th.vstack((generated_samples, generated_samples))
         output_discriminator_generated = self.discriminator(generated_samples_)
-        print(F"output_discriminator_generated.size() {output_discriminator_generated.size()}")
         rows = th.arange(0, self.batch_size, dtype=th.int64)
         loss_generator = self.loss_function(
             output_discriminator_generated[rows, :], self.get_real_samples_labels()
@@ -584,11 +571,7 @@ class Discriminator(nn.Module):
 
         elif nn_type == 'cnn':
             self.model = nn.Sequential(
-                # nn.Linear(size_inputs, 256),
-                # nn.ReLU(),
-                # nn.ReplicationPad1d(1),
                 nn.Conv1d(200, 200, kernel_size=3),
-                # nn.ReLU(),
                 nn.BatchNorm1d(num_features=size_inputs-2),
                 nn.Flatten(),
                 nn.Linear(size_inputs-2, 64),
@@ -611,6 +594,8 @@ class Generator(nn.Module):
             nn_type='linear'
     ):
         super().__init__()
+        self.nn_type = nn_type
+        self.size_outputs = size_outputs
         if nn_type == 'linear':
             self.model = nn.Sequential(
                 nn.Linear(size_inputs, 16),
@@ -621,23 +606,52 @@ class Generator(nn.Module):
                 nn.Linear(32, size_outputs),
             )
         elif nn_type == 'cnn':
-            self.model = nn.Sequential(
-                nn.Linear(1, size_outputs * 2),
+            # self.model = nn.Sequential(
+            #     nn.Linear(1, size_outputs * 2),
+            #     nn.ReLU(),
+            #     nn.ReplicationPad1d(1),
+            #     nn.Conv1d(100, 100, kernel_size=3),
+            #     nn.ReLU(),
+            #     # nn.MaxPool1d(kernel_size=3),
+            #     nn.BatchNorm1d(num_features=size_outputs * 2),
+            #     nn.Flatten(),
+            #     nn.Linear(size_outputs * 2, size_outputs)
+            # )
+            self.fc = nn.Sequential(
+                nn.Linear(size_inputs, 256),
                 nn.ReLU(),
-                nn.ReplicationPad1d(1),
-                nn.Conv1d(100, 100, kernel_size=3),
+                nn.Linear(256, 512),
                 nn.ReLU(),
-                # nn.MaxPool1d(kernel_size=3),
-                nn.BatchNorm1d(num_features=size_outputs * 2),
-                nn.Flatten(),
-                nn.Linear(size_outputs * 2, size_outputs)
+                nn.Linear(512, 1024),
+                nn.ReLU(),
+                nn.Linear(1024, size_outputs * 8),
+                nn.ReLU(),
+            )
+
+            self.conv = nn.Sequential(
+                nn.ConvTranspose1d(size_outputs * 8, size_outputs * 4, kernel_size=3, stride=2, padding=1,
+                                   ),
+                nn.BatchNorm1d(size_outputs * 4),
+                nn.ReLU(),
+                nn.ConvTranspose1d(size_outputs * 4, size_outputs * 2, kernel_size=3, stride=2, padding=1,
+                                   ),
+                nn.BatchNorm1d(size_outputs * 2),
+                nn.ReLU(),
+                nn.ConvTranspose1d(size_outputs * 2, size_outputs, kernel_size=3, stride=2, padding=1),
+                nn.BatchNorm1d(size_outputs),
+                nn.ReLU(),
             )
         self.noise0 = noise0
         self.noise_reduction = math.exp(math.log(noise_end / noise0) / n_epochs)
         self.noise_factor = self.noise0
 
     def forward(self, x):
-        output = self.model(x)
+        if self.nn_type == 'linear':
+            output = self.model(x)
+        else:
+            x = self.fc(x)
+            x = x.view(-1, 8 * self.size_outputs, 1)
+            output = self.conv(x)
         noise = th.randn(output.shape) * self.noise_factor
         output = output + noise
         output = th.exp(output)
@@ -665,6 +679,8 @@ def compute_profile_generators(
         'data_type': data_type,
         'n_items_generated': 50,
         'nn_type': 'cnn',
+        'noise0': 1,
+        'noise_end': 1e-3,
     }
     params['lr_decay'] = (params['lr_end'] / params['lr_start']) ** (1 / params['n_epochs'])
     gan_trainer = GAN_Trainer(params, prm)
@@ -770,7 +786,8 @@ def compute_factors_clusters_generators(
         gan_trainer.transition = c1_zero
         if len(list_outputs['factors'][c1_zero]) == 0:
             print(
-                f"NO TRAINING: len(list_outputs['factors'][{c1_zero}]) {len(list_outputs['factors'][c1_zero])} "
+                f"NO TRAINING: len(list_outputs['factors'][{c1_zero}]) "
+                f"{len(list_outputs['factors'][c1_zero])} "
                 f"gan_trainer.data_type {gan_trainer.data_type} "
             )
         else:
