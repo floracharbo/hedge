@@ -123,7 +123,8 @@ def _count_transitions(
 
     if not (data_type == 'car' and transition == 'we2wd'):
         assert len(i_non_zeros) > 0, \
-            f"len(i_non_zeros) == 0, data_type {data_type} transition {transition} n_consecutive_days {n_consecutive_days}"
+            f"len(i_non_zeros) == 0, data_type {data_type} " \
+            f"transition {transition} n_consecutive_days {n_consecutive_days}"
 
     for i in i_non_zeros:
         idx = tuple(
@@ -133,7 +134,8 @@ def _count_transitions(
         n_pos[idx] += 1
     if not (data_type == 'car' and transition == 'we2wd'):
         assert np.sum(n_pos) > 0, \
-            f"np.sum(n_pos) == 0, data_type {data_type} transition {transition} n_consecutive_days {n_consecutive_days}"
+            f"np.sum(n_pos) == 0, data_type {data_type} " \
+            f"transition {transition} n_consecutive_days {n_consecutive_days}"
 
     for i in i_zero_to_nonzero:
         i_next = [
@@ -562,7 +564,7 @@ def _scaling_factors_behaviour_types(
                     f_prevs_all, f_nexts_all, prm, data_type, transition
                 )
             elif n_consecutive_days == 3:
-                print(f"n_consecutive_days = 3 in _scaling_factors_behaviour_types")
+                print("n_consecutive_days = 3 in _scaling_factors_behaviour_types")
                 for i in range(3):
                     label = f"f{i}of{n_consecutive_days}"
                     factors[data_type][transition][label] = banks[data_type][transition][label]
@@ -622,7 +624,7 @@ def _get_month_factors_gen(n_data_type_, days_, n_consecutive_days):
         )
         subsequent_days = all(
             consecutive_days[0]["cum_day"] + d == consecutive_days[d]["cum_day"]
-            for d in range(n_consecutive_days)l
+            for d in range(n_consecutive_days)
         )
         if same_id and subsequent_days:
             subsequent_factors.append(

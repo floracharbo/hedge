@@ -136,13 +136,13 @@ def _transition_probabilities(
         if prm["plots"]:
             for transition in prm["day_trans"]:
                 _plot_heat_map_p_trans(
-                    p_trans, transition, data_type, v_min, v_max, prm["save_other"]
+                    p_trans, transition, data_type, v_min, v_max, prm
                 )
 
             # plot once with the colour bar
             _plot_heat_map_p_trans(
                 p_trans, transition, data_type, v_min,
-                v_max, prm["save_other"], colourbar=True
+                v_max, prm, colourbar=True
             )
 
         p_clus[data_type] = {}
@@ -161,7 +161,7 @@ def _transition_probabilities(
 
 def _plot_heat_map_p_trans(
         p_trans, transition, data_type, v_min,
-        v_max, save_path, colourbar=False
+        v_max, prm, colourbar=False
 ):
     if prm['plots']:
         fig = plt.figure()
@@ -174,7 +174,7 @@ def _plot_heat_map_p_trans(
         plt.tight_layout()
         plt.gca().tick_params(left=False, bottom=False)
         fig.savefig(
-            save_path / "clusters" / f"p_trans_heatmap_{data_type}_{transition}"
+            prm["save_other"] / "clusters" / f"p_trans_heatmap_{data_type}_{transition}"
         )
         plt.close("all")
 
@@ -377,9 +377,9 @@ def _cluster_module(
     return labels, cluster_distances, n_zeros, days_
 
 
-def _elbow_method(transformed_features, data_type, day_type, save_path):
+def _elbow_method(transformed_features, data_type, day_type, prm):
     # elbow method
-    if not (save_path / "clusters" / "Elbow_method_{data_type}_{day_type}.npy").is_file():
+    if not (prm['save_other'] / "clusters" / "Elbow_method_{data_type}_{day_type}.npy").is_file():
         wcss = []
         maxn_clus = min(10, len(transformed_features))
         for i in range(1, maxn_clus):
@@ -399,7 +399,7 @@ def _elbow_method(transformed_features, data_type, day_type, save_path):
             plt.title(title)
             plt.xlabel("Number of clusters")
             plt.ylabel("WCSS")
-            fig.savefig(save_path / "clusters" / title.replace(" ", "_"))
+            fig.savefig(prm['save_other'] / "clusters" / title.replace(" ", "_"))
             plt.close("all")
 
 
@@ -468,6 +468,7 @@ def _initialise_cluster_transition_dicts(prm, n_consecutive_days, banks):
                 banks[data_type][transition][f"f{i}of{n_consecutive_days}"] = []
 
     return n_trans, p_trans, banks
+
 
 def _initialise_cluster_dicts(prm):
     """Initialise dictionaries for storing cluster info."""
@@ -625,7 +626,9 @@ def clustering(days, prm, n_data_type):
     p_clus, n_zeros, n_clus_all, banks, min_cdfs, max_cdfs = _initialise_cluster_dicts(prm)
     for n_consecutive_days in [3, 2]:
         print(f"clustering with {n_consecutive_days} consecutive days")
-        n_trans, p_trans, banks = _initialise_cluster_transition_dicts(prm, n_consecutive_days, banks)
+        n_trans, p_trans, banks = _initialise_cluster_transition_dicts(
+            prm, n_consecutive_days, banks
+        )
         enough_data = {}
 
         # n_clus_all includes zeros
@@ -648,9 +651,11 @@ def clustering(days, prm, n_data_type):
                         continue
                     if prm["plots"]:
                         _elbow_method(
-                            transformed_features, data_type, day_type, prm["save_other"]
+                            transformed_features, data_type, day_type, prm
                         )
-                    [labels, cluster_distance, n_zeros_, days[f"{data_type}_{day_type}"]] = _cluster_module(
+                    [
+                        labels, cluster_distance, n_zeros_, days[f"{data_type}_{day_type}"]
+                    ] = _cluster_module(
                         transformed_features, prm["n_clus"][data_type],
                         to_cluster, days_, i_zeros
                     )
@@ -670,9 +675,9 @@ def clustering(days, prm, n_data_type):
                     distances = [bank_["dists"] for bank_ in banks_.values()]
                     if data_type == "car":
                         distances = distances[:-1]
-                    [banks_, min_cdfs[data_type][day_type], max_cdfs[data_type][day_type]] = _get_cdfs(
-                        distances, f"{data_type} {day_type}", prm, banks_
-                    )
+                    [
+                        banks_, min_cdfs[data_type][day_type], max_cdfs[data_type][day_type]
+                    ] = _get_cdfs(distances, f"{data_type} {day_type}", prm, banks_)
                     statistical_indicators = _plot_clusters(
                         transformed_features, norm_vals, data_type,
                         day_type, banks_, vals_k, prm, prm["save_other"]
@@ -681,7 +686,8 @@ def clustering(days, prm, n_data_type):
                         for k in range(prm["n_clus"][data_type]):
                             print(f"k {k}")
                             compute_profile_generators(
-                                vals_k[k], prm["n"], k, statistical_indicators, data_type, prm['save_other'], prm
+                                vals_k[k], prm["n"], k, statistical_indicators,
+                                data_type, prm['save_other'], prm
                             )
 
                     banks[data_type][day_type] = banks_
