@@ -7,7 +7,6 @@ from typing import List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 from matplotlib.colors import LogNorm
 from scipy import interpolate
 from scipy.stats import norm, pearsonr
@@ -55,7 +54,7 @@ def _get_correlation(
         label: Optional[str] = None):
 
     if len(f_prevs_all) == 0:
-        print(f"len(f_prevs_all) == 0 in _get_correlation")
+        print("len(f_prevs_all) == 0 in _get_correlation")
         return None
 
     factors = {}
@@ -114,8 +113,8 @@ def _count_transitions(
         i_zero_to_nonzero = [
             i for i, (f_prev, f_next) in enumerate(zip(f_prevs, f_nexts))
             if (f_prev is None or f_prev == 0)
-               and f_next is not None
-               and f_next > 0
+            and f_next is not None
+            and f_next > 0
         ]
     else:
         i_non_zeros = list(range(len(consecutive_factors[0])))

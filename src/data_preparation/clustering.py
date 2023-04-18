@@ -41,9 +41,13 @@ def _get_n_trans(n_data_type, data_type, days, n_trans, banks, n_consecutive_day
 
     for i in range(n_data_type[data_type] - (n_consecutive_days - 1)):
         consecutive_days = [days[data_type][d] for d in range(i, i + n_consecutive_days)]
-        same_id = all(consecutive_days[d]['id'] == consecutive_days[0]["id"] for d in range(n_consecutive_days))
+        same_id = all(
+            consecutive_days[d]['id'] == consecutive_days[0]["id"]
+            for d in range(n_consecutive_days)
+        )
         subsequent_days = all(
-            consecutive_days[d]["cum_day"] == consecutive_days[0]["cum_day"] + d for d in range(n_consecutive_days)
+            consecutive_days[d]["cum_day"] == consecutive_days[0]["cum_day"] + d
+            for d in range(n_consecutive_days)
         )
         if same_id and subsequent_days:  # record transition
             if data_type == 'gen':
@@ -64,7 +68,9 @@ def _get_n_trans(n_data_type, data_type, days, n_trans, banks, n_consecutive_day
                 idx = tuple(clusters[d] for d in range(n_consecutive_days))
                 n_trans[data_type][transition][idx] += 1
                 for i, day_ in enumerate(consecutive_days):
-                    banks[data_type][transition][f"f{i}of{n_consecutive_days}"].append(day_["factor"])
+                    banks[data_type][transition][f"f{i}of{n_consecutive_days}"].append(
+                        day_["factor"]
+                    )
 
     return banks, n_trans
 
@@ -116,7 +122,11 @@ def _transition_probabilities(
             else:
                 print(f"implement n_consecutive_days = {n_consecutive_days}")
 
-    with open(prm["save_hedge"] / "clusters" / f"{data_type}_p_trans_n_consecutive_days{n_consecutive_days}", "wb") as file:
+    with open(
+            prm["save_hedge"]
+            / "clusters"
+            / f"{data_type}_p_trans_n_consecutive_days{n_consecutive_days}", "wb"
+    ) as file:
         pickle.dump(p_trans, file)
 
     if n_consecutive_days == 2:
