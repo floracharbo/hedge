@@ -87,6 +87,8 @@ class GAN_Trainer():
     
         if self.lr_decay != 1:
             saving_label += f" lr_decay {self.lr_decay:.3f}".replace('.', '_')
+        if self.nn_type != 'linear':
+            saving_label += f" nn_type {self.nn_type}"
 
         return saving_label
 
@@ -146,22 +148,23 @@ class GAN_Trainer():
             self.p_clus0, self.p_trans0, self.n_clus = p_clus, p_trans, n_clus
 
     def plot_inputs(self):
-        fig = plt.figure()
-        for i in range(20):
-            if self.profiles:
-                plt.plot(self.outputs[i])
-            else:
-                plt.plot(np.append(self.inputs[i], self.outputs[i]))
+        if self.prm['plots']:
+            fig = plt.figure()
+            for i in range(20):
+                if self.profiles:
+                    plt.plot(self.outputs[i])
+                else:
+                    plt.plot(np.append(self.inputs[i], self.outputs[i]))
 
-        title = f"{self.get_saving_label()} series"
-        if not self.profiles:
-            title += f" n_consecutive_days {self.n_consecutive_days}"
-        if self.normalised:
-            title += ' normalised'
-        plt.title(title)
-        title = title.replace(' ', '_')
-        fig.savefig(self.save_path / title)
-        plt.close('all')
+            title = f"{self.get_saving_label()} series"
+            if not self.profiles:
+                title += f" n_consecutive_days {self.n_consecutive_days}"
+            if self.normalised:
+                title += ' normalised'
+            plt.title(title)
+            title = title.replace(' ', '_')
+            fig.savefig(self.save_path / title)
+            plt.close('all')
 
     def get_train_loader(self):
         i_not_nans = [
@@ -239,9 +242,14 @@ class GAN_Trainer():
         self.generator = Generator(
             size_inputs=self.size_input_generator,
             size_outputs=self.size_output_generator,
-            n_epochs=self.n_epochs
+            n_epochs=self.n_epochs,
+            nn_type=self.nn_type,
+            batch_size=self.batch_size,
         )
-        self.discriminator = Discriminator(size_inputs=self.size_input_discriminator)
+        self.discriminator = Discriminator(
+            size_inputs=self.size_input_discriminator,
+            nn_type=self.nn_type
+        )
 
         self.loss_function = nn.BCELoss()
         self.optimizer_discriminator = th.optim.Adam(
@@ -250,6 +258,11 @@ class GAN_Trainer():
         self.optimizer_generator = th.optim.Adam(self.generator.parameters(), lr=self.lr_start)
 
     def train_discriminator(self, real_inputs, real_outputs):
+        print(f"real_inputs.size() {real_inputs.size()}")
+        # if self.nn_type == 'cnn':
+        #     real_inputs = real_inputs.view(
+        #         real_inputs.size()[0], 1, real_inputs.size()[1]
+        #     )
         generated_outputs = self.generator(real_inputs.to(th.float32))
         if self.value_type == 'clusters':
             generated_outputs = self.cluster_generated_output_to_idx(real_inputs, generated_outputs)
@@ -257,6 +270,10 @@ class GAN_Trainer():
 
         checks_nan(real_inputs, real_outputs, generated_outputs)
 
+        print(f"real_inputs.size() {real_inputs.size()} "
+              f"real_outputs.size() {real_outputs.size()} "
+              f"generated_outputs.size() {generated_outputs.size()} "
+              )
         generated_samples, real_samples = self.merge_inputs_and_outputs(
             real_inputs, generated_outputs, real_outputs
         )
@@ -264,10 +281,15 @@ class GAN_Trainer():
         all_samples_labels = th.cat(
             (self.get_real_samples_labels(), generated_samples_labels)
         )
-
+        print(f"all_samples.size() {all_samples.size()} "
+              f"generated_samples.size() {generated_samples.size()} "
+              f"real_samples.size() {real_samples.size()} "
+              )
         # Training the discriminator
         self.discriminator.zero_grad()
+        print(f"all_samples.size() {all_samples.size()}")
         output_discriminator = self.discriminator(all_samples.to(th.float32))
+        print(f"output_discriminator.size() {output_discriminator.size()}")
         loss_discriminator = self.loss_function(output_discriminator, all_samples_labels)
         loss_discriminator.backward()
         self.optimizer_discriminator.step()
@@ -382,43 +404,45 @@ class GAN_Trainer():
                 )
             statistical_indicators_generated['mean'][time] = np.mean(generated_samples_2d[:, time])
 
-        fig = plt.figure()
-        xs = np.arange(n_samples)
-        for color, statistical_indicators_, label in zip(
-                ['b', 'g'],
-                [statistical_indicators_generated, self.statistical_indicators_inputs[self.k]],
-                ['generated', 'original']
-        ):
-            for indicator in ['p10', 'p50', 'p90', 'mean']:
-                plt.plot(
-                    xs,
-                    statistical_indicators_[indicator],
-                    color=color,
-                    linestyle='--' if indicator[0] == 'p' else '-',
-                    label=label if indicator == 'mean' else None,
-                )
+        if self.prm['plots']:
+            fig = plt.figure()
+            xs = np.arange(n_samples)
+            for color, statistical_indicators_, label in zip(
+                    ['b', 'g'],
+                    [statistical_indicators_generated, self.statistical_indicators_inputs[self.k]],
+                    ['generated', 'original']
+            ):
+                for indicator in ['p10', 'p50', 'p90', 'mean']:
+                    plt.plot(
+                        xs,
+                        statistical_indicators_[indicator],
+                        color=color,
+                        linestyle='--' if indicator[0] == 'p' else '-',
+                        label=label if indicator == 'mean' else None,
+                    )
 
-        plt.legend()
-        title = f"{self.get_saving_label()} profiles generated vs original epoch {epoch}"
-        if self.normalised:
-            title += ' normalised'
-        plt.title(title)
-        title = title.replace(' ', '_')
-        fig.savefig(self.save_path / title)
-        plt.close('all')
+            plt.legend()
+            title = f"{self.get_saving_label()} profiles generated vs original epoch {epoch}"
+            if self.normalised:
+                title += ' normalised'
+            plt.title(title)
+            title = title.replace(' ', '_')
+            fig.savefig(self.save_path / title)
+            plt.close('all')
 
     def plot_generated_samples_start_epoch(self, generated_samples, epoch):
         saving_label = self.get_saving_label()
-        fig = plt.figure()
-        for i in range(self.batch_size_):
-            plt.plot(generated_samples[i].detach().numpy()[1:])
-        title = f'{saving_label} generated samples epoch {epoch}'
-        if self.normalised:
-            title += ' normalised'
-        plt.title(title)
-        title = title.replace(' ', '_')
-        fig.savefig(self.save_path / title)
-        plt.close('all')
+        if self.prm['plots']:
+            fig = plt.figure()
+            for i in range(self.batch_size_):
+                plt.plot(generated_samples[i].detach().numpy()[1:])
+            title = f'{saving_label} generated samples epoch {epoch}'
+            if self.normalised:
+                title += ' normalised'
+            plt.title(title)
+            title = title.replace(' ', '_')
+            fig.savefig(self.save_path / title)
+            plt.close('all')
 
     def update_noise_and_lr_generator(self, epoch):
         self.generator.noise_factor *= self.generator.noise_reduction
@@ -430,72 +454,75 @@ class GAN_Trainer():
     def plot_losses_over_time(
             self, losses_generator, losses_discriminator, means_outputs, stds_outputs
     ):
-        title = f"{self.get_saving_label()} losses "
-        if not self.profiles:
-            title += "mean std "
-        title += "over time"
-        if self.normalised:
-            title += ' normalised'
-        if self.profiles:
-            fig = plt.figure()
-            plt.plot(losses_generator, label="losses_generator")
-            plt.plot(losses_discriminator, label="losses_discriminator")
-            plt.legend()
-        else:
-            fig, axs = plt.subplots(3)
-            axs[0].plot(losses_generator, label="losses_generator")
-            axs[0].plot(losses_discriminator, label="losses_discriminator")
-            axs[0].legend()
-            axs[1].plot(means_outputs, label="mean output")
-            axs[1].legend()
-            print(f"mean_real_output {self.mean_real_output}")
-            axs[1].hlines(
-                self.mean_real_output, 0, len(means_outputs),
-                color='red', linestyle='dashed'
-            )
-            axs[2].plot(stds_outputs, label="std output")
-            axs[2].legend()
-            axs[2].hlines(
-                self.std_real_output, 0, len(means_outputs),
-                color='red', linestyle='dashed'
-            )
-            print(f"title {title}")
-            print(f"np.mean(stds_outputs) {np.mean(stds_outputs)} vs self.std_real_output {self.std_real_output}")
-            print(f"np.mean(means_outputs) {np.mean(means_outputs)} vs self.mean_real_output {self.mean_real_output}")
+        if self.prm['plots']:
+            title = f"{self.get_saving_label()} losses "
+            if not self.profiles:
+                title += "mean std "
+            title += "over time"
+            if self.normalised:
+                title += ' normalised'
+            if self.profiles:
+                fig = plt.figure()
+                plt.plot(losses_generator, label="losses_generator")
+                plt.plot(losses_discriminator, label="losses_discriminator")
+                plt.legend()
+            else:
+                fig, axs = plt.subplots(3)
+                axs[0].plot(losses_generator, label="losses_generator")
+                axs[0].plot(losses_discriminator, label="losses_discriminator")
+                axs[0].legend()
+                axs[1].plot(means_outputs, label="mean output")
+                axs[1].legend()
+                print(f"mean_real_output {self.mean_real_output}")
+                axs[1].hlines(
+                    self.mean_real_output, 0, len(means_outputs),
+                    color='red', linestyle='dashed'
+                )
+                axs[2].plot(stds_outputs, label="std output")
+                axs[2].legend()
+                axs[2].hlines(
+                    self.std_real_output, 0, len(means_outputs),
+                    color='red', linestyle='dashed'
+                )
+                print(f"title {title}")
+                print(f"np.mean(stds_outputs) {np.mean(stds_outputs)} vs self.std_real_output {self.std_real_output}")
+                print(f"np.mean(means_outputs) {np.mean(means_outputs)} vs self.mean_real_output {self.mean_real_output}")
 
 
-        title = title.replace(' ', '_')
-        fig.savefig(self.save_path / title)
-        plt.close('all')
+            title = title.replace(' ', '_')
+            fig.savefig(self.save_path / title)
+            plt.close('all')
 
     def plot_noise_over_time(self):
-        fig = plt.figure()
-        noises = [
-            self.generator.noise0 * self.generator.noise_reduction ** epoch
-            for epoch in range(self.n_epochs)
-        ]
-        plt.plot(noises)
-        title = f"{self.get_saving_label()} noise over time"
-        plt.title(title)
-        fig.savefig(self.save_path / title)
+        if self.prm['plots']:
+            fig = plt.figure()
+            noises = [
+                self.generator.noise0 * self.generator.noise_reduction ** epoch
+                for epoch in range(self.n_epochs)
+            ]
+            plt.plot(noises)
+            title = f"{self.get_saving_label()} noise over time"
+            plt.title(title)
+            fig.savefig(self.save_path / title)
 
     def plot_final_hist_generated_vs_real(self, generated_outputs, real_outputs, epoch):
-        nbins = self.n_clusters if self.value_type == 'clusters' else 100
-        generated_outputs_reshaped = np.array(generated_outputs.detach().numpy(), dtype=int).flatten()
-        real_outputs_reshaped = np.array(real_outputs.detach().numpy(), dtype=int).flatten()
+        if self.prm['plots']:
+            nbins = self.n_clusters if self.value_type == 'clusters' else 100
+            generated_outputs_reshaped = np.array(generated_outputs.detach().numpy(), dtype=int).flatten()
+            real_outputs_reshaped = np.array(real_outputs.detach().numpy(), dtype=int).flatten()
 
-        fig = plt.figure()
-        plt.hist(
-            [generated_outputs_reshaped, real_outputs_reshaped],
-            bins=nbins, alpha=0.5, label=['generated', 'real'], color=['red', 'blue']
-        )
-        plt.legend()
-        title = f"{self.get_saving_label()} hist generated vs real epoch {epoch}"
-        if self.normalised:
-            title += ' normalised'
-        title = title.replace(' ', '_')
-        fig.savefig(self.save_path / title)
-        plt.close('all')
+            fig = plt.figure()
+            plt.hist(
+                [generated_outputs_reshaped, real_outputs_reshaped],
+                bins=nbins, alpha=0.5, label=['generated', 'real'], color=['red', 'blue']
+            )
+            plt.legend()
+            title = f"{self.get_saving_label()} hist generated vs real epoch {epoch}"
+            if self.normalised:
+                title += ' normalised'
+            title = title.replace(' ', '_')
+            fig.savefig(self.save_path / title)
+            plt.close('all')
 
     def train(self):
         self.get_train_loader()
@@ -533,21 +560,35 @@ class GAN_Trainer():
 
 
 class Discriminator(nn.Module):
-    def __init__(self, size_inputs=1):
+    def __init__(self, size_inputs=1, nn_type='linear'):
         super().__init__()
-        self.model = nn.Sequential(
-            nn.Linear(size_inputs, 256),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(64, 1),
-            nn.Sigmoid(),
-        )
+        if nn_type == 'linear':
+            self.model = nn.Sequential(
+                nn.Linear(size_inputs, 256),
+                nn.ReLU(),
+                nn.Dropout(0.3),
+                nn.Linear(256, 128),
+                nn.ReLU(),
+                nn.Dropout(0.3),
+                nn.Linear(128, 64),
+                nn.ReLU(),
+                nn.Dropout(0.3),
+                nn.Linear(64, 1),
+                nn.Sigmoid(),
+            )
+        elif nn_type == 'cnn':
+            self.model = nn.Sequential(
+                nn.Linear(size_inputs, 256),
+                nn.ReLU(),
+                nn.ReplicationPad1d(1),
+                nn.Conv1d(200, 200, kernel_size=3),
+                nn.ReLU(),
+                # nn.MaxPool1d(kernel_size=3),
+                nn.BatchNorm1d(num_features=256),
+                nn.Flatten(),
+                nn.Linear(256, 1),
+                nn.Sigmoid(),
+            )
 
     def forward(self, x):
         output = self.model(x)
@@ -555,18 +596,36 @@ class Discriminator(nn.Module):
 
 
 class Generator(nn.Module):
-    def __init__(self, size_inputs=1, size_outputs=1, noise0=1, noise_end=5e-2, n_epochs=100):
+    def __init__(
+            self, size_inputs=1, size_outputs=1,
+            noise0=1, noise_end=5e-2, n_epochs=100,
+            batch_size=100,
+            nn_type='linear'
+    ):
         super().__init__()
-        self.model = nn.Sequential(
-            nn.Linear(size_inputs, 16),
-            nn.ReLU(),
-            nn.Linear(16, 32),
-            nn.ReLU(),
-            nn.Dropout(0.25),
-            nn.Linear(32, size_outputs),
-        )
+        if nn_type == 'linear':
+            self.model = nn.Sequential(
+                nn.Linear(size_inputs, 16),
+                nn.ReLU(),
+                nn.Linear(16, 32),
+                nn.ReLU(),
+                nn.Dropout(0.25),
+                nn.Linear(32, size_outputs),
+            )
+        elif nn_type == 'cnn':
+            self.model = nn.Sequential(
+                nn.Linear(1, size_outputs * 2),
+                nn.ReLU(),
+                nn.ReplicationPad1d(1),
+                nn.Conv1d(100, 100, kernel_size=3),
+                nn.ReLU(),
+                # nn.MaxPool1d(kernel_size=3),
+                nn.BatchNorm1d(num_features=size_outputs * 2),
+                nn.Flatten(),
+                nn.Linear(size_outputs * 2, size_outputs)
+            )
         self.noise0 = noise0
-        self.noise_reduction = math.exp(math.log(noise_end/noise0)/n_epochs)
+        self.noise_reduction = math.exp(math.log(noise_end / noise0) / n_epochs)
         self.noise_factor = self.noise0
 
     def forward(self, x):
@@ -597,6 +656,7 @@ def compute_profile_generators(
         'general_saving_folder': general_saving_folder,
         'data_type': data_type,
         'n_items_generated': 50,
+        'nn_type': 'cnn',
     }
     params['lr_decay'] = (params['lr_end'] / params['lr_start']) ** (1 / params['n_epochs'])
     gan_trainer = GAN_Trainer(params, prm)
