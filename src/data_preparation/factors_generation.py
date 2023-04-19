@@ -570,10 +570,19 @@ class GAN_Trainer():
             f"std {np.mean(stds_outputs[-10:])}"
         )
         if 'model' in self.generator.__dict__:
-            th.save(self.generator.model, self.save_path / f"generator_{self.get_saving_label()}.pt")
+            th.save(
+                self.generator.model,
+                self.save_path / f"generator_{self.get_saving_label()}.pt"
+            )
         else:
-            th.save(self.generator.fc, self.save_path / f"generator_{self.get_saving_label()}_fc.pt")
-            th.save(self.generator.conv, self.save_path / f"generator_{self.get_saving_label()}_conv.pt")
+            th.save(
+                self.generator.fc,
+                self.save_path / f"generator_{self.get_saving_label()}_fc.pt"
+            )
+            th.save(
+                self.generator.conv,
+                self.save_path / f"generator_{self.get_saving_label()}_conv.pt"
+            )
 
 
 class Discriminator(nn.Module):
