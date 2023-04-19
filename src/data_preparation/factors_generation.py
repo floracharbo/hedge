@@ -564,13 +564,16 @@ class GAN_Trainer():
         self.plot_losses_over_time(
             losses_generator, losses_discriminator, means_outputs, stds_outputs
         )
-
         self.plot_noise_over_time()
         print(
             f"mean generated outputs last 10: {np.mean(means_outputs[-10:])}, "
             f"std {np.mean(stds_outputs[-10:])}"
         )
-        th.save(self.generator.model, self.save_path / f"generator_{self.get_saving_label()}.pt")
+        if 'model' in self.generator.__dict__:
+            th.save(self.generator.model, self.save_path / f"generator_{self.get_saving_label()}.pt")
+        else:
+            th.save(self.generator.fc, self.save_path / f"generator_{self.get_saving_label()}_fc.pt")
+            th.save(self.generator.conv, self.save_path / f"generator_{self.get_saving_label()}_conv.pt")
 
 
 class Discriminator(nn.Module):
