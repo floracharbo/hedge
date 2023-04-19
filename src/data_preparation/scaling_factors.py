@@ -91,24 +91,29 @@ def _get_correlation(
 
 
 def _interpolate_missing_p_pos_2d(
-        p_pos, fs_brackets, data_type, transition, save_other_path, plot=True
+        p_pos, fs_brackets, mid_fs_brackets, data_type, transition, save_other_path, plot=True
 ):
-    non0 = np.where(p_pos != 0)
-    if len(non0) > 1:
+    non0 = np.where((p_pos != 0) & (~np.isnan(p_pos)))
+    if len(non0[0]) > 1:
+        points = [[mid_fs_brackets[non0[0][i]], mid_fs_brackets[non0[1][i]]] for i in range(len(non0[0]))]
+        values = p_pos[non0]
         grid_y, grid_x = np.meshgrid(fs_brackets, fs_brackets)
-        values = p_pos[p_pos != 0]
-        p_pos[p_pos==0] = np.nan
-        interpolated_p_pos = interpolate.griddata(non0, values, (grid_x, grid_y), method='linear')
+        p_pos[p_pos == 0] = np.nan
+        interpolated_p_pos = interpolate.griddata(points, values, (grid_x, grid_y), method='linear')
         for i_prev in range(len(p_pos)):
-            if np.sum(p_pos[i_prev]) != 0 and abs(sum(p_pos[i_prev]) - 1) > 1e-3:
-                p_pos[i_prev] /= sum(p_pos[i_prev])
+            if np.sum(interpolated_p_pos[i_prev]) != 0 and abs(sum(interpolated_p_pos[i_prev]) - 1) > 1e-3:
+                pinterpolated_p_pos_pos[i_prev] /= sum(interpolated_p_pos[i_prev])
         if plot:
             fig, axs = plt.subplots(2)
-            axs[0].pcolormesh(fs_brackets, fs_brackets, p_pos)
+            axs[0].pcolormesh(grid_x, grid_y, p_pos)
             axs[0].title.set_text('Original')
-            axs[1].pcolormesh(fs_brackets, fs_brackets, interpolated_p_pos)
+            axs[1].pcolormesh(grid_x, grid_y, interpolated_p_pos)
             axs[1].title.set_text('Linear interpolation')
             title = f"interpolate_2d_p_pos_{data_type}_{transition}"
+            if data_type == 'car':
+                np.save(f"p_pos_{data_type}_{transition}.npy", p_pos)
+                np.save(f"interpolated_p_pos_{data_type}_{transition}.npy", interpolated_p_pos)
+
             fig.savefig(save_other_path / "factors" / title.replace(" ", "_"))
             plt.close('all')
 
@@ -125,6 +130,7 @@ def _count_transitions(
     consecutive_factors,
     n_intervals: int,
     fs_brackets: List[float],
+    mid_fs_brackets: List[float],
     n_consecutive_days: int = 2,
     transition: str = "",
     save_other_path: str = ""
@@ -172,41 +178,43 @@ def _count_transitions(
             j for j in range(n_intervals) if f_nexts[i] >= fs_brackets[j]
         ][-1]
         n_zero2pos[i_next] += 1
-
-    if n_consecutive_days == 2:
-        for i_prev in range(n_intervals):
-            sum_next = sum(n_pos[i_prev])
-            if sum_next > 0:
-                p_pos[i_prev] = n_pos[i_prev] / sum_next
-            else:
-                print(f"i_prev {i_prev} sum_next {sum_next}")
-                p_pos[i_prev] = np.zeros((1, n_intervals))
-        p_pos = _interpolate_missing_p_pos_2d(
-            p_pos, fs_brackets, data_type, transition, save_other_path
-        )
-
-    elif n_consecutive_days == 3:
-        for i_prev in range(n_intervals):
-            for i_prev2 in range(n_intervals):
-                sum_next = sum(n_pos[i_prev, i_prev2])
+    if not (data_type == 'car' and transition == 'we2wd'):
+        if n_consecutive_days == 2:
+            for i_prev in range(n_intervals):
+                sum_next = sum(n_pos[i_prev])
                 if sum_next > 0:
-                    p_pos[i_prev, i_prev2] = n_pos[i_prev, i_prev2] / sum_next
+                    p_pos[i_prev] = n_pos[i_prev] / sum_next
                 else:
-                    p_pos[i_prev, i_prev2] = np.zeros((1, n_intervals))
+                    print(f"i_prev {i_prev} sum_next {sum_next}")
+                    p_pos[i_prev] = np.zeros((1, n_intervals))
+            p_pos = _interpolate_missing_p_pos_2d(
+                p_pos, fs_brackets, mid_fs_brackets, data_type, transition, save_other_path
+            )
 
-                if not np.all(p_pos >= 0):
-                    print(f"184 p_pos[{i_prev}, {i_prev2}] = {p_pos[i_prev, i_prev2]}")
-                    print(f"n_pos[{i_prev}, {i_prev2}]= {n_pos[i_prev, i_prev2]}")
-                assert np.all(p_pos >= 0), f"{data_type} {transition}"
-                non0 = np.where(p_pos[i_prev, i_prev2] != 0)[0]
-                if len(non0) > 1:
-                    interpolate_function = interpolate.interp1d(non0, p_pos[i_prev, i_prev2, non0])
-                    new_xs = range(min(non0), max(non0))
-                    p_pos[i_prev, i_prev2, new_xs] = interpolate_function(new_xs)
+        elif n_consecutive_days == 3:
+            for i_prev in range(n_intervals):
+                for i_prev2 in range(n_intervals):
+                    sum_next = sum(n_pos[i_prev, i_prev2])
+                    if sum_next > 0:
+                        p_pos[i_prev, i_prev2] = n_pos[i_prev, i_prev2] / sum_next
+                    else:
+                        p_pos[i_prev, i_prev2] = np.zeros((1, n_intervals))
 
-                sum_p_pos = sum(p_pos[i_prev, i_prev2])
-                if sum_p_pos != 0 and abs(sum_p_pos - 1) > 1e-3:
-                    p_pos[i_prev, i_prev2] /= sum_p_pos
+                    if not np.all(p_pos >= 0):
+                        print(f"184 p_pos[{i_prev}, {i_prev2}] = {p_pos[i_prev, i_prev2]}")
+                        print(f"n_pos[{i_prev}, {i_prev2}]= {n_pos[i_prev, i_prev2]}")
+                    assert np.all(p_pos >= 0), f"{data_type} {transition}"
+                    non0 = np.where(p_pos[i_prev, i_prev2] != 0)[0]
+                    if len(non0) > 1:
+                        interpolate_function = interpolate.interp1d(
+                            non0, p_pos[i_prev, i_prev2, non0]
+                        )
+                        new_xs = range(min(non0), max(non0))
+                        p_pos[i_prev, i_prev2, new_xs] = interpolate_function(new_xs)
+
+                    sum_p_pos = sum(p_pos[i_prev, i_prev2])
+                    if sum_p_pos != 0 and abs(sum_p_pos - 1) > 1e-3:
+                        p_pos[i_prev, i_prev2] /= sum_p_pos
 
     else:
         print(f"implement n_consecutive_days {n_consecutive_days}")
@@ -265,16 +273,16 @@ def _transition_intervals(
     ]
     print(transition)
     p_pos, p_zero2pos = _count_transitions(
-        data_type, consecutive_factors, prm["n_intervals"], fs_brackets,
+        data_type, consecutive_factors, prm["n_intervals"], fs_brackets, mid_fs_brackets,
         n_consecutive_days=n_consecutive_days, transition=transition,
         save_other_path=prm['save_other']
     )
-    labels_prob = [
-        f"{data_type} non zero factor transition probabilities",
-        f"{data_type} factor probabilities after a day without trips",
-    ]
+    labels_prob = {
+        'p_pos': f"{data_type} non zero factor transition probabilities",
+        'p_zero2pos': f"{data_type} factor probabilities after a day without trips",
+    }
 
-    for trans_prob, label_prob in zip([p_pos, p_zero2pos], labels_prob):
+    for trans_prob, label_prob in zip([p_pos, p_zero2pos], labels_prob.keys()):
         # trans_prob: transition probabilities
         print(F"np.shape(trans_prob) {np.shape(trans_prob)}")
         if len(np.shape(trans_prob)) == 1:
@@ -291,17 +299,19 @@ def _transition_intervals(
                 ax.imshow(trans_prob, norm=LogNorm())
             elif prm['brackets_definition'] == 'linspace':
                 # irregular grid -- use pcolormesh
-                plt.pcolormesh(fs_brackets, fs_brackets, trans_prob)
-            tick_labels = [
-                f"{label:.1f}" for label in
-                [0] + [fs_brackets[int(i - 1)] for i in ax.get_xticks()][1:]
-            ]
+                if label_prob == 'p_zero2pos':
+                    grid_y, grid_x = np.meshgrid(fs_brackets, [0, 1])
+                else:
+                    grid_y, grid_x = np.meshgrid(fs_brackets, fs_brackets)
+                fig, ax = plt.subplots()
+                ax.pcolormesh(grid_x, grid_y, trans_prob)
             title = \
-                f"{data_type} {label_prob} {transition} n_intervals {prm['n_intervals']} " \
+                f"{data_type} {labels_prob[label_prob]} {transition} " \
+                f"n_intervals {prm['n_intervals']} " \
                 f"brackets_definition {prm['brackets_definition']}"
             plt.title(title)
-            ax.set_xticklabels(tick_labels)
-            ax.set_yticklabels(tick_labels)
+            # ax.set_xticklabels(tick_labels)
+            # ax.set_yticklabels(tick_labels)
             ax.set_xlabel("f(t + 1)")
             ax.set_ylabel("f(t)")
             fig.savefig(prm["save_other"] / "factors" / title.replace(" ", "_"))
