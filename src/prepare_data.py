@@ -44,4 +44,4 @@ if __name__ == "__main__":
     print(f"(3) done scaling factors in {(dtm_4 - dtm_3)/60} minutes")
 
     toc_dtm = datetime.datetime.now()
-    print(f"END. Total duration {(toc_dtm - tic_dtm)/60} minutes")
+    print(f"END. Total duration {(toc_dtm - tic_dtm).seconds/60} minutes")
