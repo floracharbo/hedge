@@ -6,5 +6,6 @@ generator = HEDGE(
     n_consecutive_days=2,
     brackets_definition='percentile'
 )
+
 for i in range(10):
-    generator.make_next_day(plotting=True)
+    day = generator.make_next_day(plotting=True)
