@@ -926,7 +926,8 @@ class HEDGE:
             self.list_factors
         )
         np.save(
-            self.save_day_path / f"list_clusters_{self.it_plot}_n_consecutive_days{self.n_consecutive_days}",
+            self.save_day_path
+            / f"list_clusters_{self.it_plot}_n_consecutive_days{self.n_consecutive_days}",
             self.list_clusters
         )
         self.it_plot += 1

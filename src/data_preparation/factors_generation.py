@@ -14,7 +14,9 @@ from src.utils import initialise_dict
 th.manual_seed(111)
 
 
-def obtain_cluster_transition_probabilities(n_clusters, n_consecutive_days, list_inputs, list_outputs):
+def obtain_cluster_transition_probabilities(
+        n_clusters, n_consecutive_days, list_inputs, list_outputs
+):
     n_possible_inputs = n_clusters ** (n_consecutive_days - 1)
     n_transitions = np.zeros((n_possible_inputs, n_clusters))
     for i in range(len(list_inputs)):
@@ -34,6 +36,7 @@ def obtain_cluster_transition_probabilities(n_clusters, n_consecutive_days, list
     ]
 
     return cluster_transition_propabilities
+
 
 def checks_nan(real_inputs, real_outputs, generated_outputs):
     if any(any(th.isnan(real_inputs_i)) for real_inputs_i in real_inputs):
@@ -84,7 +87,7 @@ class GAN_Trainer():
             saving_label += f" {self.transition} n_consecutive_days {self.n_consecutive_days}"
         else:
             saving_label += f" cluster {self.k}"
-    
+
         if self.lr_decay != 1:
             saving_label += f" lr_decay {self.lr_decay:.3f}".replace('.', '_')
         if self.nn_type != 'linear':
@@ -112,9 +115,11 @@ class GAN_Trainer():
                         outputs = np.concatenate((outputs[0: i - it], outputs[i - it + 1:]))
                     except Exception as ex:
                         print(
-                            f"ex {ex} self.data_type {self.data_type} self.value_type {self.value_type} "
+                            f"ex {ex} self.data_type {self.data_type} "
+                            f"self.value_type {self.value_type} "
                             f"it {it} i {i}"
-                            f"np.shape(inputs) {np.shape(inputs)} np.shape(outputs) {np.shape(outputs)}"
+                            f"np.shape(inputs) {np.shape(inputs)} "
+                            f"np.shape(outputs) {np.shape(outputs)}"
                             f"inputs {inputs} outputs {outputs}"
                         )
                         sys.exit()
@@ -186,8 +191,10 @@ class GAN_Trainer():
 
     def update_n_items_generated(self):
         self.size_output_generator = self.size_output_generator_one_item * self.n_items_generated
-        self.size_input_discriminator = self.size_input_discriminator_one_item * self.n_items_generated
-        self.size_input_generator = self.size_input_generator_one_item if self.profiles else self.size_input_generator_one_item * self.n_items_generated
+        self.size_input_discriminator = self.size_input_discriminator_one_item \
+            * self.n_items_generated
+        self.size_input_generator = self.size_input_generator_one_item if self.profiles \
+            else self.size_input_generator_one_item * self.n_items_generated
 
     def split_inputs_and_outputs(self, train_data):
         if self.profiles:
@@ -220,7 +227,9 @@ class GAN_Trainer():
         if self.profiles:
             generated_samples = generated_outputs
         else:
-            generated_samples = self.insert_generated_outputs_in_inputs_list(real_inputs, generated_outputs)
+            generated_samples = self.insert_generated_outputs_in_inputs_list(
+                real_inputs, generated_outputs
+            )
 
         return generated_samples, real_samples
 
@@ -300,7 +309,8 @@ class GAN_Trainer():
         if 'cluster_transition_propabilities' in self.__dict__:
             axs[1].imshow(self.cluster_transition_propabilities, label='real')
         plt.legend()
-        title = f"{self.get_saving_label()} hist clusters transitions generated vs real epoch {epoch}"
+        title = f"{self.get_saving_label()} hist clusters transitions generated " \
+                f"vs real epoch {epoch}"
         if self.normalised:
             title += ' normalised'
         title = title.replace(' ', '_')
@@ -335,7 +345,9 @@ class GAN_Trainer():
             )
             if self.value_type == 'clusters':
                 self.plot_final_hist_generated_vs_real(generated_outputs, real_outputs, epoch)
-                self.plot_clusters_transitions_generated_vs_real(real_inputs, generated_outputs, epoch)
+                self.plot_clusters_transitions_generated_vs_real(
+                    real_inputs, generated_outputs, epoch
+                )
             else:
                 self.plot_generated_samples_start_epoch(generated_samples, epoch)
 
@@ -356,7 +368,10 @@ class GAN_Trainer():
         consecutive_factors = generated_samples_2d[:, :-1]
         # f_prev = generated_samples_2d[:, self.n_consecutive_days - 2]
         # f_next = generated_samples_2d[:, self.n_consecutive_days - 1]
-        _transition_intervals(consecutive_factors, self.transition + f"_{epoch}", self.prm, self.data_type, n_consecutive_days=n_consecutive_days)
+        _transition_intervals(
+            consecutive_factors, self.transition + f"_{epoch}", self.prm,
+            self.data_type, n_consecutive_days=self.n_consecutive_days
+        )
 
     def check_clusters_transition_probabilities_match_real(self, generated_samples_2d):
         if self.value_type == 'clusters':
@@ -476,9 +491,14 @@ class GAN_Trainer():
                     color='red', linestyle='dashed'
                 )
                 print(f"title {title}")
-                print(f"np.mean(stds_outputs) {np.mean(stds_outputs)} vs self.std_real_output {self.std_real_output}")
-                print(f"np.mean(means_outputs) {np.mean(means_outputs)} vs self.mean_real_output {self.mean_real_output}")
-
+                print(
+                    f"np.mean(stds_outputs) {np.mean(stds_outputs)} "
+                    f"vs self.std_real_output {self.std_real_output}"
+                )
+                print(
+                    f"np.mean(means_outputs) {np.mean(means_outputs)} "
+                    f"vs self.mean_real_output {self.mean_real_output}"
+                )
 
             title = title.replace(' ', '_')
             fig.savefig(self.save_path / title)
@@ -499,7 +519,9 @@ class GAN_Trainer():
     def plot_final_hist_generated_vs_real(self, generated_outputs, real_outputs, epoch):
         if self.prm['plots']:
             nbins = self.n_clusters if self.value_type == 'clusters' else 100
-            generated_outputs_reshaped = np.array(generated_outputs.detach().numpy(), dtype=int).flatten()
+            generated_outputs_reshaped = np.array(
+                generated_outputs.detach().numpy(), dtype=int
+            ).flatten()
             real_outputs_reshaped = np.array(real_outputs.detach().numpy(), dtype=int).flatten()
 
             fig = plt.figure()
@@ -574,6 +596,7 @@ class Discriminator(nn.Module):
                 nn.Conv1d(200, 200, kernel_size=3),
                 nn.BatchNorm1d(num_features=size_inputs-2),
                 nn.Flatten(),
+                nn.Dropout(0.3),
                 nn.Linear(size_inputs-2, 64),
                 nn.ReLU(),
                 nn.Dropout(0.3),
@@ -620,24 +643,33 @@ class Generator(nn.Module):
             self.fc = nn.Sequential(
                 nn.Linear(size_inputs, 256),
                 nn.ReLU(),
+                nn.Dropout(0.3),
                 nn.Linear(256, 512),
                 nn.ReLU(),
+                nn.Dropout(0.3),
                 nn.Linear(512, 1024),
                 nn.ReLU(),
+                nn.Dropout(0.3),
                 nn.Linear(1024, size_outputs * 8),
                 nn.ReLU(),
             )
 
             self.conv = nn.Sequential(
-                nn.ConvTranspose1d(size_outputs * 8, size_outputs * 4, kernel_size=3, stride=2, padding=1,
-                                   ),
+                nn.ConvTranspose1d(
+                    size_outputs * 8, size_outputs * 4, kernel_size=3, stride=2, padding=1,
+                ),
                 nn.BatchNorm1d(size_outputs * 4),
                 nn.ReLU(),
-                nn.ConvTranspose1d(size_outputs * 4, size_outputs * 2, kernel_size=3, stride=2, padding=1,
-                                   ),
+                nn.Dropout(0.3),
+                nn.ConvTranspose1d(
+                    size_outputs * 4, size_outputs * 2, kernel_size=3, stride=2, padding=1,
+                ),
                 nn.BatchNorm1d(size_outputs * 2),
                 nn.ReLU(),
-                nn.ConvTranspose1d(size_outputs * 2, size_outputs, kernel_size=3, stride=2, padding=1),
+                nn.Dropout(0.3),
+                nn.ConvTranspose1d(
+                    size_outputs * 2, size_outputs, kernel_size=3, stride=2, padding=1
+                ),
                 nn.BatchNorm1d(size_outputs),
                 nn.ReLU(),
             )
@@ -667,7 +699,7 @@ def compute_profile_generators(
         'profiles': True,
         'batch_size': 100,
         'n_epochs': 200,
-        'lr_start': 0.001,
+        'lr_start': 0.01,
         'lr_end': 0.0001,
         'weight_sum_profiles': 0.5 if data_type == 'loads' else 0,
         'size_input_discriminator_one_item': n,
@@ -696,7 +728,7 @@ def compute_factors_clusters_generators(
     n_consecutive_days = 3
     training_params = {
         'batch_size': 100,
-        'n_epochs': 20, #100,
+        'n_epochs': 20,  # 100,
         'lr_start': 0.001,
         'n_consecutive_days': n_consecutive_days,
         'data_type': data_type,
@@ -743,7 +775,8 @@ def compute_factors_clusters_generators(
             list_outputs['clusters'][transition].append(clusters[-1])
 
             # factors
-            c1_zero = 'zero_start' if data_type == 'car' and clusters[0] == n_clus_all_ - 1 else 'non_zero_start'
+            c1_zero = 'zero_start' if data_type == 'car' and clusters[0] == n_clus_all_ - 1 \
+                else 'non_zero_start'
             c2_zero = data_type == 'car' and clusters[1] == n_clus_all_ - 1
             if not c2_zero:
                 list_inputs['factors'][c1_zero].append(
@@ -764,9 +797,15 @@ def compute_factors_clusters_generators(
     for transition in prm['day_trans']:
         print(f"clusters: transition {transition}")
         cluster_transition_propabilities = obtain_cluster_transition_probabilities(
-            n_clus_all_, n_consecutive_days, list_inputs['clusters'][transition], list_outputs['clusters'][transition]
+            n_clus_all_, n_consecutive_days, list_inputs['clusters'][transition],
+            list_outputs['clusters'][transition]
         )
-        with open(prm["save_other"] / f"{data_type}_clusters_generation" / f"cluster_transition_probabilities_{transition}.pickle", "wb") as file:
+        with open(
+                prm["save_other"]
+                / f"{data_type}_clusters_generation"
+                / f"cluster_transition_probabilities_{transition}.pickle",
+                "wb"
+        ) as file:
             pickle.dump(cluster_transition_propabilities, file)
         # gan_trainer.cluster_transition_propabilities = cluster_transition_propabilities
         # gan_trainer.transition = transition
