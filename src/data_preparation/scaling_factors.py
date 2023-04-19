@@ -90,27 +90,30 @@ def _get_correlation(
     return factors
 
 
-def _interpolate_missing_p_pos_2d(p_pos, fs_brackets, data_type, transition, prm, plot=True):
+def _interpolate_missing_p_pos_2d(
+        p_pos, fs_brackets, data_type, transition, save_other_path, plot=True
+):
     non0 = np.where(p_pos != 0)
     if len(non0) > 1:
         grid_y, grid_x = np.meshgrid(fs_brackets, fs_brackets)
         values = p_pos[p_pos != 0]
-        interpolated_p_pos = interpolate.griddata(non0, values, (grid_x, grid_y), method='cubic')
+        p_pos[p_pos==0] = np.nan
+        interpolated_p_pos = interpolate.griddata(non0, values, (grid_x, grid_y), method='linear')
         for i_prev in range(len(p_pos)):
             if np.sum(p_pos[i_prev]) != 0 and abs(sum(p_pos[i_prev]) - 1) > 1e-3:
                 p_pos[i_prev] /= sum(p_pos[i_prev])
         if plot:
             fig, axs = plt.subplots(2)
             axs[0].pcolormesh(fs_brackets, fs_brackets, p_pos)
-            axs[0].suptitle('Original')
+            axs[0].title.set_text('Original')
             axs[1].pcolormesh(fs_brackets, fs_brackets, interpolated_p_pos)
-            axs[1].suptitle('Cubic')
-            plt.show()
-            # interpolate_function = interpolate.interp1d(non0, p_pos[i_prev, non0])
-            # new_xs = range(min(non0), max(non0))
-            # p_pos[i_prev, new_xs] = interpolate_function(new_xs)
+            axs[1].title.set_text('Linear interpolation')
             title = f"interpolate_2d_p_pos_{data_type}_{transition}"
-            fig.savefig(prm["save_other"] / "factors" / title.replace(" ", "_"))
+            fig.savefig(save_other_path / "factors" / title.replace(" ", "_"))
+            plt.close('all')
+
+        interpolated_p_pos[np.isnan(interpolated_p_pos)] = 0
+
     else:
         interpolated_p_pos = p_pos
 
@@ -124,6 +127,7 @@ def _count_transitions(
     fs_brackets: List[float],
     n_consecutive_days: int = 2,
     transition: str = "",
+    save_other_path: str = ""
 ):
     shape = tuple(n_intervals for _ in range(n_consecutive_days))
     n_pos, p_pos = [np.zeros(shape) for _ in range(2)]
@@ -177,7 +181,9 @@ def _count_transitions(
             else:
                 print(f"i_prev {i_prev} sum_next {sum_next}")
                 p_pos[i_prev] = np.zeros((1, n_intervals))
-        p_pos = _interpolate_missing_p_pos_2d(p_pos, fs_brackets, data_type, transition, prm)
+        p_pos = _interpolate_missing_p_pos_2d(
+            p_pos, fs_brackets, data_type, transition, save_other_path
+        )
 
     elif n_consecutive_days == 3:
         for i_prev in range(n_intervals):
@@ -260,7 +266,8 @@ def _transition_intervals(
     print(transition)
     p_pos, p_zero2pos = _count_transitions(
         data_type, consecutive_factors, prm["n_intervals"], fs_brackets,
-        n_consecutive_days=n_consecutive_days, transition=transition
+        n_consecutive_days=n_consecutive_days, transition=transition,
+        save_other_path=prm['save_other']
     )
     labels_prob = [
         f"{data_type} non zero factor transition probabilities",
