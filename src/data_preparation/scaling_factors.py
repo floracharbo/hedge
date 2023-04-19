@@ -528,6 +528,38 @@ def _ev_transitions(prm, factors, data_type, n_consecutive_days):
     return p_pos, p_zero2pos, fs_brackets, mid_fs_brackets
 
 
+def _get_residuals_loads(prm, factors, n_consecutive_days=2):
+    mean_residual = {}
+    residual_distribution_prms = {}
+    for transition in prm["day_trans"]:
+        print(f"loads {transition}")
+        # Household demand
+        if factors["loads"][transition] is None:
+            mean_residual["loads"][transition] = None
+            residual_distribution_prms["loads"][transition] = None
+            print(f"factors['loads'][{transition}] is None")
+            continue
+
+        consecutive_factors = np.array([
+            factors["loads"][transition][f"f{i_f}of{n_consecutive_days}"]
+            for i_f in range(n_consecutive_days)
+        ])
+        print(f"np.shape(consecutive_factors) {np.shape(consecutive_factors)}")
+        f_prevs = consecutive_factors[0]
+        f_nexts = consecutive_factors[1]
+        assert sum(1 for f_prev in f_prevs if f_prev == 0) == 0, \
+            "need to account for Nones for fit norm"
+        mean_residual["loads"][transition], residual_distribution_prms["loads"][transition] \
+            = _fit_residual_distribution(f_prevs, f_nexts, prm, "loads", transition)
+        if mean_residual["loads"][transition] is None:
+            print(f"mean_residual['loads'][{transition}] "
+                  f"= {mean_residual['loads'][transition]}")
+            print(f"np.shape(f_prevs) = {np.shape(f_prevs)}")
+            print(f"np.shape(f_nexts) = {np.shape(f_nexts)}")
+
+    return mean_residual, residual_distribution_prms
+
+
 def _scaling_factors_behaviour_types(
     prm: dict,
     banks: dict,
@@ -545,25 +577,17 @@ def _scaling_factors_behaviour_types(
             continue
         for transition in prm["day_trans"]:
             if len(banks[data_type][transition][f"f0of{n_consecutive_days}"]) == 0:
-                print(F"len(banks[{data_type}][{transition}]['f0of{n_consecutive_days}']) == 0")
+                print(f"len(banks[{data_type}][{transition}]['f0of{n_consecutive_days}']) == 0")
             all_consecutive_factors = np.array([
                 np.array(banks[data_type][transition][f"f{i_f}of{n_consecutive_days}"])
                 for i_f in range(n_consecutive_days)
             ])
-            if len(all_consecutive_factors[0]) == 0:
-                print(
-                    f"{data_type} transition {transition} "
-                    f"len f_prevs_all == 0"
-                )
-            f_prevs_all = all_consecutive_factors[0]
+            f_prevs_all, f_nexts_all = all_consecutive_factors[0:2]
             if n_consecutive_days == 2:
-                all_consecutive_factors = np.array(all_consecutive_factors)
-                f_nexts_all = all_consecutive_factors[1]
                 factors[data_type][transition] = _get_correlation(
                     f_prevs_all, f_nexts_all, prm, data_type, transition
                 )
             elif n_consecutive_days == 3:
-                print("n_consecutive_days = 3 in _scaling_factors_behaviour_types")
                 for i in range(3):
                     label = f"f{i}of{n_consecutive_days}"
                     factors[data_type][transition][label] = banks[data_type][transition][label]
@@ -576,34 +600,11 @@ def _scaling_factors_behaviour_types(
             n_transitions[data_type] += len(f_prevs_all)
 
     if n_consecutive_days == 2 and "loads" in prm["data_types"]:
-        for transition in prm["day_trans"]:
-            print(f"loads {transition}")
-            # Household demand
-            if factors["loads"][transition] is None:
-                mean_residual["loads"][transition] = None
-                residual_distribution_prms["loads"][transition] = None
-                print(f"factors['loads'][{transition}] is None")
-                continue
-
-            consecutive_factors = np.array([
-                factors["loads"][transition][f"f{i_f}of{n_consecutive_days}"]
-                for i_f in range(n_consecutive_days)
-            ])
-            print(f"np.shape(consecutive_factors) {np.shape(consecutive_factors)}")
-            f_prevs = consecutive_factors[0]
-            f_nexts = consecutive_factors[1]
-            assert sum(1 for f_prev in f_prevs if f_prev == 0) == 0, \
-                "need to account for Nones for fit norm"
-            mean_residual["loads"][transition], residual_distribution_prms["loads"][transition] \
-                = _fit_residual_distribution(f_prevs, f_nexts, prm, "loads", transition)
-            if mean_residual["loads"][transition] is None:
-                print(f"mean_residual['loads'][{transition}] "
-                      f"= {mean_residual['loads'][transition]}")
-                print(f"np.shape(f_prevs) = {np.shape(f_prevs)}")
-                print(f"np.shape(f_nexts) = {np.shape(f_nexts)}")
+        mean_residual['loads'], residual_distribution_prms['loads'] = _get_residuals_loads(
+            prm, factors
+        )
 
     if n_consecutive_days == 3:
-        print("n_consecutive_days = 3 in _scaling_factors_behaviour_types")
         for i in range(3):
             label = f"f{i}of{n_consecutive_days}"
             factors['gen'][label] = []
