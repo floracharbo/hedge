@@ -295,11 +295,7 @@ def _get_cdfs(distances, label, prm, bank):
         # finding the CDF of the histogram
         cdfs = np.cumsum(pdf)
         # matching each distance data point to its bin probability
-        all_cdfs = [
-            [cdf for cdf, bin_start in zip(cdfs + cdfs[-1], bins_edges)
-             if dist >= bin_start][0]
-            for dist in distance
-        ]
+        all_cdfs = [cdfs[np.where(dist >= bins_edges[:-1])[0][-1]] for dist in distance]
         bank[i]["cdfs"] = all_cdfs
         min_cdfs_.append(all_cdfs[0])
         max_cdfs_.append(all_cdfs[-1])

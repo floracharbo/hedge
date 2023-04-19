@@ -160,8 +160,6 @@ def run_id(prm):
 
 
 def f_to_interval(f, fs_brackets):
-    interval = [
-        j for j in range(len(fs_brackets) - 1) if f >= fs_brackets[j]
-    ][-1]
+    interval = np.where(f >= fs_brackets[:-1])[0][-1]
 
     return interval
