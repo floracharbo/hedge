@@ -552,9 +552,8 @@ class HEDGE:
 
     def _ps_rand_to_choice(self, probs: List[float], rand: float) -> int:
         """Given list of probabilities, select index."""
-        p_intervals = [sum(probs[0:i]) for i in range(len(probs))]
-        choice = [ip for ip in range(len(p_intervals))
-                  if rand > p_intervals[ip]][-1]
+        p_intervals = np.cumsum(probs)
+        choice = np.where(rand > p_intervals)[0][-1]
 
         return choice
 
@@ -684,7 +683,7 @@ class HEDGE:
                 else self.car["min_charge"] * day["avail_car"][home][t]
             )
             # min_charge if need to charge up ahead of last step
-            if day["avail_car"][home][t]:  # if you are currently in garage
+            if day["avail_car"][home][t]:  # if car is currently in garage
                 # obtain all future trips
                 trip_loads: List[float] = []
                 dt_to_trips: List[int] = []
