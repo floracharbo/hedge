@@ -90,6 +90,33 @@ def _get_correlation(
     return factors
 
 
+def _interpolate_missing_p_pos_2d(p_pos, fs_brackets, data_type, transition, prm, plot=True):
+    non0 = np.where(p_pos != 0)
+    if len(non0) > 1:
+        grid_y, grid_x = np.meshgrid(fs_brackets, fs_brackets)
+        values = p_pos[p_pos != 0]
+        interpolated_p_pos = interpolate.griddata(non0, values, (grid_x, grid_y), method='cubic')
+        for i_prev in range(len(p_pos)):
+            if np.sum(p_pos[i_prev]) != 0 and abs(sum(p_pos[i_prev]) - 1) > 1e-3:
+                p_pos[i_prev] /= sum(p_pos[i_prev])
+        if plot:
+            fig, axs = plt.subplots(2)
+            axs[0].pcolormesh(fs_brackets, fs_brackets, p_pos)
+            axs[0].suptitle('Original')
+            axs[1].pcolormesh(fs_brackets, fs_brackets, interpolated_p_pos)
+            axs[1].suptitle('Cubic')
+            plt.show()
+            # interpolate_function = interpolate.interp1d(non0, p_pos[i_prev, non0])
+            # new_xs = range(min(non0), max(non0))
+            # p_pos[i_prev, new_xs] = interpolate_function(new_xs)
+            title = f"interpolate_2d_p_pos_{data_type}_{transition}"
+            fig.savefig(prm["save_other"] / "factors" / title.replace(" ", "_"))
+    else:
+        interpolated_p_pos = p_pos
+
+    return interpolated_p_pos
+
+
 def _count_transitions(
     data_type,
     consecutive_factors,
@@ -150,13 +177,7 @@ def _count_transitions(
             else:
                 print(f"i_prev {i_prev} sum_next {sum_next}")
                 p_pos[i_prev] = np.zeros((1, n_intervals))
-            non0 = np.where(p_pos[i_prev] != 0)[0]
-            if len(non0) > 1:
-                interpolate_function = interpolate.interp1d(non0, p_pos[i_prev, non0])
-                new_xs = range(min(non0), max(non0))
-                p_pos[i_prev, new_xs] = interpolate_function(new_xs)
-            if np.sum(p_pos[i_prev]) != 0 and abs(sum(p_pos[i_prev]) - 1) > 1e-3:
-                p_pos[i_prev] /= sum(p_pos[i_prev])
+        p_pos = _interpolate_missing_p_pos_2d(p_pos, fs_brackets, data_type, transition)
 
     elif n_consecutive_days == 3:
         for i_prev in range(n_intervals):
@@ -256,9 +277,14 @@ def _transition_intervals(
             print(f"label_prob {label_prob} not (trans_prob >= 0).all()")
             if not (data_type == 'car' and transition == 'we2wd'):
                 assert np.sum(trans_prob) > 0, "error not np.sum(trans_prob) > 0"
+
         if prm["plots"] and n_consecutive_days == 2:
             fig, ax = plt.subplots()
-            ax.imshow(trans_prob, norm=LogNorm())
+            if prm['brackets_definition'] == 'linear':
+                ax.imshow(trans_prob, norm=LogNorm())
+            elif prm['brackets_definition'] == 'linspace':
+                # irregular grid -- use pcolormesh
+                plt.pcolormesh(fs_brackets, fs_brackets, trans_prob)
             tick_labels = [
                 f"{label:.1f}" for label in
                 [0] + [fs_brackets[int(i - 1)] for i in ax.get_xticks()][1:]
@@ -397,7 +423,6 @@ def min_max_x_to_kurtosis_pdf(xmin, xmax, norm_prms, kurtosis):
 
 
 def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
-    print(f"fit_residual_distribution f_prevs {f_prevs} f_nexts {f_nexts}")
     assert sum(1 for f_prev in f_prevs if f_prev is None) == 0,\
         "None f_prevs"
 
@@ -445,7 +470,6 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
             fig = plt.figure()
             plt.hist(errors, density=1, alpha=0.5, label="data", bins=50)
             plt.plot(factor_residuals, pdf, label=f"{distr_str} pdf")
-        print(f"factor_residuals {factor_residuals} pdf {pdf}")
         assert 0.95 < integral_cdf(factor_residuals, pdf) < 1.02, \
             f"integral_cdf(factor_residuals, pdf) {integral_cdf(factor_residuals, pdf) }"
 
@@ -529,13 +553,12 @@ def _ev_transitions(prm, factors, data_type, n_consecutive_days):
 
 
 def _get_residuals_loads(prm, factors, n_consecutive_days=2):
-    mean_residual = {}
-    residual_distribution_prms = {}
+    mean_residual, residual_distribution_prms = {}, {}
     for transition in prm["day_trans"]:
         print(f"loads {transition}")
         # Household demand
         if factors["loads"][transition] is None:
-            mean_residual["loads"][transition] = None
+            mean_residual[transition] = None
             residual_distribution_prms["loads"][transition] = None
             print(f"factors['loads'][{transition}] is None")
             continue
@@ -549,11 +572,11 @@ def _get_residuals_loads(prm, factors, n_consecutive_days=2):
         f_nexts = consecutive_factors[1]
         assert sum(1 for f_prev in f_prevs if f_prev == 0) == 0, \
             "need to account for Nones for fit norm"
-        mean_residual["loads"][transition], residual_distribution_prms["loads"][transition] \
+        mean_residual[transition], residual_distribution_prms[transition] \
             = _fit_residual_distribution(f_prevs, f_nexts, prm, "loads", transition)
-        if mean_residual["loads"][transition] is None:
+        if mean_residual[transition] is None:
             print(f"mean_residual['loads'][{transition}] "
-                  f"= {mean_residual['loads'][transition]}")
+                  f"= {mean_residual[transition]}")
             print(f"np.shape(f_prevs) = {np.shape(f_prevs)}")
             print(f"np.shape(f_nexts) = {np.shape(f_nexts)}")
 
