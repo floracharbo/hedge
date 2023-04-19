@@ -91,18 +91,18 @@ def _get_correlation(
 
 
 def _interpolate_missing_p_pos_2d(
-        p_pos, fs_brackets, mid_fs_brackets, data_type, transition, save_other_path, plot=True
+        p_pos, mid_fs_brackets, data_type, transition, save_other_path, plot=True
 ):
     non0 = np.where((p_pos != 0) & (~np.isnan(p_pos)))
-    if len(non0[0]) > 1:
+    if len(non0[0]) > 3:
         points = [[mid_fs_brackets[non0[0][i]], mid_fs_brackets[non0[1][i]]] for i in range(len(non0[0]))]
         values = p_pos[non0]
-        grid_y, grid_x = np.meshgrid(fs_brackets, fs_brackets)
+        grid_y, grid_x = np.meshgrid(mid_fs_brackets, mid_fs_brackets)
         p_pos[p_pos == 0] = np.nan
         interpolated_p_pos = interpolate.griddata(points, values, (grid_x, grid_y), method='linear')
         for i_prev in range(len(p_pos)):
             if np.sum(interpolated_p_pos[i_prev]) != 0 and abs(sum(interpolated_p_pos[i_prev]) - 1) > 1e-3:
-                pinterpolated_p_pos_pos[i_prev] /= sum(interpolated_p_pos[i_prev])
+                interpolated_p_pos[i_prev] /= sum(interpolated_p_pos[i_prev])
         if plot:
             fig, axs = plt.subplots(2)
             axs[0].pcolormesh(grid_x, grid_y, p_pos)
@@ -120,6 +120,7 @@ def _interpolate_missing_p_pos_2d(
         interpolated_p_pos[np.isnan(interpolated_p_pos)] = 0
 
     else:
+        print(f"only {len(non0[0])} nonzero points for {data_type}, {transition}: cannot perform 2d interpolation")
         interpolated_p_pos = p_pos
 
     return interpolated_p_pos
@@ -135,6 +136,7 @@ def _count_transitions(
     transition: str = "",
     save_other_path: str = ""
 ):
+    print(f"{data_type} {transition}")
     shape = tuple(n_intervals for _ in range(n_consecutive_days))
     n_pos, p_pos = [np.zeros(shape) for _ in range(2)]
     n_zero2pos = np.zeros(n_intervals)
@@ -188,7 +190,7 @@ def _count_transitions(
                     print(f"i_prev {i_prev} sum_next {sum_next}")
                     p_pos[i_prev] = np.zeros((1, n_intervals))
             p_pos = _interpolate_missing_p_pos_2d(
-                p_pos, fs_brackets, mid_fs_brackets, data_type, transition, save_other_path
+                p_pos, mid_fs_brackets, data_type, transition, save_other_path
             )
 
         elif n_consecutive_days == 3:
@@ -204,17 +206,22 @@ def _count_transitions(
                         print(f"184 p_pos[{i_prev}, {i_prev2}] = {p_pos[i_prev, i_prev2]}")
                         print(f"n_pos[{i_prev}, {i_prev2}]= {n_pos[i_prev, i_prev2]}")
                     assert np.all(p_pos >= 0), f"{data_type} {transition}"
-                    non0 = np.where(p_pos[i_prev, i_prev2] != 0)[0]
-                    if len(non0) > 1:
-                        interpolate_function = interpolate.interp1d(
-                            non0, p_pos[i_prev, i_prev2, non0]
-                        )
-                        new_xs = range(min(non0), max(non0))
-                        p_pos[i_prev, i_prev2, new_xs] = interpolate_function(new_xs)
+                    # non0 = np.where(p_pos[i_prev, i_prev2] != 0)[0]
+                    # if len(non0) > 1:
+                    #     interpolate_function = interpolate.interp1d(
+                    #         non0, p_pos[i_prev, i_prev2, non0]
+                    #     )
+                    #     new_xs = range(min(non0), max(non0))
+                    #     p_pos[i_prev, i_prev2, new_xs] = interpolate_function(new_xs)
+                    #
+                    # sum_p_pos = sum(p_pos[i_prev, i_prev2])
+                    # if sum_p_pos != 0 and abs(sum_p_pos - 1) > 1e-3:
+                    #     p_pos[i_prev, i_prev2] /= sum_p_pos
 
-                    sum_p_pos = sum(p_pos[i_prev, i_prev2])
-                    if sum_p_pos != 0 and abs(sum_p_pos - 1) > 1e-3:
-                        p_pos[i_prev, i_prev2] /= sum_p_pos
+                p_pos[i_prev] = _interpolate_missing_p_pos_2d(
+                    p_pos[i_prev], mid_fs_brackets, data_type, f"{transition}_3d_i_prev{i_prev}",
+                    save_other_path, plot=False
+                )
 
     else:
         print(f"implement n_consecutive_days {n_consecutive_days}")
