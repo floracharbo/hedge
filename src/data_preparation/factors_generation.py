@@ -84,14 +84,17 @@ class GAN_Trainer():
     def get_saving_label(self):
         saving_label = f'{self.data_type} {self.value_type}'
         if not self.profiles:
-            saving_label += f" {self.transition} n_consecutive_days {self.n_consecutive_days}"
+            saving_label += f" {self.transition} n_consecutive_days {self.n_consecutive_days} " \
+                            f"lr_start{self.lr_start:.2e} "
         else:
             saving_label += f" cluster {self.k}"
-
         if self.lr_decay != 1:
-            saving_label += f" lr_decay {self.lr_decay:.3f}".replace('.', '_')
-        if self.nn_type != 'linear':
-            saving_label += f" nn_type {self.nn_type}"
+            saving_label += f" lr_end {self.lr_end:.2e}".replace('.', '_')
+        for label in ['generator', 'discriminator']:
+            nn_type = self.__dict__[f'nn_type_{label}']
+            if nn_type != 'linear':
+                saving_label += f" nn_type_{label} {nn_type}"
+
         saving_label += f" noise0{self.noise0:.2f}_noise_end{self.noise_end:.2f}".replace('.', '_')
 
         return saving_label
@@ -253,14 +256,14 @@ class GAN_Trainer():
             size_inputs=self.size_input_generator,
             size_outputs=self.size_output_generator,
             n_epochs=self.n_epochs,
-            nn_type=self.nn_type,
+            nn_type=self.nn_type_generator,
             batch_size=self.batch_size,
             noise0=self.noise0,
             noise_end=self.noise_end,
         )
         self.discriminator = Discriminator(
             size_inputs=self.size_input_discriminator,
-            nn_type=self.nn_type
+            nn_type=self.nn_type_discriminator
         )
 
         self.loss_function = nn.BCELoss()
@@ -711,8 +714,8 @@ def compute_profile_generators(
         'profiles': True,
         'batch_size': 100,
         'n_epochs': 200,
-        'lr_start': 0.01,
-        'lr_end': 0.0001,
+        'lr_start': 0.1,
+        'lr_end': 0.01,
         'weight_sum_profiles': 0.5 if data_type == 'loads' else 0,
         'size_input_discriminator_one_item': n,
         'size_input_generator_one_item': 1,
@@ -722,9 +725,10 @@ def compute_profile_generators(
         'general_saving_folder': general_saving_folder,
         'data_type': data_type,
         'n_items_generated': 50,
-        'nn_type': 'cnn',
-        'noise0': 1,
-        'noise_end': 1e-3,
+        'nn_type_generator': 'linear',
+        'nn_type_discriminator': 'linear',
+        'noise0': 0.01,
+        'noise_end': 1e-4,
     }
     params['lr_decay'] = (params['lr_end'] / params['lr_start']) ** (1 / params['n_epochs'])
     gan_trainer = GAN_Trainer(params, prm)
