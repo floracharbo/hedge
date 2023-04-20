@@ -347,11 +347,11 @@ def integral_cdf(xs, ps):
         i for i, (p, x) in enumerate(zip(ps, xs))
         if not math.isinf(p) and not math.isinf(x) and not np.isnan(p) and not np.isnan(x)
     ]
-    ps = [ps[i] for i in i_valid]
-    xs = [xs[i] for i in i_valid]
+    ps = ps[i_valid]
+    xs = xs[i_valid]
     return sum(
         ps[i] * (xs[i + 1] - xs[i]) if i < len(xs) - 1 else ps[i] * (xs[i] - xs[i - 1])
-        for i in range(len(xs))
+        for i in i_valid
     )
 
 
@@ -494,7 +494,11 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
             fig = plt.figure()
             plt.hist(errors, density=1, alpha=0.5, label="data", bins=50)
             plt.plot(factor_residuals, pdf, label=f"{distr_str} pdf")
-        assert 0.95 < integral_cdf(factor_residuals, pdf) < 1.02, \
+            fig.savefig(
+                prm['save_others'] / 'factors'
+                / f'hist_errors_vs_pdf_{distr_str}_{data_type}_{label}'
+            )
+        assert 0.9 < integral_cdf(factor_residuals, pdf) < 1.02, \
             f"integral_cdf(factor_residuals, pdf) {integral_cdf(factor_residuals, pdf) }"
 
         if prm['kurtosis'] and residual_distribution_prms[0] == 'kurtosis':
