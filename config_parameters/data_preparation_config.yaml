@@ -20,8 +20,8 @@ n_clus:  # number of behavioural clusters
   loads: 4
   car: 3
 
-data_types: ["gen"]
-#             "car"]
+data_types: ["car"]
+#             "loads","car"]
 plots: True
 do_test_filling_in: False
 parallel: False
