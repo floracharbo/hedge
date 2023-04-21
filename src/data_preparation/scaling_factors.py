@@ -95,13 +95,19 @@ def _interpolate_missing_p_pos_2d(
 ):
     non0 = np.where((p_pos != 0) & (~np.isnan(p_pos)))
     if len(non0[0]) > 3:
-        points = [[mid_fs_brackets[non0[0][i]], mid_fs_brackets[non0[1][i]]] for i in range(len(non0[0]))]
+        points = [
+            [mid_fs_brackets[non0[0][i]], mid_fs_brackets[non0[1][i]]]
+            for i in range(len(non0[0]))
+        ]
         values = p_pos[non0]
         grid_y, grid_x = np.meshgrid(mid_fs_brackets, mid_fs_brackets)
         p_pos[p_pos == 0] = np.nan
         interpolated_p_pos = interpolate.griddata(points, values, (grid_x, grid_y), method='linear')
         for i_prev in range(len(p_pos)):
-            if np.sum(interpolated_p_pos[i_prev]) != 0 and abs(sum(interpolated_p_pos[i_prev]) - 1) > 1e-3:
+            if (
+                    np.sum(interpolated_p_pos[i_prev]) != 0
+                    and abs(sum(interpolated_p_pos[i_prev]) - 1) > 1e-3
+            ):
                 interpolated_p_pos[i_prev] /= sum(interpolated_p_pos[i_prev])
         if plot:
             fig, axs = plt.subplots(2)
