@@ -4,6 +4,7 @@ import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
 import torch as th
 from torch import nn
 from tqdm import tqdm
@@ -82,10 +83,12 @@ class GAN_Trainer():
             self.size_output_generator_one_item = self.n_clusters if value_type == 'clusters' else 1
 
     def get_saving_label(self):
-        saving_label = f'{self.data_type} {self.value_type}'
+        saving_label \
+            = f'{self.data_type} {self.day_type}, {self.value_type} lr_start {self.lr_start:.2e} ' \
+              f"n_items_generated {self.n_items_generated} " \
+              f"noise0{self.noise0:.2f}_noise_end{self.noise_end:.2f}".replace('.', '_')
         if not self.profiles:
-            saving_label += f" {self.transition} n_consecutive_days {self.n_consecutive_days} " \
-                            f"lr_start{self.lr_start:.2e} "
+            saving_label += f" {self.transition} n_consecutive_days {self.n_consecutive_days} "
         else:
             saving_label += f" cluster {self.k}"
         if self.lr_decay != 1:
@@ -95,12 +98,10 @@ class GAN_Trainer():
             if nn_type != 'linear':
                 saving_label += f" nn_type_{label} {nn_type}"
 
-        saving_label += f" noise0{self.noise0:.2f}_noise_end{self.noise_end:.2f}".replace('.', '_')
-
         return saving_label
 
     def add_training_data(
-            self, inputs=None, outputs=None, p_clus=None, p_trans=None, n_clus=None,
+        self, inputs=None, outputs=None, p_clus=None, p_trans=None, n_clus=None,
     ):
         if self.value_type == 'factors':
             i_remove = [
@@ -358,15 +359,19 @@ class GAN_Trainer():
             statistical_indicators_generated, generated_samples_2d, n_samples \
                 = self._compute_statistical_indicators_generated_profiles(generated_samples)
             statistical_indicators_generated, self.statistical_indicators_inputs[self.k]
+            loss_statistical_indicators = 0
             for key in statistical_indicators_generated:
-                loss_generator += np.sum(
+                loss_statistical_indicators += np.sum(
                     np.square(
                         statistical_indicators_generated[key] - self.statistical_indicators_inputs[self.k][key]
                     )
                 ) * self.weight_diff_statistical_indicators
-            loss_generator += (
+            loss_sum_profiles = (
                 th.sum(generated_samples) / (self.batch_size_ * self.n_items_generated) - 1
             ) ** 2 * self.weight_sum_profiles
+            loss_generator += loss_statistical_indicators + loss_sum_profiles
+        else:
+            loss_statistical_indicators, loss_sum_profiles = 0, 0
         loss_generator.backward()
         self.optimizer_generator.step()
         if final_n:
@@ -389,7 +394,7 @@ class GAN_Trainer():
                 if self.value_type == 'factors':
                     self.plot_heat_map_f_prev_next(generated_samples_2d, epoch=epoch)
 
-        return loss_generator, generated_outputs
+        return loss_generator, generated_outputs, loss_statistical_indicators, loss_sum_profiles
 
     def plot_heat_map_f_prev_next(self, generated_samples_2d, epoch=None):
         consecutive_factors = generated_samples_2d[:, :-1]
@@ -440,6 +445,7 @@ class GAN_Trainer():
                         color=color,
                         linestyle='--' if indicator[0] == 'p' else '-',
                         label=label if indicator == 'mean' else None,
+                        alpha=1 if indicator in ['p50', 'mean'] else 0.5
                     )
 
             plt.legend()
@@ -473,7 +479,9 @@ class GAN_Trainer():
             g['lr'] = self.lr_start * self.lr_decay ** epoch
 
     def plot_losses_over_time(
-            self, losses_generator, losses_discriminator, means_outputs, stds_outputs
+            self, losses_generator, losses_discriminator,
+            losses_statistical_indicators, losses_sum_profiles,
+            means_outputs, stds_outputs
     ):
         if self.prm['plots']:
             title = f"{self.get_saving_label()} losses "
@@ -482,11 +490,25 @@ class GAN_Trainer():
             title += "over time"
             if self.normalised:
                 title += ' normalised'
+            if len(losses_generator) == 0:
+                print("error")
+            assert len(losses_generator) > 0
+            assert len(losses_discriminator) > 0
             if self.profiles:
-                fig = plt.figure()
-                plt.plot(losses_generator, label="losses_generator")
-                plt.plot(losses_discriminator, label="losses_discriminator")
-                plt.legend()
+                colours = sns.color_palette()
+                fig, ax = plt.subplots()
+                twin = ax.twinx()
+                p1, = ax.plot(losses_generator, color=colours[0], label="losses_generator")
+                p2, = ax.plot(losses_statistical_indicators, color=colours[1], alpha=0.5, label="losses_statistical_indicators")
+                p3, = ax.plot(losses_sum_profiles, color=colours[2], alpha=0.5, label="losses_sum_profiles")
+                p4, = twin.plot(losses_discriminator, color=colours[3], label="losses_discriminator")
+                ax.set_xlabel("Epochs")
+                ax.set_ylabel("Generator losses")
+                ax.set_yscale('log')
+                twin.set_ylabel("Discriminator losses")
+                ax.yaxis.label.set_color(p1.get_color())
+                twin.yaxis.label.set_color(p4.get_color())
+                ax.legend(handles=[p1, p2, p3, p4])
             else:
                 fig, axs = plt.subplots(3)
                 axs[0].plot(losses_generator, label="losses_generator")
@@ -514,7 +536,6 @@ class GAN_Trainer():
                     f"np.mean(means_outputs) {np.mean(means_outputs)} "
                     f"vs self.mean_real_output {self.mean_real_output}"
                 )
-
             title = title.replace(' ', '_')
             fig.savefig(self.save_path / title)
             plt.close('all')
@@ -555,7 +576,8 @@ class GAN_Trainer():
     def train(self):
         self.get_train_loader()
         self.initialise_generator_and_discriminator()
-        losses_generator, losses_discriminator = [], []
+        losses_generator, losses_discriminator, losses_statistical_indicators, losses_sum_profiles \
+            = [], [], [], []
         means_outputs, stds_outputs = [], []
 
         for epoch in tqdm(range(self.n_epochs)):
@@ -566,19 +588,30 @@ class GAN_Trainer():
 
                     loss_discriminator = self.train_discriminator(real_inputs, real_outputs)
                     final_n = n == len(self.train_loader) - 2
-                    loss_generator, generated_outputs = self.train_generator(
-                        real_inputs, real_outputs, final_n, epoch
-                    )
+                    loss_generator, generated_outputs, loss_statistical_indicators, loss_sum_profiles \
+                        = self.train_generator(
+                            real_inputs, real_outputs, final_n, epoch
+                        )
                     losses_generator.append(loss_generator.detach().numpy())
+                    losses_statistical_indicators.append(loss_statistical_indicators)
+                    losses_sum_profiles.append(loss_sum_profiles.detach().numpy())
                     losses_discriminator.append(loss_discriminator.detach().numpy())
                     means_outputs.append(np.mean(generated_outputs.detach().numpy()))
                     stds_outputs.append(np.std(generated_outputs.detach().numpy()))
 
             self.update_noise_and_lr_generator(epoch)
 
-        self.plot_losses_over_time(
-            losses_generator, losses_discriminator, means_outputs, stds_outputs
-        )
+        if len(losses_generator) == 0:
+            print(
+                f"len(losses_generator) {len(losses_generator)} for "
+                f"{self.data_type} {self.value_type} {self.day_type}"
+            )
+        else:
+            self.plot_losses_over_time(
+                losses_generator, losses_discriminator,
+                losses_statistical_indicators, losses_sum_profiles,
+                means_outputs, stds_outputs
+            )
         self.plot_noise_over_time()
         print(
             f"mean generated outputs last 10: {np.mean(means_outputs[-10:])}, "
@@ -743,17 +776,17 @@ class Generator(nn.Module):
         return hidden
 
 def compute_profile_generators(
-        profiles, n, k, statistical_indicators, data_type, general_saving_folder, prm
+        profiles, n, k, statistical_indicators, data_type, day_type, general_saving_folder, prm
 ):
     print("profile generators")
     params = {
         'profiles': True,
         'batch_size': 100,
-        'n_epochs': 200,
+        'n_epochs': 2,
         # 'lr_start': 0.1,
         # 'lr_end': 0.01,
-        'weight_sum_profiles': 1e-4,
-        'weight_diff_statistical_indicators': 1e2,
+        'weight_sum_profiles': 1e-3,
+        'weight_diff_statistical_indicators': 1e-2,
         'size_input_discriminator_one_item': n,
         'size_input_generator_one_item': 1,
         'size_output_generator_one_item': n,
@@ -761,13 +794,14 @@ def compute_profile_generators(
         'statistical_indicators_inputs': statistical_indicators,
         'general_saving_folder': general_saving_folder,
         'data_type': data_type,
-        'n_items_generated': 50,
-        'nn_type_generator': 'rnn',
+        'n_items_generated': 200,
+        'nn_type_generator': 'linear',
         'nn_type_discriminator': 'linear',
         'noise0': 2,
-        'noise_end': 5e-2,
+        'noise_end': 1e-3,
         'lr_start': 0.001,
         'lr_end': 0.0001,
+        'day_type': day_type,
     }
     params['lr_decay'] = (params['lr_end'] / params['lr_start']) ** (1 / params['n_epochs'])
     gan_trainer = GAN_Trainer(params, prm)

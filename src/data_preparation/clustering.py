@@ -693,7 +693,7 @@ def clustering(days, prm, n_data_type):
                             print(f"k {k}")
                             compute_profile_generators(
                                 vals_k[k], prm["n"], k, statistical_indicators,
-                                data_type, prm['save_other'], prm
+                                data_type, day_type, prm['save_other'], prm
                             )
 
                     banks[data_type][day_type] = banks_
