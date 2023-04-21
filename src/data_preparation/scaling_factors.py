@@ -120,7 +120,10 @@ def _interpolate_missing_p_pos_2d(
         interpolated_p_pos[np.isnan(interpolated_p_pos)] = 0
 
     else:
-        print(f"only {len(non0[0])} nonzero points for {data_type}, {transition}: cannot perform 2d interpolation")
+        print(
+            f"only {len(non0[0])} nonzero points "
+            f"for {data_type}, {transition}: cannot perform 2d interpolation"
+        )
         interpolated_p_pos = p_pos
 
     return interpolated_p_pos
@@ -655,7 +658,7 @@ def _scaling_factors_behaviour_types(
             prm, factors
         )
 
-    if n_consecutive_days == 3:
+    if n_consecutive_days == 3 and 'gen' in factors:
         for i in range(3):
             label = f"f{i}of{n_consecutive_days}"
             factors['gen'][label] = []
