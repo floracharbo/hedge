@@ -495,7 +495,7 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
             plt.hist(errors, density=1, alpha=0.5, label="data", bins=50)
             plt.plot(factor_residuals, pdf, label=f"{distr_str} pdf")
             fig.savefig(
-                prm['save_others'] / 'factors'
+                prm['save_other'] / 'factors'
                 / f'hist_errors_vs_pdf_{distr_str}_{data_type}_{label}'
             )
         assert 0.9 < integral_cdf(factor_residuals, pdf) < 1.02, \
