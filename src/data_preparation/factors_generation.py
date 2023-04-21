@@ -363,7 +363,8 @@ class GAN_Trainer():
             for key in statistical_indicators_generated:
                 loss_percentiles += np.sum(
                     np.square(
-                        statistical_indicators_generated[key] - self.statistical_indicators_inputs[self.k][key]
+                        statistical_indicators_generated[key]
+                        - self.statistical_indicators_inputs[self.k][key]
                     )
                 ) * self.weight_diff_statistical_indicators
             loss_sum_profiles = (
@@ -384,7 +385,9 @@ class GAN_Trainer():
             #     self.plot_generated_samples_start_epoch(generated_samples, epoch)
 
             if self.profiles:
-                self.plot_statistical_indicators_profiles(statistical_indicators_generated, epoch, n_samples)
+                self.plot_statistical_indicators_profiles(
+                    statistical_indicators_generated, epoch, n_samples
+                )
 
             if epoch == self.n_epochs - 1:
                 if self.value_type == 'clusters':
@@ -429,7 +432,9 @@ class GAN_Trainer():
             np.save(f"p_transitions_{saving_label}", p_transitions_generated)
             np.save(f"p_clus_generated_{saving_label}", p_clus_generated)
 
-    def plot_statistical_indicators_profiles(self, statistical_indicators_generated, epoch, n_samples):
+    def plot_statistical_indicators_profiles(
+            self, statistical_indicators_generated, epoch, n_samples
+    ):
         if self.prm['plots']:
             fig = plt.figure()
             xs = np.arange(n_samples)
@@ -499,9 +504,17 @@ class GAN_Trainer():
                 fig, ax = plt.subplots()
                 twin = ax.twinx()
                 p1, = ax.plot(losses_generator, color=colours[0], label="losses_generator")
-                p2, = ax.plot(losses_statistical_indicators, color=colours[1], alpha=0.5, label="losses_statistical_indicators")
-                p3, = ax.plot(losses_sum_profiles, color=colours[2], alpha=0.5, label="losses_sum_profiles")
-                p4, = twin.plot(losses_discriminator, color=colours[3], label="losses_discriminator")
+                p2, = ax.plot(
+                    losses_statistical_indicators, color=colours[1], alpha=0.5,
+                    label="losses_statistical_indicators"
+                )
+                p3, = ax.plot(
+                    losses_sum_profiles, color=colours[2], alpha=0.5,
+                    label="losses_sum_profiles"
+                )
+                p4, = twin.plot(
+                    losses_discriminator, color=colours[3], label="losses_discriminator"
+                )
                 ax.set_xlabel("Epochs")
                 ax.set_ylabel("Generator losses")
                 ax.set_yscale('log')
@@ -774,6 +787,7 @@ class Generator(nn.Module):
         # We'll send the tensor holding the hidden state to the device we specified earlier as well
         hidden = th.zeros(self.n_layers, self.hidden_dim)
         return hidden
+
 
 def compute_profile_generators(
         profiles, n, k, statistical_indicators, data_type,
