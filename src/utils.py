@@ -154,7 +154,9 @@ def run_id(prm):
     run_id = f"n{prm['n']}"
     if len(data_types) < 3 or not all(n_rows == "all" for n_rows in prm['n_rows'].values()):
         for data_type in data_types:
-            run_id += f"_{data_type}_{int(prm['n_rows'][data_type])}"
+            n_rows_str = prm['n_rows'][data_type] if isinstange(prm['n_rows'][data_type], str) \
+                else int(prm['n_rows'][data_type])
+            run_id += f"_{data_type}_{n_rows_str}"
 
     return run_id
 
