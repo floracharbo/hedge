@@ -180,12 +180,13 @@ def save_outs(outs, prm, data_type, chunks_rows):
         if len(np.shape(all_data)) == 2:
             fig = plt.figure()
             ax = sns.heatmap(all_data)
-            ax.set_title("existing data trips")
+            ax.set_title("existing data")
             fig.savefig(prm["save_other"] / f"existing_data_{data_type}")
             plt.close("all")
 
         else:
             print(f"{data_type} np.shape(all_data) {np.shape(all_data)}")
+        print(f"np.sum(all_data) {np.sum(all_data)} {data_type}")
     if (
             prm["do_test_filling_in"]
             and prm["data_type_source"][data_type] == "CLNR"

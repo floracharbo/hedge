@@ -193,13 +193,16 @@ def get_days_clnr(
     if len(sequences) == 0:
         print("len(sequences) == 0")
 
+    print(f"before filling in days {data_type}, len(days) = {len(days)}")
     # get whole days only - fill in if only one missing
     days, to_throw, abs_error, types_replaced_eval = fill_whole_days(
         prm, days, data_type, sequences, save_path
     )
+    print(f"after filling in days {data_type}, len(days) = {len(days)}")
 
     del sequences
     days = remove_incomplete_days(days, to_throw, prm["n"])
+    print(f"after removing incomplete days {data_type}, len(days) = {len(days)}")
 
     return days, abs_error, types_replaced_eval
 
