@@ -4,9 +4,9 @@ n: 24  # number of time intervals per day
 n_intervals: 50  # number of intervals in car factor transition matrix
 
 n_rows: # number of rows to import xin each data file (limit numbers e.g. for debugging)
-  gen: 1.e+7  # 172718543
-  loads: all  # 300267349 all
-  car: 1.e+7  # 4449164 all
+  gen: all  # 172718543
+  loads: all # 300267349 all
+  car: all  # 4449164 all
 
 fill_type: # interpolate linearly to fill in errors instead of looking at day/week before
   gen: lin_interp
@@ -21,7 +21,7 @@ n_clus:  # number of behavioural clusters
   car: 3
 
 data_types: ["loads"]
-#  , "gen", "car"]
+#              "gen", "car"]
 plots: True
 do_test_filling_in: False
 parallel: False
