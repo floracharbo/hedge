@@ -359,9 +359,9 @@ class GAN_Trainer():
             statistical_indicators_generated, generated_samples_2d, n_samples \
                 = self._compute_statistical_indicators_generated_profiles(generated_samples)
             statistical_indicators_generated, self.statistical_indicators_inputs[self.k]
-            loss_statistical_indicators = 0
+            loss_percentiles = 0
             for key in statistical_indicators_generated:
-                loss_statistical_indicators += np.sum(
+                loss_percentiles += np.sum(
                     np.square(
                         statistical_indicators_generated[key] - self.statistical_indicators_inputs[self.k][key]
                     )
@@ -369,9 +369,9 @@ class GAN_Trainer():
             loss_sum_profiles = (
                 th.sum(generated_samples) / (self.batch_size_ * self.n_items_generated) - 1
             ) ** 2 * self.weight_sum_profiles
-            loss_generator += loss_statistical_indicators + loss_sum_profiles
+            loss_generator += loss_percentiles + loss_sum_profiles
         else:
-            loss_statistical_indicators, loss_sum_profiles = 0, 0
+            loss_percentiles, loss_sum_profiles = 0, 0
         loss_generator.backward()
         self.optimizer_generator.step()
         if final_n:
@@ -394,7 +394,7 @@ class GAN_Trainer():
                 if self.value_type == 'factors':
                     self.plot_heat_map_f_prev_next(generated_samples_2d, epoch=epoch)
 
-        return loss_generator, generated_outputs, loss_statistical_indicators, loss_sum_profiles
+        return loss_generator, generated_outputs, loss_percentiles, loss_sum_profiles
 
     def plot_heat_map_f_prev_next(self, generated_samples_2d, epoch=None):
         consecutive_factors = generated_samples_2d[:, :-1]
@@ -588,12 +588,12 @@ class GAN_Trainer():
 
                     loss_discriminator = self.train_discriminator(real_inputs, real_outputs)
                     final_n = n == len(self.train_loader) - 2
-                    loss_generator, generated_outputs, loss_statistical_indicators, loss_sum_profiles \
+                    loss_generator, generated_outputs, loss_percentiles, loss_sum_profiles \
                         = self.train_generator(
                             real_inputs, real_outputs, final_n, epoch
                         )
                     losses_generator.append(loss_generator.detach().numpy())
-                    losses_statistical_indicators.append(loss_statistical_indicators)
+                    losses_statistical_indicators.append(loss_percentiles)
                     losses_sum_profiles.append(loss_sum_profiles.detach().numpy())
                     losses_discriminator.append(loss_discriminator.detach().numpy())
                     means_outputs.append(np.mean(generated_outputs.detach().numpy()))
@@ -776,17 +776,18 @@ class Generator(nn.Module):
         return hidden
 
 def compute_profile_generators(
-        profiles, n, k, statistical_indicators, data_type, day_type, general_saving_folder, prm
+        profiles, n, k, statistical_indicators, data_type,
+        day_type, general_saving_folder, prm
 ):
     print("profile generators")
     params = {
         'profiles': True,
         'batch_size': 100,
-        'n_epochs': 2,
+        'n_epochs': 200,
         # 'lr_start': 0.1,
         # 'lr_end': 0.01,
-        'weight_sum_profiles': 1e-3,
-        'weight_diff_statistical_indicators': 1e-2,
+        'weight_sum_profiles': 1e-3 * 10 * 10,
+        'weight_diff_statistical_indicators': 50,
         'size_input_discriminator_one_item': n,
         'size_input_generator_one_item': 1,
         'size_output_generator_one_item': n,
@@ -794,12 +795,12 @@ def compute_profile_generators(
         'statistical_indicators_inputs': statistical_indicators,
         'general_saving_folder': general_saving_folder,
         'data_type': data_type,
-        'n_items_generated': 200,
-        'nn_type_generator': 'linear',
+        'n_items_generated': 50,
+        'nn_type_generator': 'cnn',
         'nn_type_discriminator': 'linear',
         'noise0': 2,
         'noise_end': 1e-3,
-        'lr_start': 0.001,
+        'lr_start': 0.01,
         'lr_end': 0.0001,
         'day_type': day_type,
     }

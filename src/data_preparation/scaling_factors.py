@@ -117,14 +117,17 @@ def _interpolate_missing_p_pos_2d(
             axs[1].title.set_text('Linear interpolation')
             title = f"interpolate_2d_p_pos_{data_type}_{transition}"
             if data_type == 'car':
-                np.save(f"p_pos_{data_type}_{transition}.npy", p_pos)
-                np.save(f"interpolated_p_pos_{data_type}_{transition}.npy", interpolated_p_pos)
+                np.save(save_other_path / "factors" / f"p_pos_{data_type}_{transition}.npy", p_pos)
+                np.save(
+                    save_other_path
+                    / "factors"
+                    / f"interpolated_p_pos_{data_type}_{transition}.npy",
+                    interpolated_p_pos
+                )
 
             fig.savefig(save_other_path / "factors" / title.replace(" ", "_"))
             plt.close('all')
-
         interpolated_p_pos[np.isnan(interpolated_p_pos)] = 0
-
     else:
         print(
             f"only {len(non0[0])} nonzero points "
