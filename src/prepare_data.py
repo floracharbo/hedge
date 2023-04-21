@@ -13,6 +13,7 @@ the reinforcement learning environment
 
 # import packages
 import datetime
+import torch
 
 from src.data_preparation.clustering import clustering
 from src.data_preparation.importer import import_data
@@ -24,6 +25,8 @@ if __name__ == "__main__":
     tic_dtm = datetime.datetime.now()
     prm, run_config = get_parameters()
     dtm_1 = datetime.datetime.now()
+
+    print(f"torch.cuda.is_available() {torch.cuda.is_available()}")
 
     # 1 - import generation and electricity demand data
     print("(1) import profiles")
