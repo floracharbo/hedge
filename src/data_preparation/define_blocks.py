@@ -20,12 +20,13 @@ from src.utils import data_id, initialise_dict
 def _load_out(prm, data_type, chunk_rows):
     out = []
     for label in prm["outs_labels"]:
-        with open(
-            prm["outs_path"]
-            / f"{label}_{data_id(prm, data_type)}_{chunk_rows[0]}_{chunk_rows[1]}.pickle",
-            "rb"
-        ) as file:
+        file_name = f"{label}_{data_id(prm, data_type)}_{chunk_rows[0]}_{chunk_rows[1]}.pickle"
+        file_path = prm["outs_path"] / file_name
+        if not file_path.exists():
+            file_path = Path("data") / "other_outputs" / f"n{prm['n']}" / "outs" / file_name
+        with open(file_path, "rb") as file:
             out.append(pickle.load(file))
+
     return out
 
 

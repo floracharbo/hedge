@@ -732,7 +732,10 @@ def import_segment(
     if all(
         (prm["outs_path"] / f"{label}_{data_id_}_{chunk_rows[0]}_{chunk_rows[1]}.pickle").is_file()
         for label in prm["outs_labels"]
+    ) or all(
+        (Path("data") / "other_outputs" / f"n{prm['n']}" / "outs" / f"{label}_{data_id_}_{chunk_rows[0]}_{chunk_rows[1]}.pickle").is_file()
     ):
+        # the second one is a folder with all data types
         if chunk_rows[0] == 0:
             print("load previously saved chunks of data")
         return [None] * 7
