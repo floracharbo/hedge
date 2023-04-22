@@ -22,11 +22,13 @@ def _load_out(prm, data_type, chunk_rows):
     out = []
     for label in prm["outs_labels"]:
         file_name = f"{label}_{data_id(prm, data_type)}_{chunk_rows[0]}_{chunk_rows[1]}.pickle"
-        file_path = prm["outs_path"] / file_name
-        if not file_path.exists():
-            file_path = Path("data") / "other_outputs" / f"n{prm['n']}" / "outs" / file_name
-        with open(file_path, "rb") as file:
-            out.append(pickle.load(file))
+        potential_paths = list_potential_paths_outs(prm, data_type)
+        for potential_path in potential_paths:
+            file_path = potential_path / file_name
+            if file_path.exists():
+                with open(file_path, "rb") as file:
+                    out.append(pickle.load(file))
+                break
 
     return out
 

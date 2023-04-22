@@ -724,19 +724,29 @@ def filter_validity(
     return data, range_dates
 
 
+def list_potential_paths_outs(prm, data_type):
+    potential_paths = []
+    for folder in os.listdir(Path("data") / "other_outputs"):
+        if f"n{prm['n']}" in folder and f"{data_type}_n_rows{prm['n_rows'][data_type]}" in folder:
+            potential_paths.append(Path("data") / "other_outputs" / folder / "outs")
+    if prm['n_rows'][data_type] == 'all':
+        potential_paths.append(Path("data") / "other_outputs" / f"n{prm['n']}" / "outs")
+
+    return potential_paths
+
+
 def import_segment(
         prm, chunk_rows, data_type
 ) -> list:
     """In parallel or sequentially, import and process block of data."""
     data_id_ = data_id(prm, data_type)
-    if all(
-        (prm["outs_path"] / f"{label}_{data_id_}_{chunk_rows[0]}_{chunk_rows[1]}.pickle").is_file()
-        for label in prm["outs_labels"]
-    ) or all(
-        (
-            Path("data") / "other_outputs" / f"n{prm['n']}" / "outs"
-            / f"{label}_{data_id_}_{chunk_rows[0]}_{chunk_rows[1]}.pickle"
-        ).is_file() for label in prm["outs_labels"]
+    potential_paths_outs = list_potential_paths_outs(prm, data_type)
+    if any(
+            all(
+                (potential_path / f"{label}_{data_id_}_{chunk_rows[0]}_{chunk_rows[1]}.pickle").is_file()
+                for label in prm["outs_labels"]
+            )
+        for potential_path in potential_paths_outs
     ):
         # the second one is a folder with all data types
         if chunk_rows[0] == 0:
