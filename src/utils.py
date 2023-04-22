@@ -1,6 +1,8 @@
 """User-defined tool functions used in the project."""
 
 import datetime
+import os
+from pathlib import Path
 from typing import List
 
 import numpy as np
@@ -146,6 +148,17 @@ def get_granularity(step_len: int,
 def data_id(prm, data_type):
     """Return string for identifying current data_type selection."""
     return f"{data_type}_n_rows{prm['n_rows'][data_type]}_n{prm['n']}"
+
+
+def list_potential_paths_outs(prm, data_type):
+    potential_paths = []
+    for folder in os.listdir(Path("data") / "other_outputs"):
+        if f"n{prm['n']}" in folder and f"{data_type}_{prm['n_rows'][data_type]}" in folder:
+            potential_paths.append(Path("data") / "other_outputs" / folder / "outs")
+    if prm['n_rows'][data_type] == 'all':
+        potential_paths.append(Path("data") / "other_outputs" / f"n{prm['n']}" / "outs")
+
+    return potential_paths
 
 
 def run_id(prm):

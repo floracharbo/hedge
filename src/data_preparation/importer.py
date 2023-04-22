@@ -22,7 +22,7 @@ from src.data_preparation.define_blocks import (get_data_chunks, get_n_rows,
 from src.data_preparation.filling_in import fill_whole_days
 from src.data_preparation.import_homes_data import import_homes_data
 from src.utils import (data_id, empty, formatting, get_granularity,
-                       initialise_dict, obtain_time)
+                       initialise_dict, list_potential_paths_outs, obtain_time)
 
 
 def keep_column(dtm_no: list, start_avail: list,
@@ -724,17 +724,6 @@ def filter_validity(
     return data, range_dates
 
 
-def list_potential_paths_outs(prm, data_type):
-    potential_paths = []
-    for folder in os.listdir(Path("data") / "other_outputs"):
-        if f"n{prm['n']}" in folder and f"{data_type}_n_rows{prm['n_rows'][data_type]}" in folder:
-            potential_paths.append(Path("data") / "other_outputs" / folder / "outs")
-    if prm['n_rows'][data_type] == 'all':
-        potential_paths.append(Path("data") / "other_outputs" / f"n{prm['n']}" / "outs")
-
-    return potential_paths
-
-
 def import_segment(
         prm, chunk_rows, data_type
 ) -> list:
@@ -743,10 +732,12 @@ def import_segment(
     potential_paths_outs = list_potential_paths_outs(prm, data_type)
     if any(
             all(
-                (potential_path / f"{label}_{data_id_}_{chunk_rows[0]}_{chunk_rows[1]}.pickle").is_file()
+                (
+                    potential_path / f"{label}_{data_id_}_{chunk_rows[0]}_{chunk_rows[1]}.pickle"
+                ).is_file()
                 for label in prm["outs_labels"]
             )
-        for potential_path in potential_paths_outs
+            for potential_path in potential_paths_outs
     ):
         # the second one is a folder with all data types
         if chunk_rows[0] == 0:
