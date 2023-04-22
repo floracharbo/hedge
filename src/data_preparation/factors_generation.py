@@ -261,13 +261,19 @@ class GAN_Trainer():
             batch_size=self.batch_size,
             noise0=self.noise0,
             noise_end=self.noise_end,
+            dropout=self.dropout_generator,
         )
         self.discriminator = Discriminator(
             size_inputs=self.size_input_discriminator,
-            nn_type=self.nn_type_discriminator
+            nn_type=self.nn_type_discriminator,
+            dropout=self.dropout_discriminator,
         )
 
         self.loss_function = nn.BCELoss()
+        # self.loss_function = nn.L1Loss()
+        # self.loss_function = nn.CrossEntropyLoss()
+        # self.loss_function = nn.NLLLoss()
+
         self.optimizer_discriminator = th.optim.Adam(
             self.discriminator.parameters(), lr=self.lr_start
         )
@@ -647,19 +653,19 @@ class GAN_Trainer():
 
 
 class Discriminator(nn.Module):
-    def __init__(self, size_inputs=1, nn_type='linear'):
+    def __init__(self, size_inputs=1, nn_type='linear', dropout=0.3):
         super().__init__()
         if nn_type == 'linear':
             self.model = nn.Sequential(
                 nn.Linear(size_inputs, 256),
                 nn.ReLU(),
-                nn.Dropout(0.3),
+                nn.Dropout(dropout),
                 nn.Linear(256, 128),
                 nn.ReLU(),
-                nn.Dropout(0.3),
+                nn.Dropout(dropout),
                 nn.Linear(128, 64),
                 nn.ReLU(),
-                nn.Dropout(0.3),
+                nn.Dropout(dropout),
                 nn.Linear(64, 1),
                 nn.Sigmoid(),
             )
@@ -687,19 +693,27 @@ class Generator(nn.Module):
             self, size_inputs=1, size_outputs=1,
             noise0=1, noise_end=5e-2, n_epochs=100,
             batch_size=100,
-            nn_type='linear'
+            nn_type='linear',
+            dropout=0.3
     ):
         super().__init__()
         self.nn_type = nn_type
         self.size_outputs = size_outputs
+        self.hidden_dim = 256
+        self.n_layers = 2
+
         if nn_type == 'linear':
             self.model = nn.Sequential(
                 nn.Linear(size_inputs, 16),
                 nn.ReLU(),
+                nn.Dropout(dropout),
                 nn.Linear(16, 32),
                 nn.ReLU(),
-                nn.Dropout(0.25),
-                nn.Linear(32, size_outputs),
+                nn.Dropout(dropout),
+                nn.Linear(32, 64),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(64, size_outputs),
             )
         elif nn_type == 'cnn':
             # self.model = nn.Sequential(
@@ -748,11 +762,14 @@ class Generator(nn.Module):
             )
         elif nn_type == 'rnn':
             # Defining the layers
-            self.hidden_dim = 256
-            self.n_layers = 2
+
             # RNN Layer
             self.rnn = nn.RNN(size_inputs, self.hidden_dim, self.n_layers, batch_first=True)
             # Fully connected layer
+            self.fc = nn.Linear(self.hidden_dim, size_outputs)
+
+        elif nn_type == 'lstm':
+            self.lstm = nn.LSTM(size_inputs, self.hidden_dim, self.n_layers, batch_first=True)
             self.fc = nn.Linear(self.hidden_dim, size_outputs)
 
         self.noise0 = noise0
@@ -775,6 +792,9 @@ class Generator(nn.Module):
             # Reshaping the outputs such that it can be fit into the fully connected layer
             output = output.contiguous().view(-1, self.hidden_dim)
             output = self.fc(output)
+        elif self.nn_type == 'lstm':
+            output, _ = self.lstm(x)
+            output = self.fc(output)
 
         noise = th.randn(output.shape) * self.noise_factor
         output = output + noise
@@ -796,12 +816,12 @@ def compute_profile_generators(
     print("profile generators")
     params = {
         'profiles': True,
-        'batch_size': 100,
+        'batch_size': 10,
         'n_epochs': 200,
         # 'lr_start': 0.1,
         # 'lr_end': 0.01,
         'weight_sum_profiles': 1e-3 * 10 * 10,
-        'weight_diff_statistical_indicators': 50,
+        'weight_diff_statistical_indicators': 1,
         'size_input_discriminator_one_item': n,
         'size_input_generator_one_item': 1,
         'size_output_generator_one_item': n,
@@ -809,13 +829,16 @@ def compute_profile_generators(
         'statistical_indicators_inputs': statistical_indicators,
         'general_saving_folder': general_saving_folder,
         'data_type': data_type,
-        'n_items_generated': 50,
-        'nn_type_generator': 'cnn',
+        'n_items_generated': 100,
+        'nn_type_generator': 'lstm',
         'nn_type_discriminator': 'linear',
-        'noise0': 2,
+        'noise0': 1,
         'noise_end': 1e-3,
         'lr_start': 0.01,
-        'lr_end': 0.0001,
+        'lr_end': 0.01,
+        'dropout_discriminator': 0.3,
+        'dropout_generator': 0.25,
+        # 'lr_end': 0.0005,
         'day_type': day_type,
     }
     params['lr_decay'] = (params['lr_end'] / params['lr_start']) ** (1 / params['n_epochs'])
@@ -844,6 +867,7 @@ def compute_factors_clusters_generators(
         'profiles': False,
         'lr_decay': 1,
         'n_clusters': n_clus_all_,
+
     }
     list_inputs, list_outputs = [initialise_dict(['factors', 'clusters']) for _ in range(2)]
     list_inputs['factors'], list_outputs['factors'] = [
