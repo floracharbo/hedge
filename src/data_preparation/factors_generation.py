@@ -337,7 +337,7 @@ class GAN_Trainer():
         for statistical_indicator in ['p10', 'p50', 'p90', 'mean']:
             statistical_indicators_generated[statistical_indicator] = np.zeros(n_samples)
         for time in range(n_samples):
-            for percentile in [10, 50, 90]:
+            for percentile in [25, 50, 75]:
                 statistical_indicators_generated[f'p{percentile}'][time] = np.percentile(
                     generated_samples_2d[:, time],
                     percentile
@@ -449,7 +449,7 @@ class GAN_Trainer():
                     [statistical_indicators_generated, self.statistical_indicators_inputs[self.k]],
                     ['generated', 'original']
             ):
-                for indicator in ['p10', 'p50', 'p90', 'mean']:
+                for indicator in ['p25', 'p50', 'p75', 'mean']:
                     plt.plot(
                         xs,
                         statistical_indicators_[indicator],
@@ -829,7 +829,7 @@ def compute_profile_generators(
         'statistical_indicators_inputs': statistical_indicators,
         'general_saving_folder': general_saving_folder,
         'data_type': data_type,
-        'n_items_generated': 100,
+        'n_items_generated': 50,
         'nn_type_generator': 'lstm',
         'nn_type_discriminator': 'linear',
         'noise0': 1,
