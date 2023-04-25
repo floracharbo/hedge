@@ -195,10 +195,13 @@ class GAN_Trainer():
 
     def update_n_items_generated(self):
         self.size_output_generator = self.size_output_generator_one_item * self.n_items_generated
-        self.size_input_discriminator = self.size_input_discriminator_one_item \
-            * self.n_items_generated
-        self.size_input_generator = self.size_input_generator_one_item if self.profiles \
-            else self.size_input_generator_one_item * self.n_items_generated
+        # self.size_input_discriminator = self.size_input_discriminator_one_item \
+        #     * self.n_items_generated
+        # self.size_input_generator = self.size_input_generator_one_item if self.profiles \
+        #     else self.size_input_generator_one_item * self.n_items_generated
+
+        self.size_input_discriminator = self.size_input_discriminator_one_item * self.n_items_generated
+        self.size_input_generator = self.size_input_generator_one_item if self.profiles else self.size_input_generator_one_item * self.n_items_generated
 
     def split_inputs_and_outputs(self, train_data):
         if self.profiles:
@@ -281,7 +284,7 @@ class GAN_Trainer():
 
     def train_discriminator(self, real_inputs, real_outputs):
         generated_outputs = self.generator(real_inputs.to(th.float32))
-        generated_outputs = generated_outputs.view(self.batch_size_, self.size_output_generator)
+        # generated_outputs = generated_outputs.view(self.batch_size_, self.size_output_generator)
         if self.value_type == 'clusters':
             generated_outputs = self.cluster_generated_output_to_idx(real_inputs, generated_outputs)
         generated_samples_labels = th.zeros((self.batch_size_, 1))
@@ -328,51 +331,51 @@ class GAN_Trainer():
         plt.close('all')
 
     def _compute_statistical_indicators_generated_profiles(self, generated_samples):
-        generated_samples_2d = np.reshape(
-            generated_samples.detach().numpy(),
-            (self.batch_size_ * self.n_items_generated, -1)
+        generated_samples_2d = generated_samples.view(
+            self.batch_size_ * self.n_items_generated, -1
         )
         n_samples = len(generated_samples_2d[0])
-        statistical_indicators_generated = {}
-        for statistical_indicator in ['p10', 'p50', 'p90', 'mean']:
-            statistical_indicators_generated[statistical_indicator] = np.zeros(n_samples)
+        percentiles_generated = {}
+        for statistical_indicator in ['p10', 'p25', 'p50', 'p75', 'p90', 'mean']:
+            percentiles_generated[statistical_indicator] = th.zeros(n_samples)
         for time in range(n_samples):
-            for percentile in [25, 50, 75]:
-                statistical_indicators_generated[f'p{percentile}'][time] = np.percentile(
+            for percentile in [10, 25, 50, 75, 90]:
+                percentiles_generated[f'p{percentile}'][time] = th.quantile(
                     generated_samples_2d[:, time],
-                    percentile
+                    percentile/100
                 )
-            statistical_indicators_generated['mean'][time] = np.mean(generated_samples_2d[:, time])
+            percentiles_generated['mean'][time] = th.mean(generated_samples_2d[:, time])
 
-        return statistical_indicators_generated, generated_samples_2d, n_samples
+        return percentiles_generated, generated_samples_2d, n_samples
 
     def train_generator(self, real_inputs, real_outputs, final_n, epoch):
         self.generator.zero_grad()
         generated_outputs = self.generator(real_inputs.to(th.float32))
-        generated_outputs = generated_outputs.view(self.batch_size_, self.size_output_generator)
+        # generated_outputs = generated_outputs.view(self.batch_size_, self.size_output_generator)
 
         if self.value_type == 'clusters':
             generated_outputs = self.cluster_generated_output_to_idx(real_inputs, generated_outputs)
         generated_samples, _ = self.merge_inputs_and_outputs(real_inputs, generated_outputs)
         # generated_samples = th.where(generated_samples < 0, 0, generated_samples)
-        generated_samples_ = th.vstack((generated_samples, generated_samples))
-        output_discriminator_generated = self.discriminator(generated_samples_)
-        rows = th.arange(0, self.batch_size, dtype=th.int64)
+        # generated_samples_ = th.vstack((generated_samples, generated_samples))
+        # output_discriminator_generated = self.discriminator(generated_samples_)
+        # rows = th.arange(0, self.batch_size, dtype=th.int64)
+        output_discriminator_generated = self.discriminator(generated_samples)
         loss_generator = self.loss_function(
-            output_discriminator_generated[rows, :], self.get_real_samples_labels()
+            # output_discriminator_generated[rows, :], self.get_real_samples_labels()
+            output_discriminator_generated, self.get_real_samples_labels()
         )
         if self.profiles:
-            statistical_indicators_generated, generated_samples_2d, n_samples \
+            percentiles_generated, generated_samples_2d, n_samples \
                 = self._compute_statistical_indicators_generated_profiles(generated_samples)
-            statistical_indicators_generated, self.statistical_indicators_inputs[self.k]
             loss_percentiles = 0
-            for key in statistical_indicators_generated:
-                loss_percentiles += np.sum(
-                    np.square(
-                        statistical_indicators_generated[key]
-                        - self.statistical_indicators_inputs[self.k][key]
+            for key in ['p10', 'p25', 'p50', 'mean', 'p75', 'p90']:
+                loss_percentiles += th.sum(
+                    th.square(
+                        percentiles_generated[key]
+                        - th.from_numpy(self.percentiles_inputs[self.k][key])
                     )
-                ) * self.weight_diff_statistical_indicators
+                ) * self.weight_diff_percentiles
             loss_sum_profiles = (
                 th.sum(generated_samples) / (self.batch_size_ * self.n_items_generated) - 1
             ) ** 2 * self.weight_sum_profiles
@@ -392,7 +395,7 @@ class GAN_Trainer():
 
             if self.profiles:
                 self.plot_statistical_indicators_profiles(
-                    statistical_indicators_generated, epoch, n_samples
+                    percentiles_generated, epoch, n_samples
                 )
 
             if epoch == self.n_epochs - 1:
@@ -439,20 +442,22 @@ class GAN_Trainer():
             np.save(f"p_clus_generated_{saving_label}", p_clus_generated)
 
     def plot_statistical_indicators_profiles(
-            self, statistical_indicators_generated, epoch, n_samples
+            self, percentiles_generated, epoch, n_samples
     ):
         if self.prm['plots']:
             fig = plt.figure()
             xs = np.arange(n_samples)
-            for color, statistical_indicators_, label in zip(
+            for color, percentiles_, label in zip(
                     ['b', 'g'],
-                    [statistical_indicators_generated, self.statistical_indicators_inputs[self.k]],
+                    [percentiles_generated, self.percentiles_inputs[self.k]],
                     ['generated', 'original']
             ):
-                for indicator in ['p25', 'p50', 'p75', 'mean']:
+                for indicator in ['p10', 'p25', 'p50', 'p75', 'p90', 'mean']:
+                    percentiles_np = percentiles_[indicator] if label == 'original' \
+                        else percentiles_[indicator].detach().numpy()
                     plt.plot(
                         xs,
-                        statistical_indicators_[indicator],
+                        percentiles_np,
                         color=color,
                         linestyle='--' if indicator[0] == 'p' else '-',
                         label=label if indicator == 'mean' else None,
@@ -612,7 +617,7 @@ class GAN_Trainer():
                             real_inputs, real_outputs, final_n, epoch
                         )
                     losses_generator.append(loss_generator.detach().numpy())
-                    losses_statistical_indicators.append(loss_percentiles)
+                    losses_statistical_indicators.append(loss_percentiles.detach().numpy())
                     losses_sum_profiles.append(loss_sum_profiles.detach().numpy())
                     losses_discriminator.append(loss_discriminator.detach().numpy())
                     means_outputs.append(np.mean(generated_outputs.detach().numpy()))
@@ -670,6 +675,7 @@ class Discriminator(nn.Module):
                 nn.Sigmoid(),
             )
 
+
         elif nn_type == 'cnn':
             self.model = nn.Sequential(
                 nn.Conv1d(200, 200, kernel_size=3),
@@ -703,6 +709,18 @@ class Generator(nn.Module):
         self.n_layers = 2
 
         if nn_type == 'linear':
+            # self.model = nn.Sequential(
+            #     nn.Linear(size_inputs, 16),
+            #     nn.ReLU(),
+            #     nn.Dropout(dropout),
+            #     nn.Linear(16, 32),
+            #     nn.ReLU(),
+            #     nn.Dropout(dropout),
+            #     nn.Linear(32, 64),
+            #     nn.ReLU(),
+            #     nn.Dropout(dropout),
+            #     nn.Linear(64, size_outputs),
+            # )
             self.model = nn.Sequential(
                 nn.Linear(size_inputs, 16),
                 nn.ReLU(),
@@ -710,11 +728,10 @@ class Generator(nn.Module):
                 nn.Linear(16, 32),
                 nn.ReLU(),
                 nn.Dropout(dropout),
-                nn.Linear(32, 64),
-                nn.ReLU(),
-                nn.Dropout(dropout),
-                nn.Linear(64, size_outputs),
+                nn.Linear(32, size_outputs),
+                nn.Sigmoid(),
             )
+
         elif nn_type == 'cnn':
             # self.model = nn.Sequential(
             #     nn.Linear(1, size_outputs * 2),
@@ -798,7 +815,7 @@ class Generator(nn.Module):
 
         noise = th.randn(output.shape) * self.noise_factor
         output = output + noise
-        output = th.exp(output)
+        # output = th.exp(output)
 
         return output
 
@@ -810,34 +827,35 @@ class Generator(nn.Module):
 
 
 def compute_profile_generators(
-        profiles, n, k, statistical_indicators, data_type,
+        profiles, n, k, percentiles_inputs, data_type,
         day_type, general_saving_folder, prm
 ):
     print("profile generators")
     params = {
         'profiles': True,
-        'batch_size': 10,
-        'n_epochs': 200,
+        'batch_size': 100,
+        'n_epochs': 400,
         # 'lr_start': 0.1,
         # 'lr_end': 0.01,
+        # 'weight_sum_profiles': 1e-3 * 10 * 10,
         'weight_sum_profiles': 1e-3 * 10 * 10,
-        'weight_diff_statistical_indicators': 1,
+        'weight_diff_percentiles': 100,
         'size_input_discriminator_one_item': n,
         'size_input_generator_one_item': 1,
         'size_output_generator_one_item': n,
         'k': k,
-        'statistical_indicators_inputs': statistical_indicators,
+        'percentiles_inputs': percentiles_inputs,
         'general_saving_folder': general_saving_folder,
         'data_type': data_type,
         'n_items_generated': 50,
-        'nn_type_generator': 'lstm',
+        'nn_type_generator': 'linear',
         'nn_type_discriminator': 'linear',
         'noise0': 1,
         'noise_end': 1e-3,
-        'lr_start': 0.01,
-        'lr_end': 0.01,
+        'lr_start': 0.001,
+        'lr_end': 0.001,
         'dropout_discriminator': 0.3,
-        'dropout_generator': 0.25,
+        'dropout_generator': 0.15,
         # 'lr_end': 0.0005,
         'day_type': day_type,
     }
