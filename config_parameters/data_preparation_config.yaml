@@ -20,8 +20,8 @@ n_clus:  # number of behavioural clusters
   loads: 4
   car: 3
 
-data_types: ["car"]
-#             "loads","car"]
+data_types: ["loads"]
+#  , "gen", "car"]
 plots: True
 do_test_filling_in: False
 parallel: False
@@ -30,7 +30,7 @@ test_factor_distr: True
 candidate_factor_distributions:
 save_intermediate_outs: True  # this makes the data generation more tractable
 max_size_chunk: 5.e+6  # reduce the size of individual data chunks that are processed to reduce RAM requirements.
-gan_generation_profiles: False
+gan_generation_profiles: True
 gan_generation_factors_clusters: False
 
 kurtosis: False

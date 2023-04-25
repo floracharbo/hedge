@@ -905,7 +905,6 @@ def import_data(
         # savings paths
         n_data_type_path \
             = prm["save_other"] / f"n_dt0_{data_id(prm, data_type)}.npy"
-
         if prm["n_rows"][data_type] == "all":
             prm["n_rows"][data_type] = get_n_rows(data_type, prm)
         chunks_rows = get_data_chunks(prm, data_type)
