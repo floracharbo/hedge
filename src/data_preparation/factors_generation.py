@@ -814,7 +814,7 @@ class Generator(nn.Module):
             output = self.fc(output)
 
         noise = th.randn(output.shape) * self.noise_factor
-        output = output + noise
+        output = th.clamp(output + noise, min=0, max=1)
         # output = th.exp(output)
 
         return output
@@ -851,8 +851,8 @@ def compute_profile_generators(
         'nn_type_generator': 'linear',
         'nn_type_discriminator': 'linear',
         'noise0': 1,
-        'noise_end': 1e-3,
-        'lr_start': 0.001,
+        'noise_end': 1e-4,
+        'lr_start': 0.01,
         'lr_end': 0.001,
         'dropout_discriminator': 0.3,
         'dropout_generator': 0.15,
