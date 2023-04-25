@@ -48,9 +48,11 @@ def _formatting(prm: dict, run_config: dict) \
             elif value == "\\n":
                 prm[key][key2] = "\n"
 
+
     for key, value in run_config["n_rows"].items():
         if value != "all":
             run_config["n_rows"][key] = int(value)
+    run_config['n_rows0'] = run_config['n_rows'].copy()
 
     test_cell_keys = list(prm["test_cell_translation"].keys())
     for key in test_cell_keys:
@@ -226,6 +228,7 @@ def get_parameters() -> Tuple[dict, dict]:
     # transfer run_config to prm
     for key in [
         "n_rows",
+        "n_rows0",
         "parallel",
         "fill_type",
         "do_test_filling_in",
