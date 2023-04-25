@@ -208,10 +208,10 @@ def _plot_clusters(
     statistical_indicators = {k: {} for k in range(prm["n_clus"][data_type])}
     for k in range(prm["n_clus"][data_type]):
         if bank[k]["n_clus"] != 0:
-            for statistical_indicator in ['p10', 'p50', 'p90', 'mean']:
+            for statistical_indicator in ['p10', 'p25', 'p50', 'p75', 'p90', 'mean']:
                 statistical_indicators[k][statistical_indicator] = np.zeros(prm["n"])
             for time in range(prm["n"]):
-                for percentile in [10, 50, 90]:
+                for percentile in [10, 25, 50, 75, 90]:
                     statistical_indicators[k][f'p{percentile}'][time] = np.percentile(
                         vals_k[k][:, time], percentile
                     )
