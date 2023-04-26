@@ -236,13 +236,17 @@ def add_day_nts(
         print(f"current['dist'] = {current['dist']}")
 
     # enter in days
-    day = {}
-    for key in prm["NTS_day_keys"]:
-        day[key] = current[key]
-    assert len(day["car"]) == prm["n"], \
-        f"error len(day['car']) = {len(day['car'])}"
-    day["id"] = int(id_)
-    days.append(day)
+    if (
+            np.max(current['car']) < prm['max_power_cutoff']
+            and np.sum(current['car']) < prm['max_daily_energy_cutoff']
+    ):
+        day = {}
+        for key in prm["NTS_day_keys"]:
+            day[key] = current[key]
+        assert len(day["car"]) == prm["n"], \
+            f"error len(day['car']) = {len(day['car'])}"
+        day["id"] = int(id_)
+        days.append(day)
 
     if step == len(sequence["dist"]) - 1 and sequence["weekday"][step] != 7:
         # missing day(s) with no trips at the end of the week
