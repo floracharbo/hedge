@@ -470,7 +470,12 @@ class GAN_Trainer():
                 title += ' normalised'
             plt.title(title)
             title = title.replace(' ', '_')
-            fig.savefig(self.save_path / title)
+            if epoch in [0, self.n_epochs - 1]:
+                fig.savefig(
+                    self.save_path / title, bbox_inches='tight', format='pdf', dpi=1200
+                )
+            else:
+                fig.savefig(self.save_path / title)
             plt.close('all')
 
     def plot_generated_samples_start_epoch(self, generated_samples, epoch):
