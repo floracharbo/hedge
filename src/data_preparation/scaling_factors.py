@@ -115,6 +115,8 @@ def _interpolate_missing_p_pos_2d(
             axs[0].title.set_text('Original')
             axs[1].pcolormesh(grid_x, grid_y, interpolated_p_pos)
             axs[1].title.set_text('Linear interpolation')
+            axs[0].axis('equal')
+            axs[1].axis('equal')
             title = f"interpolate_2d_p_pos_{data_type}_{transition}"
             if data_type == 'car':
                 np.save(save_other_path / "factors" / f"p_pos_{data_type}_{transition}.npy", p_pos)
@@ -314,9 +316,9 @@ def _transition_intervals(
 
         if prm["plots"] and n_consecutive_days == 2:
             fig, ax = plt.subplots()
-            if prm['brackets_definition'] == 'linear':
+            if prm['brackets_definition'] == 'linspace':
                 ax.imshow(trans_prob, norm=LogNorm())
-            elif prm['brackets_definition'] == 'linspace':
+            elif prm['brackets_definition'] == 'percentile':
                 # irregular grid -- use pcolormesh
                 if label_prob == 'p_zero2pos':
                     grid_y, grid_x = np.meshgrid(fs_brackets, [0, 1])
@@ -324,6 +326,7 @@ def _transition_intervals(
                     grid_y, grid_x = np.meshgrid(fs_brackets, fs_brackets)
                 fig, ax = plt.subplots()
                 ax.pcolormesh(grid_x, grid_y, trans_prob)
+                plt.axis('equal')
             title = \
                 f"{data_type} {labels_prob[label_prob]} {transition} " \
                 f"n_intervals {prm['n_intervals']} " \
