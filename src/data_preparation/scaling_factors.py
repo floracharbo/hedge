@@ -11,7 +11,7 @@ from matplotlib.colors import LogNorm
 from scipy import interpolate
 from scipy.stats import norm, pearsonr
 
-from src.utils import f_to_interval, initialise_dict
+from src.utils import f_to_interval, initialise_dict, save_fig
 
 
 def _plot_f_next_vs_prev(prm, factors_path, f_prevs, f_nexts, label):
@@ -42,7 +42,8 @@ def _plot_f_next_vs_prev(prm, factors_path, f_prevs, f_nexts, label):
                 plt.legend()
             plt.xlim([- 1, p95])
             plt.ylim([- 1, p95])
-            fig.savefig(factors_path / title.replace(" ", "_"))
+            save_path = factors_path / title.replace(" ", "_")
+            save_fig(fig, prm, save_path)
             plt.close("all")
 
 
@@ -91,7 +92,7 @@ def _get_correlation(
 
 
 def _interpolate_missing_p_pos_2d(
-        p_pos, mid_fs_brackets, data_type, transition, save_other_path, plot=True
+        p_pos, mid_fs_brackets, data_type, transition, prm, plot=True
 ):
     non0 = np.where((p_pos != 0) & (~np.isnan(p_pos)))
     if len(non0[0]) > 3:
@@ -110,13 +111,31 @@ def _interpolate_missing_p_pos_2d(
             ):
                 interpolated_p_pos[i_prev] /= sum(interpolated_p_pos[i_prev])
         if plot:
-            fig, axs = plt.subplots(2)
-            axs[0].pcolormesh(grid_x, grid_y, p_pos)
+            img = [None, None]
+            fig, axs = plt.subplots(2, figsize=(5, 10))
+            # axs[0].pcolormesh(grid_x, grid_y, p_pos)
+            img[0] = axs[0].imshow(p_pos, origin='lower')
             axs[0].title.set_text('Original')
-            axs[1].pcolormesh(grid_x, grid_y, interpolated_p_pos)
+            img[1] = axs[1].imshow(interpolated_p_pos, origin='lower')
+            # axs[1].pcolormesh(grid_x, grid_y, interpolated_p_pos)
             axs[1].title.set_text('Linear interpolation')
-            axs[0].axis('equal')
-            axs[1].axis('equal')
+            # axs[0].axis('equal')
+            # axs[1].axis('equal')
+            # axs[0].set_xlim([0, max(mid_fs_brackets)])
+            # axs[0].set_ylim([0, max(mid_fs_brackets)])
+            # axs[1].set_xlim([0, max(mid_fs_brackets)])
+            # axs[1].set_ylim([0, max(mid_fs_brackets)])
+            for i in range(2):
+                axs[i] = _add_tick_labels_heatmap(axs[i], mid_fs_brackets)
+                plt.colorbar(img[i], ax=axs[i])
+
+            # tick_locations = [i * 2 for i in range(int(len(mid_fs_brackets)/2))]
+            # if not len(mid_fs_brackets) - 1 in tick_locations:
+            #     tick_locations[-1] = len(mid_fs_brackets) - 1
+            # tick_labels = [round(mid_fs_brackets[i], 1) for i in tick_locations]
+            # for i in range(2):
+            #     axs[i].set_xticks(tick_locations)
+            #     axs[i].set_xticklabels(tick_labels, rotation=90)
             title = f"interpolate_2d_p_pos_{data_type}_{transition}"
             if data_type == 'car':
                 np.save(save_other_path / "factors" / f"p_pos_{data_type}_{transition}.npy", p_pos)
@@ -126,8 +145,8 @@ def _interpolate_missing_p_pos_2d(
                     / f"interpolated_p_pos_{data_type}_{transition}.npy",
                     interpolated_p_pos
                 )
-
-            fig.savefig(save_other_path / "factors" / title.replace(" ", "_"))
+            save_path = prm['save_other'] / "factors" / title.replace(" ", "_")
+            save_fig(fig, prm, save_path)
             plt.close('all')
         interpolated_p_pos[np.isnan(interpolated_p_pos)] = 0
     else:
@@ -143,17 +162,16 @@ def _interpolate_missing_p_pos_2d(
 def _count_transitions(
     data_type,
     consecutive_factors,
-    n_intervals: int,
+    prm: int,
     fs_brackets: List[float],
     mid_fs_brackets: List[float],
     n_consecutive_days: int = 2,
     transition: str = "",
-    save_other_path: str = ""
 ):
     print(f"{data_type} {transition}")
-    shape = tuple(n_intervals for _ in range(n_consecutive_days))
+    shape = tuple(prm['n_intervals'] for _ in range(n_consecutive_days))
     n_pos, p_pos = [np.zeros(shape) for _ in range(2)]
-    n_zero2pos = np.zeros(n_intervals)
+    n_zero2pos = np.zeros(prm['n_intervals'])
     if n_consecutive_days == 2:
         f_prevs, f_nexts = consecutive_factors[0], consecutive_factors[1]
         i_non_zeros = [
@@ -191,30 +209,30 @@ def _count_transitions(
 
     for i in i_zero_to_nonzero:
         i_next = [
-            j for j in range(n_intervals) if f_nexts[i] >= fs_brackets[j]
+            j for j in range(prm['n_intervals']) if f_nexts[i] >= fs_brackets[j]
         ][-1]
         n_zero2pos[i_next] += 1
     if not (data_type == 'car' and transition == 'we2wd'):
         if n_consecutive_days == 2:
-            for i_prev in range(n_intervals):
+            for i_prev in range(prm['n_intervals']):
                 sum_next = sum(n_pos[i_prev])
                 if sum_next > 0:
                     p_pos[i_prev] = n_pos[i_prev] / sum_next
                 else:
                     print(f"i_prev {i_prev} sum_next {sum_next}")
-                    p_pos[i_prev] = np.zeros((1, n_intervals))
+                    p_pos[i_prev] = np.zeros((1, prm['n_intervals']))
             p_pos = _interpolate_missing_p_pos_2d(
                 p_pos, mid_fs_brackets, data_type, transition, save_other_path
             )
 
         elif n_consecutive_days == 3:
-            for i_prev in range(n_intervals):
-                for i_prev2 in range(n_intervals):
+            for i_prev in range(prm['n_intervals']):
+                for i_prev2 in range(prm['n_intervals']):
                     sum_next = sum(n_pos[i_prev, i_prev2])
                     if sum_next > 0:
                         p_pos[i_prev, i_prev2] = n_pos[i_prev, i_prev2] / sum_next
                     else:
-                        p_pos[i_prev, i_prev2] = np.zeros((1, n_intervals))
+                        p_pos[i_prev, i_prev2] = np.zeros((1, prm['n_intervals']))
 
                     if not np.all(p_pos >= 0):
                         print(f"184 p_pos[{i_prev}, {i_prev2}] = {p_pos[i_prev, i_prev2]}")
@@ -234,7 +252,7 @@ def _count_transitions(
 
                 p_pos[i_prev] = _interpolate_missing_p_pos_2d(
                     p_pos[i_prev], mid_fs_brackets, data_type, f"{transition}_3d_i_prev{i_prev}",
-                    save_other_path, plot=False
+                    prm, plot=False
                 )
 
     else:
@@ -253,8 +271,8 @@ def _count_transitions(
     if n_consecutive_days == 2 and np.sum(n_zero2pos) > 0:
         print(f"np.sum(n_zero2pos) {np.sum(n_zero2pos)} > 0")
         p_zero2pos = n_zero2pos / sum(n_zero2pos) if sum(n_zero2pos) > 0 \
-            else np.zeros((1, n_intervals))
-        p_zero2pos = np.reshape(p_zero2pos, (1, n_intervals))
+            else np.zeros((1, prm['n_intervals']))
+        p_zero2pos = np.reshape(p_zero2pos, (1, prm['n_intervals']))
 
         assert abs(np.sum(p_zero2pos) - 1) < 1e-3, f"sum(p_zero2pos) {sum(p_zero2pos)}"
 
@@ -268,6 +286,17 @@ def _count_transitions(
           f"p_pos >1e-5 {len(np.where(p_pos>1e-5)[0])}")
 
     return p_pos, p_zero2pos
+
+
+def _add_tick_labels_heatmap(ax, mid_fs_brackets):
+    tick_locations = [i * 2 for i in range(int(len(mid_fs_brackets) / 2))]
+    if not len(mid_fs_brackets) - 1 in tick_locations:
+        tick_locations[-1] = len(mid_fs_brackets) - 1
+    tick_labels = [round(mid_fs_brackets[i], 1) for i in tick_locations]
+    ax.set_xticks(tick_locations)
+    ax.set_xticklabels(tick_labels, rotation=90)
+
+    return ax
 
 
 def _transition_intervals(
@@ -294,9 +323,8 @@ def _transition_intervals(
     ]
     print(transition)
     p_pos, p_zero2pos = _count_transitions(
-        data_type, consecutive_factors, prm["n_intervals"], fs_brackets, mid_fs_brackets,
+        data_type, consecutive_factors, prm, fs_brackets, mid_fs_brackets,
         n_consecutive_days=n_consecutive_days, transition=transition,
-        save_other_path=prm['save_other']
     )
     labels_prob = {
         'p_pos': f"{data_type} non zero factor transition probabilities",
@@ -316,17 +344,20 @@ def _transition_intervals(
 
         if prm["plots"] and n_consecutive_days == 2:
             fig, ax = plt.subplots()
-            if prm['brackets_definition'] == 'linspace':
-                ax.imshow(trans_prob, norm=LogNorm())
-            elif prm['brackets_definition'] == 'percentile':
+            img = ax.imshow(trans_prob, norm=LogNorm())
+            ax = _add_tick_labels_heatmap(ax, mid_fs_brackets)
+
+            # if prm['brackets_definition'] == 'linspace':
+            # if prm['brackets_definition'] == 'percentile':
                 # irregular grid -- use pcolormesh
-                if label_prob == 'p_zero2pos':
-                    grid_y, grid_x = np.meshgrid(fs_brackets, [0, 1])
-                else:
-                    grid_y, grid_x = np.meshgrid(fs_brackets, fs_brackets)
-                fig, ax = plt.subplots()
-                ax.pcolormesh(grid_x, grid_y, trans_prob)
-                plt.axis('equal')
+                # if label_prob == 'p_zero2pos':
+                #     grid_y, grid_x = np.meshgrid(fs_brackets, [0, 1])
+                # else:
+                #     grid_y, grid_x = np.meshgrid(fs_brackets, fs_brackets)
+                # fig, ax = plt.subplots()
+                # ax.pcolormesh(grid_x, grid_y, trans_prob)
+                # plt.axis('equal')
+            plt.colorbar(img, ax=ax)
             title = \
                 f"{data_type} {labels_prob[label_prob]} {transition} " \
                 f"n_intervals {prm['n_intervals']} " \
@@ -336,7 +367,8 @@ def _transition_intervals(
             # ax.set_yticklabels(tick_labels)
             ax.set_xlabel("f(t + 1)")
             ax.set_ylabel("f(t)")
-            fig.savefig(prm["save_other"] / "factors" / title.replace(" ", "_"))
+            save_path = prm["save_other"] / "factors" / title.replace(" ", "_")
+            save_fig(fig, prm, save_path)
             plt.close("all")
 
     return p_pos, p_zero2pos, fs_brackets, mid_fs_brackets
@@ -509,10 +541,9 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
             fig = plt.figure()
             plt.hist(errors, density=1, alpha=0.5, label="data", bins=50)
             plt.plot(factor_residuals, pdf, label=f"{distr_str} pdf")
-            fig.savefig(
-                prm['save_other'] / 'factors'
-                / f'hist_errors_vs_pdf_{distr_str}_{data_type}_{label}'
-            )
+            save_path = prm['save_other'] / 'factors' / \
+                        f'hist_errors_vs_pdf_{distr_str}_{data_type}_{label}'
+            save_fig(fig, prm, save_path)
         assert 0.9 < integral_cdf(factor_residuals, pdf) < 1.02, \
             f"integral_cdf(factor_residuals, pdf) {integral_cdf(factor_residuals, pdf) }"
 
@@ -539,7 +570,8 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
             f"perfect correlation {data_type} {label}"
         )
         plt.title(title)
-        fig.savefig(prm["save_other"] / "factors" / title.replace(" ", "_").replace('.', '_'))
+        save_path = prm["save_other"] / "factors" / title.replace(" ", "_").replace('.', '_')
+        save_fig(fig, prm, save_path)
         plt.close("all")
 
     return mean_residual, residual_distribution_prms

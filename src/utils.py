@@ -178,3 +178,10 @@ def f_to_interval(f, fs_brackets):
     interval = np.where(f >= fs_brackets[:-1])[0][-1]
 
     return interval
+
+
+def save_fig(fig, prm, save_path):
+    if prm['high_res']:
+        fig.savefig(save_path, bbox_inches='tight', format='pdf', dpi=1200)
+    else:
+        fig.savefig(save_path)

@@ -30,7 +30,7 @@ from sklearn.preprocessing import StandardScaler
 
 from src.data_preparation.factors_generation import (
     compute_factors_clusters_generators, compute_profile_generators)
-from src.utils import initialise_dict
+from src.utils import initialise_dict, save_fig
 
 
 def _get_n_trans(n_data_type, data_type, days, n_trans, banks, n_consecutive_days=2):
@@ -183,9 +183,8 @@ def _plot_heat_map_p_trans(
         plt.tick_params(left=False, bottom=False)
         plt.tight_layout()
         plt.gca().tick_params(left=False, bottom=False)
-        fig.savefig(
-            prm["save_other"] / "clusters" / f"p_trans_heatmap_{data_type}_{transition}"
-        )
+        fig_save_path = prm["save_other"] / "clusters" / f"p_trans_heatmap_{data_type}_{transition}"
+        save_fig(fig, prm, fig_save_path)
         plt.close("all")
 
 
@@ -241,9 +240,8 @@ def _plot_clusters(
                         plt.legend()
                         title = f"Cluster {k} demand {day_type}"
                         plt.title(title)
-                    fig.savefig(
-                        save_path / "clusters" / title.replace(" ", "_")
-                    )
+                    fig_save_path = save_path / "clusters" / title.replace(" ", "_")
+                    save_fig(fig, prm, fig_save_path)
                 plt.close("all")
 
     return statistical_indicators
@@ -284,7 +282,8 @@ def _get_cdfs(distances, label, prm, bank):
             title = f"Histogram of distance to the cluster centers {label} {i}"
             plt.title(title)
             plt.grid(True)
-            fig.savefig(prm["save_other"] / "clusters" / title.replace(" ", "_"))
+            fig_save_path = prm["save_other"] / "clusters" / title.replace(" ", "_")
+            save_fig(fig, prm, fig_save_path)
             plt.close("all")
 
         # get cumulative probability for each profile
@@ -405,7 +404,8 @@ def _elbow_method(transformed_features, data_type, day_type, prm):
             plt.title(title)
             plt.xlabel("Number of clusters")
             plt.ylabel("WCSS")
-            fig.savefig(prm['save_other'] / "clusters" / title.replace(" ", "_"))
+            fig_save_path = prm['save_other'] / "clusters" / title.replace(" ", "_")
+            save_fig(fig, prm, fig_save_path)
             plt.close("all")
 
 

@@ -14,7 +14,7 @@ import numpy as np
 import seaborn as sns
 
 from src.data_preparation.filling_in import stats_filling_in
-from src.utils import data_id, initialise_dict, list_potential_paths_outs
+from src.utils import data_id, initialise_dict, list_potential_paths_outs, save_fig
 
 
 def _load_out(prm, data_type, chunk_rows):
@@ -184,7 +184,8 @@ def save_outs(outs, prm, data_type, chunks_rows):
             fig = plt.figure()
             ax = sns.heatmap(all_data)
             ax.set_title("existing data")
-            fig.savefig(prm["save_other"] / f"existing_data_{data_type}")
+            fig_save_path = prm["save_other"] / f"existing_data_{data_type}"
+            save_fig(fig, prm, fig_save_path)
             plt.close("all")
 
         else:

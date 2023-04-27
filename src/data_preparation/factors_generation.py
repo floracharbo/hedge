@@ -10,7 +10,7 @@ from torch import nn
 from tqdm import tqdm
 
 from src.data_preparation.scaling_factors import _transition_intervals
-from src.utils import initialise_dict
+from src.utils import initialise_dict, save_fig
 
 th.manual_seed(111)
 
@@ -173,7 +173,7 @@ class GAN_Trainer():
                 title += ' normalised'
             plt.title(title)
             title = title.replace(' ', '_')
-            fig.savefig(self.save_path / title)
+            save_fig(fig, prm, self.save_path / title)
             plt.close('all')
 
     def get_train_loader(self):
@@ -327,7 +327,7 @@ class GAN_Trainer():
         if self.normalised:
             title += ' normalised'
         title = title.replace(' ', '_')
-        fig.savefig(self.save_path / title)
+        save_fig(fig, prm, self.save_path / title)
         plt.close('all')
 
     def _compute_statistical_indicators_generated_profiles(self, generated_samples):
@@ -489,7 +489,7 @@ class GAN_Trainer():
                 title += ' normalised'
             plt.title(title)
             title = title.replace(' ', '_')
-            fig.savefig(self.save_path / title)
+            save_fig(fig, prm, self.save_path / title)
             plt.close('all')
 
     def update_noise_and_lr_generator(self, epoch):
@@ -566,7 +566,7 @@ class GAN_Trainer():
                     f"vs self.mean_real_output {self.mean_real_output}"
                 )
             title = title.replace(' ', '_')
-            fig.savefig(self.save_path / title)
+            save_fig(fig, prm, self.save_path / title)
             plt.close('all')
 
     def plot_noise_over_time(self):
@@ -579,7 +579,7 @@ class GAN_Trainer():
             plt.plot(noises)
             title = f"{self.get_saving_label()} noise over time"
             plt.title(title)
-            fig.savefig(self.save_path / title)
+            save_fig(fig, prm, self.save_path / title)
 
     def plot_final_hist_generated_vs_real(self, generated_outputs, real_outputs, epoch):
         if self.prm['plots']:
@@ -599,7 +599,7 @@ class GAN_Trainer():
             if self.normalised:
                 title += ' normalised'
             title = title.replace(' ', '_')
-            fig.savefig(self.save_path / title)
+            save_fig(fig, prm, self.save_path / title)
             plt.close('all')
 
     def train(self):

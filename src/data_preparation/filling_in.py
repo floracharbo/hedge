@@ -403,8 +403,5 @@ def _plot_missing_data(day, data_type, prm, missing_fig_path):
             plt.xlabel("Time [hour]")
             plt.ylabel("[kWh]")
         plt.tight_layout()
-        fig.savefig(
-            missing_fig_path, bbox_inches='tight',
-            format='pdf', dpi=1200
-        )
+        save_fig(fig, prm, missing_fig_path)
         plt.close("all")
