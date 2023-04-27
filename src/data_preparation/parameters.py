@@ -244,7 +244,10 @@ def get_parameters() -> Tuple[dict, dict]:
         'gan_generation_profiles',
         'gan_generation_factors_clusters',
         'kurtosis',
-        'brackets_definition'
+        'brackets_definition',
+        'max_power_cutoff',
+        'max_daily_energy_cutoff',
+        'high_res'
     ]:
         prm[key] = run_config[key]
 
