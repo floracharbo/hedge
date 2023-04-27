@@ -21,7 +21,6 @@ n_clus:  # number of behavioural clusters
   car: 3
 
 data_types: ["loads"]
-#  , "gen", "car"]
 plots: True
 do_test_filling_in: False
 parallel: False
@@ -34,5 +33,7 @@ gan_generation_profiles: True
 gan_generation_factors_clusters: False
 
 kurtosis: False
-brackets_definition: 'linspace'
+brackets_definition: 'percentile'
 # linspace or percentile
+max_power_cutoff: 50  # in kW (average over one time step)
+max_daily_energy_cutoff: 200  # in kW (over one day)
