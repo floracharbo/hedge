@@ -93,6 +93,8 @@ class GAN_Trainer():
             saving_label += f" cluster {self.k}"
         if self.lr_decay != 1:
             saving_label += f" lr_end {self.lr_end:.2e}".replace('.', '_')
+        if self.dim_latent_noise != 1:
+            saving_label += f" dim_latent_noise {self.dim_latent_noise}"
         for label in ['generator', 'discriminator']:
             nn_type = self.__dict__[f'nn_type_{label}']
             if nn_type != 'linear':
@@ -207,7 +209,7 @@ class GAN_Trainer():
 
     def split_inputs_and_outputs(self, train_data):
         if self.profiles:
-            real_inputs = th.randn(self.batch_size_, 1)
+            real_inputs = th.randn(self.batch_size_, self.dim_latent_noise)
             real_outputs = train_data
         elif self.n_items_generated > 1:
             i_inputs = np.array(
@@ -697,6 +699,7 @@ class Discriminator(nn.Module):
 
     def forward(self, x):
         output = self.model(x)
+
         return output
 
 
@@ -847,7 +850,6 @@ def compute_profile_generators(
         'weight_sum_profiles': 1e-3 * 10 * 10,
         'weight_diff_percentiles': 100,
         'size_input_discriminator_one_item': n,
-        'size_input_generator_one_item': 1,
         'size_output_generator_one_item': n,
         'k': k,
         'percentiles_inputs': percentiles_inputs,
@@ -864,8 +866,10 @@ def compute_profile_generators(
         'dropout_generator': 0.15,
         # 'lr_end': 0.0005,
         'day_type': day_type,
+        'dim_latent_noise': 10,
     }
     params['lr_decay'] = (params['lr_end'] / params['lr_start']) ** (1 / params['n_epochs'])
+    params['size_input_generator_one_item'] = params['dim_latent_noise']
     gan_trainer = GAN_Trainer(params, prm)
     gan_trainer.update_value_type('profiles')
     gan_trainer.add_training_data(outputs=profiles)
