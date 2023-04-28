@@ -155,7 +155,7 @@ def list_potential_paths_outs(prm, data_type):
     for folder in os.listdir(Path("data") / "other_outputs"):
         if f"n{prm['n']}" in folder and f"{data_type}_{prm['n_rows0'][data_type]}" in folder:
             potential_paths.append(Path("data") / "other_outputs" / folder / "outs")
-    if prm['n_rows'][data_type] == 'all':
+    if prm['n_rows0'][data_type] == 'all':
         potential_paths.append(Path("data") / "other_outputs" / f"n{prm['n']}" / "outs")
 
     return potential_paths
