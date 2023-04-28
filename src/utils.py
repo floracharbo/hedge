@@ -182,6 +182,6 @@ def f_to_interval(f, fs_brackets):
 
 def save_fig(fig, prm, save_path):
     if prm['high_res']:
-        fig.savefig(save_path, bbox_inches='tight', format='pdf', dpi=1200)
+        fig.savefig(f"{save_path}.pdf", bbox_inches='tight', format='pdf', dpi=1200)
     else:
         fig.savefig(save_path)
