@@ -138,9 +138,9 @@ def _interpolate_missing_p_pos_2d(
             #     axs[i].set_xticklabels(tick_labels, rotation=90)
             title = f"interpolate_2d_p_pos_{data_type}_{transition}"
             if data_type == 'car':
-                np.save(save_other_path / "factors" / f"p_pos_{data_type}_{transition}.npy", p_pos)
+                np.save(prm['save_other'] / "factors" / f"p_pos_{data_type}_{transition}.npy", p_pos)
                 np.save(
-                    save_other_path
+                    prm['save_other']
                     / "factors"
                     / f"interpolated_p_pos_{data_type}_{transition}.npy",
                     interpolated_p_pos
@@ -222,7 +222,7 @@ def _count_transitions(
                     print(f"i_prev {i_prev} sum_next {sum_next}")
                     p_pos[i_prev] = np.zeros((1, prm['n_intervals']))
             p_pos = _interpolate_missing_p_pos_2d(
-                p_pos, mid_fs_brackets, data_type, transition, save_other_path
+                p_pos, mid_fs_brackets, data_type, transition, prm['save_other']
             )
 
         elif n_consecutive_days == 3:

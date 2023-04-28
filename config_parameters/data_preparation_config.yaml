@@ -20,7 +20,7 @@ n_clus:  # number of behavioural clusters
   loads: 4
   car: 3
 
-data_types: ["loads"]
+data_types: ["car", "loads", "gen"]
 plots: True
 do_test_filling_in: False
 parallel: False
@@ -37,3 +37,4 @@ brackets_definition: 'percentile'
 # linspace or percentile
 max_power_cutoff: 50  # in kW (average over one time step)
 max_daily_energy_cutoff: 200  # in kW (over one day)
+high_res: True

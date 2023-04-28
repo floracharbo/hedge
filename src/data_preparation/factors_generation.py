@@ -680,7 +680,6 @@ class Discriminator(nn.Module):
                 nn.Sigmoid(),
             )
 
-
         elif nn_type == 'cnn':
             self.model = nn.Sequential(
                 nn.Conv1d(200, 200, kernel_size=3),
