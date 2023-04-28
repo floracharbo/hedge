@@ -200,8 +200,10 @@ class GAN_Trainer():
         # self.size_input_generator = self.size_input_generator_one_item if self.profiles \
         #     else self.size_input_generator_one_item * self.n_items_generated
 
-        self.size_input_discriminator = self.size_input_discriminator_one_item * self.n_items_generated
-        self.size_input_generator = self.size_input_generator_one_item if self.profiles else self.size_input_generator_one_item * self.n_items_generated
+        self.size_input_discriminator = self.size_input_discriminator_one_item \
+            * self.n_items_generated
+        self.size_input_generator = self.size_input_generator_one_item if self.profiles \
+            else self.size_input_generator_one_item * self.n_items_generated
 
     def split_inputs_and_outputs(self, train_data):
         if self.profiles:

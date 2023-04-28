@@ -48,7 +48,6 @@ def _formatting(prm: dict, run_config: dict) \
             elif value == "\\n":
                 prm[key][key2] = "\n"
 
-
     for key, value in run_config["n_rows"].items():
         if value != "all":
             run_config["n_rows"][key] = int(value)

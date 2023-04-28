@@ -138,7 +138,10 @@ def _interpolate_missing_p_pos_2d(
             #     axs[i].set_xticklabels(tick_labels, rotation=90)
             title = f"interpolate_2d_p_pos_{data_type}_{transition}"
             if data_type == 'car':
-                np.save(prm['save_other'] / "factors" / f"p_pos_{data_type}_{transition}.npy", p_pos)
+                np.save(
+                    prm['save_other'] / "factors" / f"p_pos_{data_type}_{transition}.npy",
+                    p_pos
+                )
                 np.save(
                     prm['save_other']
                     / "factors"
@@ -346,17 +349,6 @@ def _transition_intervals(
             fig, ax = plt.subplots()
             img = ax.imshow(trans_prob, norm=LogNorm())
             ax = _add_tick_labels_heatmap(ax, mid_fs_brackets)
-
-            # if prm['brackets_definition'] == 'linspace':
-            # if prm['brackets_definition'] == 'percentile':
-                # irregular grid -- use pcolormesh
-                # if label_prob == 'p_zero2pos':
-                #     grid_y, grid_x = np.meshgrid(fs_brackets, [0, 1])
-                # else:
-                #     grid_y, grid_x = np.meshgrid(fs_brackets, fs_brackets)
-                # fig, ax = plt.subplots()
-                # ax.pcolormesh(grid_x, grid_y, trans_prob)
-                # plt.axis('equal')
             plt.colorbar(img, ax=ax)
             title = \
                 f"{data_type} {labels_prob[label_prob]} {transition} " \
@@ -542,7 +534,7 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
             plt.hist(errors, density=1, alpha=0.5, label="data", bins=50)
             plt.plot(factor_residuals, pdf, label=f"{distr_str} pdf")
             save_path = prm['save_other'] / 'factors' / \
-                        f'hist_errors_vs_pdf_{distr_str}_{data_type}_{label}'
+                f'hist_errors_vs_pdf_{distr_str}_{data_type}_{label}'
             save_fig(fig, prm, save_path)
         assert 0.9 < integral_cdf(factor_residuals, pdf) < 1.02, \
             f"integral_cdf(factor_residuals, pdf) {integral_cdf(factor_residuals, pdf) }"
