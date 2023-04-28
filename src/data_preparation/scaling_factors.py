@@ -222,7 +222,7 @@ def _count_transitions(
                     print(f"i_prev {i_prev} sum_next {sum_next}")
                     p_pos[i_prev] = np.zeros((1, prm['n_intervals']))
             p_pos = _interpolate_missing_p_pos_2d(
-                p_pos, mid_fs_brackets, data_type, transition, prm['save_other']
+                p_pos, mid_fs_brackets, data_type, transition, prm
             )
 
         elif n_consecutive_days == 3:

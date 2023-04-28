@@ -748,6 +748,8 @@ def import_segment(
             print("load previously saved chunks of data")
         return [None] * 7
 
+    print(f"potential_paths_outs {potential_paths_outs} not found")
+
     data_source = prm["data_type_source"][data_type]
     data = pd.read_csv(
         prm["var_path"][data_type],
