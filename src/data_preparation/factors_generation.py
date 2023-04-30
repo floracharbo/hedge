@@ -9,34 +9,9 @@ import torch as th
 from torch import nn
 from tqdm import tqdm
 
-from src.data_preparation.scaling_factors import _transition_intervals
 from src.utils import initialise_dict, save_fig
 
 th.manual_seed(111)
-
-
-def obtain_cluster_transition_probabilities(
-        n_clusters, n_consecutive_days, list_inputs, list_outputs
-):
-    n_possible_inputs = n_clusters ** (n_consecutive_days - 1)
-    n_transitions = np.zeros((n_possible_inputs, n_clusters))
-    for i in range(len(list_inputs)):
-        clusters_input_idx = 0
-        for d in range(n_consecutive_days - 1):
-            clusters_input_idx += list_inputs[i][-(d + 1)] * n_clusters ** d
-        if isinstance(list_outputs[i], list) and len(list_outputs[i]) == 1:
-            cluster_output_idx = int(list_outputs[i][0])
-        else:
-            cluster_output_idx = int(list_outputs[i])
-        # clusters_input = list_inputs[i][0] * n_clus_all_ + list_inputs[i][1]
-        n_transitions[int(clusters_input_idx)][cluster_output_idx] += 1
-    sum_transitions = np.sum(n_transitions, axis=1)
-    cluster_transition_propabilities = [
-        n_transitions[c] / sum_transitions[c]
-        for c in range(n_possible_inputs)
-    ]
-
-    return cluster_transition_propabilities
 
 
 def checks_nan(real_inputs, real_outputs, generated_outputs):
@@ -59,38 +34,20 @@ class GAN_Trainer():
             self.update_value_type(self.value_type)
         self.prm = prm
 
-    def cluster_generated_output_to_idx(self, real_inputs, generated_outputs):
-        n_possible_clusters = int(real_inputs.max()) + 1
-        generated_outputs_ = th.zeros((self.batch_size_, self.n_items_generated))
-        for i_batch in range(self.batch_size_):
-            for i_item in range(self.n_items_generated):
-                generated_outputs_[i_batch][i_item] \
-                    = generated_outputs[
-                      i_batch,
-                      i_item * n_possible_clusters: (i_item + 1) * n_possible_clusters
-                      ].argmax()
-
-        return generated_outputs_
-
     def update_value_type(self, value_type):
         save_folder = f"{self.data_type}_{value_type}_generation"
         self.value_type = value_type
         self.save_path = self.general_saving_folder / save_folder
         if not self.save_path.exists():
             self.save_path.mkdir(parents=True)
-        self.normalised = True if value_type == 'factors' else False
-        if not self.profiles:
-            self.size_output_generator_one_item = self.n_clusters if value_type == 'clusters' else 1
+        self.normalised = False
 
     def get_saving_label(self):
         saving_label \
             = f'{self.data_type} {self.day_type}, {self.value_type} lr_start {self.lr_start:.2e} ' \
               f"n_items_generated {self.n_items_generated} " \
               f"noise0{self.noise0:.2f}_noise_end{self.noise_end:.2f}".replace('.', '_')
-        if not self.profiles:
-            saving_label += f" {self.transition} n_consecutive_days {self.n_consecutive_days} "
-        else:
-            saving_label += f" cluster {self.k}"
+        saving_label += f" cluster {self.k}"
         if self.lr_decay != 1:
             saving_label += f" lr_end {self.lr_end:.2e}".replace('.', '_')
         if self.dim_latent_noise != 1:
@@ -105,36 +62,8 @@ class GAN_Trainer():
     def add_training_data(
         self, inputs=None, outputs=None, p_clus=None, p_trans=None, n_clus=None,
     ):
-        if self.value_type == 'factors':
-            i_remove = [
-                i for i in range(len(inputs))
-                if any(f == 0 for f in inputs[i]) or outputs[i] == 0
-            ]
-            print(f"remove {len(i_remove) / len(outputs)} % of samples with 0")
-            for it, i in enumerate(i_remove):
-                if i - it == 0:
-                    inputs = inputs[1:]
-                    outputs = outputs[1:]
-                else:
-                    try:
-                        inputs = np.concatenate((inputs[0: i - it], inputs[i - it + 1:]))
-                        outputs = np.concatenate((outputs[0: i - it], outputs[i - it + 1:]))
-                    except Exception as ex:
-                        print(
-                            f"ex {ex} self.data_type {self.data_type} "
-                            f"self.value_type {self.value_type} "
-                            f"it {it} i {i}"
-                            f"np.shape(inputs) {np.shape(inputs)} "
-                            f"np.shape(outputs) {np.shape(outputs)}"
-                            f"inputs {inputs} outputs {outputs}"
-                        )
-                        sys.exit()
-
         self.train_data_length = len(outputs)
         self.outputs = th.tensor(outputs)
-
-        if not self.profiles:
-            self.inputs = inputs
 
         if self.normalised:
             for i in range(self.train_data_length):
@@ -147,14 +76,7 @@ class GAN_Trainer():
         self.mean_real_output = np.nanmean(self.outputs)
         self.std_real_output = np.nanstd(self.outputs)
 
-        if not self.profiles:
-            self.train_data = th.zeros((self.train_data_length, self.n_consecutive_days))
-            self.train_data[:, :-1] = th.tensor(self.inputs)
-            self.train_data[:, -1] = th.tensor(
-                np.array(self.outputs)
-            ).view_as(self.train_data[:, -1])
-        else:
-            self.train_data = self.outputs
+        self.train_data = self.outputs
 
         if p_clus is not None:
             self.p_clus0, self.p_trans0, self.n_clus = p_clus, p_trans, n_clus
@@ -163,16 +85,9 @@ class GAN_Trainer():
         if self.prm['plots']:
             fig = plt.figure()
             for i in range(20):
-                if self.profiles:
-                    plt.plot(self.outputs[i])
-                else:
-                    plt.plot(np.append(self.inputs[i], self.outputs[i]))
+                plt.plot(self.outputs[i])
 
             title = f"{self.get_saving_label()} series"
-            if not self.profiles:
-                title += f" n_consecutive_days {self.n_consecutive_days}"
-            if self.normalised:
-                title += ' normalised'
             plt.title(title)
             title = title.replace(' ', '_')
             save_fig(fig, self.prm, self.save_path / title)
@@ -197,50 +112,22 @@ class GAN_Trainer():
 
     def update_n_items_generated(self):
         self.size_output_generator = self.size_output_generator_one_item * self.n_items_generated
-        # self.size_input_discriminator = self.size_input_discriminator_one_item \
-        #     * self.n_items_generated
-        # self.size_input_generator = self.size_input_generator_one_item if self.profiles \
-        #     else self.size_input_generator_one_item * self.n_items_generated
-
         self.size_input_discriminator = self.size_input_discriminator_one_item \
             * self.n_items_generated
-        self.size_input_generator = self.size_input_generator_one_item if self.profiles \
-            else self.size_input_generator_one_item * self.n_items_generated
+        self.size_input_generator = self.size_input_generator_one_item
 
     def split_inputs_and_outputs(self, train_data):
-        if self.profiles:
-            real_inputs = th.randn(self.batch_size_, self.dim_latent_noise)
-            real_outputs = train_data
-        elif self.n_items_generated > 1:
-            i_inputs = np.array(
-                [i for i in range(len(train_data[0])) if (i + 1) % self.n_consecutive_days != 0]
-            )
-            i_outputs = np.array(
-                [i for i in range(len(train_data[0])) if (i + 1) % self.n_consecutive_days == 0]
-            )
-            real_inputs = train_data[:, i_inputs]
-            real_outputs = train_data[:, i_outputs]
-
-        else:
-            real_inputs = train_data[:, :self.size_input_generator]
-            real_outputs = train_data[:, self.size_input_generator:]
+        real_inputs = th.randn(self.batch_size_, self.dim_latent_noise)
+        real_outputs = train_data
 
         return real_inputs, real_outputs
 
     def merge_inputs_and_outputs(self, real_inputs, generated_outputs, real_outputs=None):
         if real_outputs is None:
             real_samples = None
-        elif self.profiles:
+        else:
             real_samples = real_outputs
-        else:
-            real_samples = self.insert_generated_outputs_in_inputs_list(real_inputs, real_outputs)
-
-        if self.profiles:
-            generated_samples = generated_outputs
-        else:
-            generated_samples = self.insert_generated_outputs_in_inputs_list(
-                real_inputs, generated_outputs
-            )
+        generated_samples = generated_outputs
 
         return generated_samples, real_samples
 
@@ -275,11 +162,7 @@ class GAN_Trainer():
             nn_type=self.nn_type_discriminator,
             dropout=self.dropout_discriminator,
         )
-
         self.loss_function = nn.BCELoss()
-        # self.loss_function = nn.L1Loss()
-        # self.loss_function = nn.CrossEntropyLoss()
-        # self.loss_function = nn.NLLLoss()
 
         self.optimizer_discriminator = th.optim.Adam(
             self.discriminator.parameters(), lr=self.lr_start
@@ -288,9 +171,6 @@ class GAN_Trainer():
 
     def train_discriminator(self, real_inputs, real_outputs):
         generated_outputs = self.generator(real_inputs.to(th.float32))
-        # generated_outputs = generated_outputs.view(self.batch_size_, self.size_output_generator)
-        if self.value_type == 'clusters':
-            generated_outputs = self.cluster_generated_output_to_idx(real_inputs, generated_outputs)
         generated_samples_labels = th.zeros((self.batch_size_, 1))
 
         checks_nan(real_inputs, real_outputs, generated_outputs)
@@ -314,26 +194,6 @@ class GAN_Trainer():
     def get_real_samples_labels(self):
         return th.ones((self.batch_size_, 1))
 
-    def plot_clusters_transitions_generated_vs_real(self, real_inputs, generated_outputs, epoch):
-        # need to reshape inputs
-        inputs_reshape = np.reshape(real_inputs, ((-1, self.n_consecutive_days - 1)))
-        outputs_reshape = np.reshape(generated_outputs, ((-1, 1)))
-        generated_ps = obtain_cluster_transition_probabilities(
-            self.n_clusters, self.n_consecutive_days, inputs_reshape, outputs_reshape
-        )
-        fig, axs = plt.subplots(2)
-        axs[0].imshow(generated_ps, label='generated')
-        if 'cluster_transition_propabilities' in self.__dict__:
-            axs[1].imshow(self.cluster_transition_propabilities, label='real')
-        plt.legend()
-        title = f"{self.get_saving_label()} hist clusters transitions generated " \
-                f"vs real epoch {epoch}"
-        if self.normalised:
-            title += ' normalised'
-        title = title.replace(' ', '_')
-        save_fig(fig, self.prm, self.save_path / title)
-        plt.close('all')
-
     def _compute_statistical_indicators_generated_profiles(self, generated_samples):
         generated_samples_2d = generated_samples.view(
             self.batch_size_ * self.n_items_generated, -1
@@ -355,95 +215,38 @@ class GAN_Trainer():
     def train_generator(self, real_inputs, real_outputs, final_n, epoch):
         self.generator.zero_grad()
         generated_outputs = self.generator(real_inputs.to(th.float32))
-        # generated_outputs = generated_outputs.view(self.batch_size_, self.size_output_generator)
-
-        if self.value_type == 'clusters':
-            generated_outputs = self.cluster_generated_output_to_idx(real_inputs, generated_outputs)
         generated_samples, _ = self.merge_inputs_and_outputs(real_inputs, generated_outputs)
-        # generated_samples = th.where(generated_samples < 0, 0, generated_samples)
-        # generated_samples_ = th.vstack((generated_samples, generated_samples))
-        # output_discriminator_generated = self.discriminator(generated_samples_)
-        # rows = th.arange(0, self.batch_size, dtype=th.int64)
         output_discriminator_generated = self.discriminator(generated_samples)
         loss_generator = self.loss_function(
             # output_discriminator_generated[rows, :], self.get_real_samples_labels()
             output_discriminator_generated, self.get_real_samples_labels()
         )
-        if self.profiles:
-            percentiles_generated, generated_samples_2d, n_samples \
-                = self._compute_statistical_indicators_generated_profiles(generated_samples)
-            loss_percentiles = 0
-            for key in ['p10', 'p25', 'p50', 'mean', 'p75', 'p90']:
-                loss_percentiles += th.sum(
-                    th.square(
-                        percentiles_generated[key]
-                        - th.from_numpy(self.percentiles_inputs[self.k][key])
-                    )
-                ) * self.weight_diff_percentiles
-            loss_sum_profiles = (
-                th.sum(generated_samples) / (self.batch_size_ * self.n_items_generated) - 1
-            ) ** 2 * self.weight_sum_profiles
-            loss_generator += loss_percentiles + loss_sum_profiles
-        else:
-            loss_percentiles, loss_sum_profiles = 0, 0
+        percentiles_generated, generated_samples_2d, n_samples \
+            = self._compute_statistical_indicators_generated_profiles(generated_samples)
+        loss_percentiles = 0
+        for key in ['p10', 'p25', 'p50', 'mean', 'p75', 'p90']:
+            loss_percentiles += th.sum(
+                th.square(
+                    percentiles_generated[key]
+                    - th.from_numpy(self.percentiles_inputs[self.k][key])
+                )
+            ) * self.weight_diff_percentiles
+        loss_sum_profiles = (
+            th.sum(generated_samples) / (self.batch_size_ * self.n_items_generated) - 1
+        ) ** 2 * self.weight_sum_profiles
+        loss_generator += loss_percentiles + loss_sum_profiles
+
         loss_generator.backward()
         self.optimizer_generator.step()
         if final_n:
-            if self.value_type == 'clusters':
-                self.plot_final_hist_generated_vs_real(generated_outputs, real_outputs, epoch)
-                self.plot_clusters_transitions_generated_vs_real(
-                    real_inputs, generated_outputs, epoch
-                )
-            # else:
-            #     self.plot_generated_samples_start_epoch(generated_samples, epoch)
-
-            if self.profiles:
-                self.plot_statistical_indicators_profiles(
-                    percentiles_generated, epoch, n_samples
-                )
+            self.plot_statistical_indicators_profiles(
+                percentiles_generated, epoch, n_samples
+            )
 
             if epoch == self.n_epochs - 1:
-                if self.value_type == 'clusters':
-                    self.check_clusters_transition_probabilities_match_real(generated_samples_2d)
-                else:
-                    self.plot_final_hist_generated_vs_real(generated_outputs, real_outputs, epoch)
-                if self.value_type == 'factors':
-                    self.plot_heat_map_f_prev_next(generated_samples_2d, epoch=epoch)
+                self.plot_final_hist_generated_vs_real(generated_outputs, real_outputs, epoch)
 
         return loss_generator, generated_outputs, loss_percentiles, loss_sum_profiles
-
-    def plot_heat_map_f_prev_next(self, generated_samples_2d, epoch=None):
-        consecutive_factors = generated_samples_2d[:, :-1]
-        # f_prev = generated_samples_2d[:, self.n_consecutive_days - 2]
-        # f_next = generated_samples_2d[:, self.n_consecutive_days - 1]
-        _transition_intervals(
-            consecutive_factors, self.transition + f"_{epoch}", self.prm,
-            self.data_type, n_consecutive_days=self.n_consecutive_days
-        )
-
-    def check_clusters_transition_probabilities_match_real(self, generated_samples_2d):
-        if self.value_type == 'clusters':
-            n_transitions = np.zeros((self.n_clusters, self.n_clusters))
-            n_clus = np.zeros((self.n_clusters))
-
-            for i in range(len(generated_samples_2d)):
-                c1 = int(generated_samples_2d[i][-2])
-                c2 = int(generated_samples_2d[i][-1])
-                n_transitions[c1, c2] += 1
-                n_clus[c2] += 1
-            p_transitions_generated = [
-                n_transitions[i] / np.sum(n_transitions[i]) for i in range(self.n_clusters)
-            ]
-            p_clus_generated = n_clus / np.sum(n_clus)
-            print(f"p_transitions generated {p_transitions_generated}")
-            print(f"p_clus_generated generated {p_clus_generated}")
-            if 'p_clus0' in self.__dict__:
-                print(f"p_clus inputs {self.p_clus0}")
-            if 'p_trans0' in self.__dict__:
-                print(f"p_trans inputs {self.p_trans0}")
-            saving_label = self.get_saving_label()
-            np.save(f"p_transitions_{saving_label}", p_transitions_generated)
-            np.save(f"p_clus_generated_{saving_label}", p_clus_generated)
 
     def plot_statistical_indicators_profiles(
             self, percentiles_generated, epoch, n_samples
@@ -510,8 +313,6 @@ class GAN_Trainer():
     ):
         if self.prm['plots']:
             title = f"{self.get_saving_label()} losses "
-            if not self.profiles:
-                title += "mean std "
             title += "over time"
             if self.normalised:
                 title += ' normalised'
@@ -519,56 +320,28 @@ class GAN_Trainer():
                 print("error")
             assert len(losses_generator) > 0
             assert len(losses_discriminator) > 0
-            if self.profiles:
-                colours = sns.color_palette()
-                fig, ax = plt.subplots()
-                twin = ax.twinx()
-                p1, = ax.plot(losses_generator, color=colours[0], label="losses_generator")
-                p2, = ax.plot(
-                    losses_statistical_indicators, color=colours[1], alpha=0.5,
-                    label="losses_statistical_indicators"
-                )
-                p3, = ax.plot(
-                    losses_sum_profiles, color=colours[2], alpha=0.5,
-                    label="losses_sum_profiles"
-                )
-                p4, = twin.plot(
-                    losses_discriminator, color=colours[3], label="losses_discriminator"
-                )
-                ax.set_xlabel("Epochs")
-                ax.set_ylabel("Generator losses")
-                ax.set_yscale('log')
-                twin.set_ylabel("Discriminator losses")
-                ax.yaxis.label.set_color(p1.get_color())
-                twin.yaxis.label.set_color(p4.get_color())
-                ax.legend(handles=[p1, p2, p3, p4])
-            else:
-                fig, axs = plt.subplots(3)
-                axs[0].plot(losses_generator, label="losses_generator")
-                axs[0].plot(losses_discriminator, label="losses_discriminator")
-                axs[0].legend()
-                axs[1].plot(means_outputs, label="mean output")
-                axs[1].legend()
-                print(f"mean_real_output {self.mean_real_output}")
-                axs[1].hlines(
-                    self.mean_real_output, 0, len(means_outputs),
-                    color='red', linestyle='dashed'
-                )
-                axs[2].plot(stds_outputs, label="std output")
-                axs[2].legend()
-                axs[2].hlines(
-                    self.std_real_output, 0, len(means_outputs),
-                    color='red', linestyle='dashed'
-                )
-                print(f"title {title}")
-                print(
-                    f"np.mean(stds_outputs) {np.mean(stds_outputs)} "
-                    f"vs self.std_real_output {self.std_real_output}"
-                )
-                print(
-                    f"np.mean(means_outputs) {np.mean(means_outputs)} "
-                    f"vs self.mean_real_output {self.mean_real_output}"
-                )
+            colours = sns.color_palette()
+            fig, ax = plt.subplots()
+            twin = ax.twinx()
+            p1, = ax.plot(losses_generator, color=colours[0], label="losses_generator")
+            p2, = ax.plot(
+                losses_statistical_indicators, color=colours[1], alpha=0.5,
+                label="losses_statistical_indicators"
+            )
+            p3, = ax.plot(
+                losses_sum_profiles, color=colours[2], alpha=0.5,
+                label="losses_sum_profiles"
+            )
+            p4, = twin.plot(
+                losses_discriminator, color=colours[3], label="losses_discriminator"
+            )
+            ax.set_xlabel("Epochs")
+            ax.set_ylabel("Generator losses")
+            ax.set_yscale('log')
+            twin.set_ylabel("Discriminator losses")
+            ax.yaxis.label.set_color(p1.get_color())
+            twin.yaxis.label.set_color(p4.get_color())
+            ax.legend(handles=[p1, p2, p3, p4])
             title = title.replace(' ', '_')
             save_fig(fig, self.prm, self.save_path / title)
             plt.close('all')
@@ -587,7 +360,7 @@ class GAN_Trainer():
 
     def plot_final_hist_generated_vs_real(self, generated_outputs, real_outputs, epoch):
         if self.prm['plots']:
-            nbins = self.n_clusters if self.value_type == 'clusters' else 100
+            nbins = 100
             generated_outputs_reshaped = np.array(
                 generated_outputs.detach().numpy(), dtype=int
             ).flatten()
@@ -718,18 +491,6 @@ class Generator(nn.Module):
         self.n_layers = 2
 
         if nn_type == 'linear':
-            # self.model = nn.Sequential(
-            #     nn.Linear(size_inputs, 16),
-            #     nn.ReLU(),
-            #     nn.Dropout(dropout),
-            #     nn.Linear(16, 32),
-            #     nn.ReLU(),
-            #     nn.Dropout(dropout),
-            #     nn.Linear(32, 64),
-            #     nn.ReLU(),
-            #     nn.Dropout(dropout),
-            #     nn.Linear(64, size_outputs),
-            # )
             self.model = nn.Sequential(
                 nn.Linear(size_inputs, 16),
                 nn.ReLU(),
@@ -742,17 +503,6 @@ class Generator(nn.Module):
             )
 
         elif nn_type == 'cnn':
-            # self.model = nn.Sequential(
-            #     nn.Linear(1, size_outputs * 2),
-            #     nn.ReLU(),
-            #     nn.ReplicationPad1d(1),
-            #     nn.Conv1d(100, 100, kernel_size=3),
-            #     nn.ReLU(),
-            #     # nn.MaxPool1d(kernel_size=3),
-            #     nn.BatchNorm1d(num_features=size_outputs * 2),
-            #     nn.Flatten(),
-            #     nn.Linear(size_outputs * 2, size_outputs)
-            # )
             self.fc = nn.Sequential(
                 nn.Linear(size_inputs, 256),
                 nn.ReLU(),
@@ -843,7 +593,7 @@ def compute_profile_generators(
     params = {
         'profiles': True,
         'batch_size': 100,
-        'n_epochs': 400,
+        'n_epochs': 200,
         # 'lr_start': 0.1,
         # 'lr_end': 0.01,
         # 'weight_sum_profiles': 1e-3 * 10 * 10,
@@ -866,7 +616,7 @@ def compute_profile_generators(
         'dropout_generator': 0.15,
         # 'lr_end': 0.0005,
         'day_type': day_type,
-        'dim_latent_noise': 1,
+        'dim_latent_noise': 10,
     }
     params['lr_decay'] = (params['lr_end'] / params['lr_start']) ** (1 / params['n_epochs'])
     params['size_input_generator_one_item'] = params['dim_latent_noise']
@@ -874,123 +624,3 @@ def compute_profile_generators(
     gan_trainer.update_value_type('profiles')
     gan_trainer.add_training_data(outputs=profiles)
     gan_trainer.train()
-
-
-def compute_factors_clusters_generators(
-        prm, n_data_type, data_type, days, p_clus, p_trans, n_clus_all_
-):
-    print(f"data_type {data_type}")
-    n_consecutive_days = 3
-    training_params = {
-        'batch_size': 100,
-        'n_epochs': 20,  # 100,
-        'lr_start': 0.001,
-        'n_consecutive_days': n_consecutive_days,
-        'data_type': data_type,
-        'general_saving_folder': prm['save_other'],
-        'size_input_generator_one_item': n_consecutive_days - 1,
-        'size_output_generator_one_item': 1,
-        'size_input_discriminator_one_item': n_consecutive_days,
-        'n_items_generated': 50,
-        'profiles': False,
-        'lr_decay': 1,
-        'n_clusters': n_clus_all_,
-
-    }
-    list_inputs, list_outputs = [initialise_dict(['factors', 'clusters']) for _ in range(2)]
-    list_inputs['factors'], list_outputs['factors'] = [
-        {el: [] for el in ['zero_start', 'non_zero_start']}
-        for _ in range(2)
-    ]
-    list_inputs['clusters'], list_outputs['clusters'] = [
-        {el: [] for el in prm['day_trans']}
-        for _ in range(2)
-    ]
-    for i in range(n_data_type[data_type] - (n_consecutive_days - 1)):
-        days_ = [days[data_type][i_] for i_ in range(i, i + n_consecutive_days)]
-        same_id = all(days_[1 + i_]["id"] == days_[0]["id"] for i_ in range(n_consecutive_days - 1))
-        subsequent_days = all(
-            days_[0]["cum_day"] + i_ == days_[i_]["cum_day"]
-            for i_ in range(1, n_consecutive_days)
-        )
-        if same_id and subsequent_days:  # record transition
-            d1 = days_[-2]['day_type']
-            d2 = days_[-1]['day_type']
-            transition = f"{d1}2{d2}"
-            # clusters
-            day_types, index_wdt = [
-                [day_[key] for day_ in days_]
-                for key in ["day_type", "index_wdt"]
-            ]
-            clusters = [
-                days[f"{data_type}_{day_types[i]}"][index_wdt[i]]["cluster"]
-                for i in range(n_consecutive_days)
-            ]
-
-            list_inputs['clusters'][transition].append(clusters[:-1])
-            list_outputs['clusters'][transition].append(clusters[-1])
-
-            # factors
-            c1_zero = 'zero_start' if data_type == 'car' and clusters[0] == n_clus_all_ - 1 \
-                else 'non_zero_start'
-            c2_zero = data_type == 'car' and clusters[1] == n_clus_all_ - 1
-            if not c2_zero:
-                list_inputs['factors'][c1_zero].append(
-                    [days_[i_]['factor'] for i_ in range(n_consecutive_days - 1)]
-                )
-                list_outputs['factors'][c1_zero].append([days_[-1]["factor"]])
-
-    gan_trainer = GAN_Trainer(training_params, prm)
-
-    for value_type in ['factors', 'clusters']:
-        gan_trainer.update_value_type(value_type)
-        for training_data, label in zip([list_inputs, list_outputs], ["inputs", "outputs"]):
-            file_name = f"{label}_{data_type}_n_days{n_consecutive_days}_{value_type}.pickle"
-            with open(gan_trainer.save_path / file_name, "wb") as f:
-                pickle.dump(training_data, f)
-
-    # gan_trainer.update_value_type('clusters')
-    for transition in prm['day_trans']:
-        print(f"clusters: transition {transition}")
-        cluster_transition_propabilities = obtain_cluster_transition_probabilities(
-            n_clus_all_, n_consecutive_days, list_inputs['clusters'][transition],
-            list_outputs['clusters'][transition]
-        )
-        with open(
-                prm["save_other"]
-                / f"{data_type}_clusters_generation"
-                / f"cluster_transition_probabilities_{transition}.pickle",
-                "wb"
-        ) as file:
-            pickle.dump(cluster_transition_propabilities, file)
-        # gan_trainer.cluster_transition_propabilities = cluster_transition_propabilities
-        # gan_trainer.transition = transition
-        # gan_trainer.add_training_data(
-        #     list_inputs['clusters'][transition],
-        #     list_outputs['clusters'][transition],
-        #     p_clus,
-        #     p_trans,
-        #     n_clus_all_,
-        # )
-        #
-        # gan_trainer.train()
-
-    gan_trainer.update_value_type('factors')
-    for c1_zero in ['zero_start', 'non_zero_start']:
-        print(f"factors: {c1_zero}")
-        gan_trainer.transition = c1_zero
-        if len(list_outputs['factors'][c1_zero]) == 0:
-            print(
-                f"NO TRAINING: len(list_outputs['factors'][{c1_zero}]) "
-                f"{len(list_outputs['factors'][c1_zero])} "
-                f"gan_trainer.data_type {gan_trainer.data_type} "
-            )
-        else:
-            gan_trainer.add_training_data(
-                list_inputs['factors'][c1_zero],
-                list_outputs['factors'][c1_zero],
-                p_clus,
-                p_trans,
-                n_clus_all_
-            )
-            gan_trainer.train()
