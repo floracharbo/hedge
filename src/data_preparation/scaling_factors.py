@@ -11,7 +11,7 @@ from matplotlib.colors import LogNorm
 from scipy import interpolate
 from scipy.stats import norm, pearsonr
 
-from src.utils import f_to_interval, initialise_dict, save_fig
+from src.utils import f_to_interval, get_cmap, initialise_dict, save_fig
 
 
 def _plot_f_next_vs_prev(prm, factors_path, f_prevs, f_nexts, label):
@@ -83,8 +83,8 @@ def _get_correlation(
     _plot_f_next_vs_prev(
         prm, factors_path, f_prevs, f_nexts, f"{data_type} {label}"
     )
-
-    np.save(factors_path / f"corr_{data_type}_{label}", factors["corr"])
+    with open(factors_path / f"corr_{data_type}_{label}.pickle", "wb") as f:
+        pickle.dump(factors["corr"], f)
     factors["f0of2"] = f_prevs
     factors["f1of2"] = f_nexts
 
@@ -113,41 +113,20 @@ def _interpolate_missing_p_pos_2d(
         if plot:
             img = [None, None]
             fig, axs = plt.subplots(2, figsize=(5, 10))
-            # axs[0].pcolormesh(grid_x, grid_y, p_pos)
-            img[0] = axs[0].imshow(p_pos, origin='lower')
+            img[0] = axs[0].imshow(p_pos, origin='lower', norm=LogNorm(vmin=1e-6), cmap=get_cmap())
             axs[0].title.set_text('Original')
-            img[1] = axs[1].imshow(interpolated_p_pos, origin='lower')
-            # axs[1].pcolormesh(grid_x, grid_y, interpolated_p_pos)
+            img[1] = axs[1].imshow(interpolated_p_pos, origin='lower', norm=LogNorm(vmin=1e-6), cmap=get_cmap())
             axs[1].title.set_text('Linear interpolation')
-            # axs[0].axis('equal')
-            # axs[1].axis('equal')
-            # axs[0].set_xlim([0, max(mid_fs_brackets)])
-            # axs[0].set_ylim([0, max(mid_fs_brackets)])
-            # axs[1].set_xlim([0, max(mid_fs_brackets)])
-            # axs[1].set_ylim([0, max(mid_fs_brackets)])
             for i in range(2):
                 axs[i] = _add_tick_labels_heatmap(axs[i], mid_fs_brackets)
                 plt.colorbar(img[i], ax=axs[i])
-
-            # tick_locations = [i * 2 for i in range(int(len(mid_fs_brackets)/2))]
-            # if not len(mid_fs_brackets) - 1 in tick_locations:
-            #     tick_locations[-1] = len(mid_fs_brackets) - 1
-            # tick_labels = [round(mid_fs_brackets[i], 1) for i in tick_locations]
-            # for i in range(2):
-            #     axs[i].set_xticks(tick_locations)
-            #     axs[i].set_xticklabels(tick_labels, rotation=90)
             title = f"interpolate_2d_p_pos_{data_type}_{transition}"
+            save_path = prm['save_other'] / "factors"
             if data_type == 'car':
-                np.save(
-                    prm['save_other'] / "factors" / f"p_pos_{data_type}_{transition}.npy",
-                    p_pos
-                )
-                np.save(
-                    prm['save_other']
-                    / "factors"
-                    / f"interpolated_p_pos_{data_type}_{transition}.npy",
-                    interpolated_p_pos
-                )
+                with open(save_path / f"p_pos_{data_type}_{transition}.pickle", "wb") as f:
+                    pickle.dump(p_pos, f)
+                with open(save_path / f"interpolated_p_pos_{data_type}_{transition}.pickle", "wb") as f:
+                    pickle.dump(interpolated_p_pos, f)
             save_path = prm['save_other'] / "factors" / title.replace(" ", "_")
             save_fig(fig, prm, save_path)
             plt.close('all')
@@ -262,14 +241,6 @@ def _count_transitions(
         print(f"implement n_consecutive_days {n_consecutive_days}")
 
     if not (data_type == 'car' and transition == 'we2wd'):
-        if not np.all(p_pos >= 0):
-            np.save("p_pos_error", p_pos)
-            i_error = np.where(p_pos < 0)
-            print(
-                f"i_error {i_error} p_pos[i_error] {p_pos[i_error]} "
-                f"data_type {data_type} transition {transition} "
-                f"n_consecutive_days {n_consecutive_days}"
-            )
         assert np.all(p_pos >= 0), f"not np.all(p_pos >= 0) {data_type} {transition}"
     if n_consecutive_days == 2 and np.sum(n_zero2pos) > 0:
         print(f"np.sum(n_zero2pos) {np.sum(n_zero2pos)} > 0")
@@ -284,10 +255,11 @@ def _count_transitions(
             print(f"n_consecutive_days = 2 and np.sum(n_zero2pos) {np.sum(n_zero2pos)} == 0")
         p_zero2pos = n_zero2pos
 
-    print(f"data_type {data_type} transition {transition} n_consecutive_days {n_consecutive_days} "
-          f"np.sum(n_pos) {np.sum(n_pos)} "
-          f"p_pos >1e-5 {len(np.where(p_pos>1e-5)[0])}")
-
+    np.save(
+        prm['save_other'] / 'factors'
+        / f"n_transitions_{data_type}_{transition}_{n_consecutive_days}_consecutive_days",
+        np.sum(n_pos)
+    )
     return p_pos, p_zero2pos
 
 
@@ -298,7 +270,8 @@ def _add_tick_labels_heatmap(ax, mid_fs_brackets):
     tick_labels = [round(mid_fs_brackets[i], 1) for i in tick_locations]
     ax.set_xticks(tick_locations)
     ax.set_xticklabels(tick_labels, rotation=90)
-
+    ax.set_yticks(tick_locations)
+    ax.set_yticklabels(tick_labels)
     return ax
 
 
@@ -310,15 +283,16 @@ def _transition_intervals(
         n_consecutive_days: int,
 ) -> Tuple[np.ndarray, List[float], np.ndarray, List[float]]:
     consecutive_factors = np.array(consecutive_factors)
-
+    consecutive_factors_positives = consecutive_factors[consecutive_factors > 0]
+    factors_brackets = consecutive_factors_positives if n_consecutive_days == 2 else consecutive_factors
     if prm['brackets_definition'] == 'percentile':
         fs_brackets = np.percentile(
-            consecutive_factors,
+            factors_brackets,
             np.linspace(0, 100, prm["n_intervals"] + 1)
         )
     elif prm['brackets_definition'] == 'linspace':
         fs_brackets = np.linspace(
-            np.min(consecutive_factors), np.max(consecutive_factors), prm["n_intervals"] + 1
+            np.min(factors_brackets), np.max(factors_brackets), prm["n_intervals"] + 1
         )
 
     mid_fs_brackets = [
@@ -336,7 +310,6 @@ def _transition_intervals(
 
     for trans_prob, label_prob in zip([p_pos, p_zero2pos], labels_prob.keys()):
         # trans_prob: transition probabilities
-        print(F"np.shape(trans_prob) {np.shape(trans_prob)}")
         if len(np.shape(trans_prob)) == 1:
             trans_prob = np.reshape(trans_prob, (1, len(trans_prob)))
         trans_prob[(trans_prob == 0) | (np.isnan(trans_prob))] = 1e-5
@@ -347,7 +320,7 @@ def _transition_intervals(
 
         if prm["plots"] and n_consecutive_days == 2:
             fig, ax = plt.subplots()
-            img = ax.imshow(trans_prob, norm=LogNorm())
+            img = ax.imshow(trans_prob, norm=LogNorm(vmin=1e-6), origin='lower', cmap=get_cmap())
             ax = _add_tick_labels_heatmap(ax, mid_fs_brackets)
             plt.colorbar(img, ax=ax)
             title = \
@@ -357,8 +330,8 @@ def _transition_intervals(
             plt.title(title)
             # ax.set_xticklabels(tick_labels)
             # ax.set_yticklabels(tick_labels)
-            ax.set_xlabel("f(t + 1)")
-            ax.set_ylabel("f(t)")
+            ax.set_xlabel("f(t)")
+            ax.set_ylabel("f(t + 1)")
             save_path = prm["save_other"] / "factors" / title.replace(" ", "_")
             save_fig(fig, prm, save_path)
             plt.close("all")
@@ -395,19 +368,11 @@ def integral_cdf(xs, ps):
 
 
 def change_scale_norm_pdf(new_scale, old_xs, initial_norm_pdf, lb, ub):
-    if not (0.95 < integral_cdf(old_xs, initial_norm_pdf) < 1.02):
-        print(
-            f"integral_cdf(old_xs_valid, initial_norm_pdf_valid) "
-            f"{integral_cdf(old_xs, initial_norm_pdf)}"
-        )
-        np.save("initial_norm_pdf", initial_norm_pdf)
-        np.save("old_xs", old_xs)
-        sys.exit()
     assert 0.95 < integral_cdf(old_xs, initial_norm_pdf) < 1.02, \
         f"integral_cdf(old_xs, initial_norm_pdf)  {integral_cdf(old_xs, initial_norm_pdf) }"
 
-    new_xs = [old_xs[i] * new_scale for i in range(len(old_xs))]
-    new_norm_pdf_2 = [initial_norm_pdf[i] / new_scale for i in range(len(old_xs))]
+    new_xs = np.array(old_xs) * new_scale
+    new_norm_pdf_2 = np.array(initial_norm_pdf) / new_scale
     if not (0.95 < integral_cdf(new_xs, new_norm_pdf_2) < 1.02):
         np.save("new_norm_pdf_2", new_norm_pdf_2)
         np.save("new_xs", new_xs)
