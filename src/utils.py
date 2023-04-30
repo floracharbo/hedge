@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import List
 
+import matplotlib as mpl
 import numpy as np
 import pandas as pd
 
@@ -185,3 +186,9 @@ def save_fig(fig, prm, save_path):
         fig.savefig(f"{save_path}.pdf", bbox_inches='tight', format='pdf', dpi=1200)
     else:
         fig.savefig(save_path)
+
+def get_cmap():
+    cmap = mpl.cm.get_cmap('viridis').copy()
+    cmap.set_under(color='black')
+
+    return cmap
