@@ -932,10 +932,6 @@ def import_data(
         )
         n_data_type[data_type] = len(days[data_type])
 
-        # save days for next time
-        # print("save days")
-        # with open(day0_path, "wb") as file:
-        #     pickle.dump(days[data_type], file)
         np.save(n_data_type_path, n_data_type[data_type])
 
         assert len(days[data_type]) > 0, \
