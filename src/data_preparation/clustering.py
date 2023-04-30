@@ -28,8 +28,7 @@ import seaborn as sns
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
-from src.data_preparation.factors_generation import (
-    compute_factors_clusters_generators, compute_profile_generators)
+from src.data_preparation.factors_generation import compute_profile_generators
 from src.utils import initialise_dict, save_fig
 
 
@@ -161,10 +160,6 @@ def _transition_probabilities(
                 banks[data_type][day_type][k]["p_clus"] for k in range(n_clus_all_)
             ]
             p_clus[data_type][day_type] = pcluss
-        if prm['gan_generation_factors_clusters']:
-            compute_factors_clusters_generators(
-                prm, n_data_type, data_type, days, p_clus, p_trans, n_clus_all_
-            )
 
     return p_clus, p_trans, n_trans, banks
 
@@ -205,6 +200,7 @@ def _plot_clusters(
             f"same as ({len(transformed_features)}, {prm['n']})"
         )
     statistical_indicators = {k: {} for k in range(prm["n_clus"][data_type])}
+    ymax = np.max([statistical_indicators[k]['p90'] for k in range(prm["n_clus"][data_type])])
     for k in range(prm["n_clus"][data_type]):
         if bank[k]["n_clus"] != 0:
             for statistical_indicator in ['p10', 'p25', 'p50', 'p75', 'p90', 'mean']:
@@ -240,6 +236,7 @@ def _plot_clusters(
                         plt.legend()
                         title = f"Cluster {k} demand {day_type}"
                         plt.title(title)
+                    plt.ylim(0, ymax)
                     fig_save_path = save_path / "clusters" / title.replace(" ", "_")
                     save_fig(fig, prm, fig_save_path)
                 plt.close("all")

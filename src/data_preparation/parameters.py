@@ -241,7 +241,6 @@ def get_parameters() -> Tuple[dict, dict]:
         "save_intermediate_outs",
         "max_size_chunk",
         'gan_generation_profiles',
-        'gan_generation_factors_clusters',
         'kurtosis',
         'brackets_definition',
         'max_power_cutoff',
