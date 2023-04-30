@@ -200,7 +200,6 @@ def _plot_clusters(
             f"same as ({len(transformed_features)}, {prm['n']})"
         )
     statistical_indicators = {k: {} for k in range(prm["n_clus"][data_type])}
-    ymax = np.max([statistical_indicators[k]['p90'] for k in range(prm["n_clus"][data_type])])
     for k in range(prm["n_clus"][data_type]):
         if bank[k]["n_clus"] != 0:
             for statistical_indicator in ['p10', 'p25', 'p50', 'p75', 'p90', 'mean']:
@@ -211,6 +210,15 @@ def _plot_clusters(
                         vals_k[k][:, time], percentile
                     )
                 statistical_indicators[k]['mean'][time] = np.mean(vals_k[k][:, time])
+
+    ymax = np.max(
+        [
+            statistical_indicators[k]['p90'] for k in range(prm["n_clus"][data_type])
+            if bank[k]["n_clus"] != 0
+        ]
+    )
+    for k in range(prm['n_clus'][data_type]):
+        if bank[k]['n_clus'] != 0:
             if prm["plots"]:
                 for stylised in [True, False]:
                     fig = plt.figure()
