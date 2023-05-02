@@ -183,6 +183,24 @@ def _plot_heat_map_p_trans(
         plt.close("all")
 
 
+
+def _get_percentiles(data, n):
+    # data should be [n_clus, n_profiles, n_steps]
+    n_clus = len(data)
+    statistical_indicators = {k: {} for k in range(n_clus)}
+    for k in range(n_clus):
+        for statistical_indicator in ['p10', 'p25', 'p50', 'p75', 'p90', 'mean']:
+            statistical_indicators[k][statistical_indicator] = np.zeros(n)
+        for time in range(n):
+            for percentile in [10, 25, 50, 75, 90]:
+                statistical_indicators[k][f'p{percentile}'][time] = np.percentile(
+                    data[k][:, time], percentile
+                )
+            statistical_indicators[k]['mean'][time] = np.mean(data[k][:, time])
+
+    return statistical_indicators
+
+
 def _plot_clusters(
         transformed_features,
         norm_vals,
@@ -199,17 +217,7 @@ def _plot_clusters(
             f"check np.shape(norm_vals) = {np.shape(norm_vals)} "
             f"same as ({len(transformed_features)}, {prm['n']})"
         )
-    statistical_indicators = {k: {} for k in range(prm["n_clus"][data_type])}
-    for k in range(prm["n_clus"][data_type]):
-        if bank[k]["n_clus"] != 0:
-            for statistical_indicator in ['p10', 'p25', 'p50', 'p75', 'p90', 'mean']:
-                statistical_indicators[k][statistical_indicator] = np.zeros(prm["n"])
-            for time in range(prm["n"]):
-                for percentile in [10, 25, 50, 75, 90]:
-                    statistical_indicators[k][f'p{percentile}'][time] = np.percentile(
-                        vals_k[k][:, time], percentile
-                    )
-                statistical_indicators[k]['mean'][time] = np.mean(vals_k[k][:, time])
+    statistical_indicators = _get_percentiles(vals_k, prm['n'])
 
     ymax = np.max(
         [
@@ -718,6 +726,12 @@ def clustering(days, prm, n_data_type):
         for n_consecutive_days in [3, 2]:
             banks, _ = _get_n_trans(
                 n_data_type, 'gen', days, n_trans, banks, n_consecutive_days
+            )
+        for i_month in range(12):
+            statistical_indicators = _get_percentiles([np.array(banks["gen"][i_month]['profs'])], prm['n'])
+            compute_profile_generators(
+                 banks["gen"][i_month]["profs"], prm["n"], i_month, statistical_indicators,
+                'gen', None, prm['save_other'], prm
             )
 
     # transitions probabilities
