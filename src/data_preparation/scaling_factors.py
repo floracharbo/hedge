@@ -113,9 +113,9 @@ def _interpolate_missing_p_pos_2d(
         if plot:
             img = [None, None]
             fig, axs = plt.subplots(2, figsize=(5, 10))
-            img[0] = axs[0].imshow(p_pos, origin='lower', norm=LogNorm(vmin=1e-6), cmap=get_cmap())
+            img[0] = axs[0].imshow(p_pos, origin='lower', norm=LogNorm(vmin=1e-4), cmap=get_cmap())
             axs[0].title.set_text('Original')
-            img[1] = axs[1].imshow(interpolated_p_pos, origin='lower', norm=LogNorm(vmin=1e-6), cmap=get_cmap())
+            img[1] = axs[1].imshow(interpolated_p_pos, origin='lower', norm=LogNorm(vmin=1e-4), cmap=get_cmap())
             axs[1].title.set_text('Linear interpolation')
             for i in range(2):
                 axs[i] = _add_tick_labels_heatmap(axs[i], mid_fs_brackets)
@@ -282,6 +282,9 @@ def _transition_intervals(
         data_type: str,
         n_consecutive_days: int,
 ) -> Tuple[np.ndarray, List[float], np.ndarray, List[float]]:
+    if transition == 'we2wd' and data_type=='car':
+        return None, None, None, None
+
     consecutive_factors = np.array(consecutive_factors)
     consecutive_factors_positives = consecutive_factors[consecutive_factors > 0]
     factors_brackets = consecutive_factors_positives if n_consecutive_days == 2 else consecutive_factors
@@ -298,7 +301,7 @@ def _transition_intervals(
     mid_fs_brackets = [
         np.mean(fs_brackets[i: i + 2]) for i in range(prm["n_intervals"])
     ]
-    print(transition)
+
     p_pos, p_zero2pos = _count_transitions(
         data_type, consecutive_factors, prm, fs_brackets, mid_fs_brackets,
         n_consecutive_days=n_consecutive_days, transition=transition,
@@ -312,7 +315,7 @@ def _transition_intervals(
         # trans_prob: transition probabilities
         if len(np.shape(trans_prob)) == 1:
             trans_prob = np.reshape(trans_prob, (1, len(trans_prob)))
-        trans_prob[(trans_prob == 0) | (np.isnan(trans_prob))] = 1e-5
+        # trans_prob[(trans_prob == 0) | (np.isnan(trans_prob))] = 1e-5
         if not ((trans_prob >= 0).all()):
             print(f"label_prob {label_prob} not (trans_prob >= 0).all()")
             if not (data_type == 'car' and transition == 'we2wd'):
@@ -320,7 +323,7 @@ def _transition_intervals(
 
         if prm["plots"] and n_consecutive_days == 2:
             fig, ax = plt.subplots()
-            img = ax.imshow(trans_prob, norm=LogNorm(vmin=1e-6), origin='lower', cmap=get_cmap())
+            img = ax.imshow(trans_prob, norm=LogNorm(vmin=1e-4), origin='lower', cmap=get_cmap())
             ax = _add_tick_labels_heatmap(ax, mid_fs_brackets)
             plt.colorbar(img, ax=ax)
             title = \
