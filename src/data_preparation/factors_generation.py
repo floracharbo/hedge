@@ -600,7 +600,7 @@ def compute_profile_generators(
     params = {
         'profiles': True,
         'batch_size': 100,
-        'n_epochs': 2,
+        'n_epochs': 200,
         # 'lr_start': 0.1,
         # 'lr_end': 0.01,
         # 'weight_sum_profiles': 1e-3 * 10 * 10,
