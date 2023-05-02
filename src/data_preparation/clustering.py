@@ -183,7 +183,6 @@ def _plot_heat_map_p_trans(
         plt.close("all")
 
 
-
 def _get_percentiles(data, n):
     # data should be [n_clus, n_profiles, n_steps]
     n_clus = len(data)
@@ -728,10 +727,12 @@ def clustering(days, prm, n_data_type):
                 n_data_type, 'gen', days, n_trans, banks, n_consecutive_days
             )
         for i_month in range(12):
-            statistical_indicators = _get_percentiles([np.array(banks["gen"][i_month]['profs'])], prm['n'])
+            statistical_indicators = _get_percentiles(
+                [np.array(banks["gen"][i_month]['profs'])], prm['n']
+            )
             compute_profile_generators(
                  banks["gen"][i_month]["profs"], prm["n"], i_month, statistical_indicators,
-                'gen', None, prm['save_other'], prm
+                 'gen', None, prm['save_other'], prm
             )
 
     # transitions probabilities

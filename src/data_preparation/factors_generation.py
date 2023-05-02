@@ -1,5 +1,4 @@
 import math
-import pickle
 import sys
 
 import matplotlib.pyplot as plt
@@ -9,7 +8,7 @@ import torch as th
 from torch import nn
 from tqdm import tqdm
 
-from src.utils import initialise_dict, save_fig
+from src.utils import save_fig
 
 th.manual_seed(111)
 

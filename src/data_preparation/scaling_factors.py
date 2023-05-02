@@ -115,7 +115,9 @@ def _interpolate_missing_p_pos_2d(
             fig, axs = plt.subplots(2, figsize=(5, 10))
             img[0] = axs[0].imshow(p_pos, origin='lower', norm=LogNorm(vmin=1e-4), cmap=get_cmap())
             axs[0].title.set_text('Original')
-            img[1] = axs[1].imshow(interpolated_p_pos, origin='lower', norm=LogNorm(vmin=1e-4), cmap=get_cmap())
+            img[1] = axs[1].imshow(
+                interpolated_p_pos, origin='lower', norm=LogNorm(vmin=1e-4), cmap=get_cmap()
+            )
             axs[1].title.set_text('Linear interpolation')
             for i in range(2):
                 axs[i] = _add_tick_labels_heatmap(axs[i], mid_fs_brackets)
@@ -125,7 +127,9 @@ def _interpolate_missing_p_pos_2d(
             if data_type == 'car':
                 with open(save_path / f"p_pos_{data_type}_{transition}.pickle", "wb") as f:
                     pickle.dump(p_pos, f)
-                with open(save_path / f"interpolated_p_pos_{data_type}_{transition}.pickle", "wb") as f:
+                with open(
+                        save_path / f"interpolated_p_pos_{data_type}_{transition}.pickle", "wb"
+                ) as f:
                     pickle.dump(interpolated_p_pos, f)
             save_path = prm['save_other'] / "factors" / title.replace(" ", "_")
             save_fig(fig, prm, save_path)
@@ -282,12 +286,13 @@ def _transition_intervals(
         data_type: str,
         n_consecutive_days: int,
 ) -> Tuple[np.ndarray, List[float], np.ndarray, List[float]]:
-    if transition == 'we2wd' and data_type=='car':
+    if transition == 'we2wd' and data_type == 'car':
         return None, None, None, None
 
     consecutive_factors = np.array(consecutive_factors)
     consecutive_factors_positives = consecutive_factors[consecutive_factors > 0]
-    factors_brackets = consecutive_factors_positives if n_consecutive_days == 2 else consecutive_factors
+    factors_brackets = consecutive_factors_positives if n_consecutive_days == 2 \
+        else consecutive_factors
     if prm['brackets_definition'] == 'percentile':
         fs_brackets = np.percentile(
             factors_brackets,
@@ -726,8 +731,7 @@ def _scaling_factors_generation(n_data_type_, days_, prm, n_consecutive_days):
 
 def _get_factors_stats(prm, days, banks):
     # Initialise dictionaries
-    f_max, f_min, f_mean \
-        = [initialise_dict(prm["data_types"]) for _ in range(3)]
+    f_max, f_min, f_mean = [initialise_dict(prm["data_types"]) for _ in range(3)]
 
     # generation assumed to be month-dependent
     # whilst household consumption and travel patterns assumed not to be
