@@ -428,6 +428,7 @@ class GAN_Trainer():
                 self.generator.model,
                 self.save_path / f"generator_{self.get_saving_label()}.pt"
             )
+            print(f"saving model as {self.save_path / f'generator_{self.get_saving_label()}.pt'}")
         elif 'fc' in self.generator.__dict__:
             th.save(
                 self.generator.fc,
@@ -437,6 +438,8 @@ class GAN_Trainer():
                 self.generator.conv,
                 self.save_path / f"generator_{self.get_saving_label()}_conv.pt"
             )
+        else:
+            print(f"not saving anything. self.generator.__dict__.keys() = {self.generator.__dict__.keys()}")
 
 
 class Discriminator(nn.Module):
@@ -593,7 +596,7 @@ def compute_profile_generators(
     params = {
         'profiles': True,
         'batch_size': 100,
-        'n_epochs': 200,
+        'n_epochs': 2,
         # 'lr_start': 0.1,
         # 'lr_end': 0.01,
         # 'weight_sum_profiles': 1e-3 * 10 * 10,
