@@ -704,10 +704,9 @@ def clustering(days, prm, n_data_type):
                         for k in range(prm["n_clus"][data_type]):
                             print(f"k {k}")
                             compute_profile_generators(
-                                vals_k[k], prm["n"], k, statistical_indicators,
-                                data_type, day_type, prm['save_other'], prm
+                                vals_k[k], k, statistical_indicators,
+                                data_type, day_type, prm
                             )
-
                     banks[data_type][day_type] = banks_
                     n_zeros[data_type][day_type] = n_zeros_
 
