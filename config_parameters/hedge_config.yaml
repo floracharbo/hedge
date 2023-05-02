@@ -11,7 +11,7 @@ paths:
   record_folder: 'data/other_outputs'
 
 syst:
-  data_types: ["loads", "gen", "car"]
+  data_types: ["gen", "loads", "car"]
   # what share of the standard deviation around perfect self-correlation of scaling factors to select.
   # <1 reduces natural variability of the data.
   f_std_share: 1
@@ -20,9 +20,5 @@ syst:
   clust_dist_share: 1
   # start date of the simulation
   date0: [2020, 1, 1, 0]
-
-n_rows: # number of rows to import xin each data file (limit numbers e.g. for debugging)
-  gen: 1.e+7  # 172718543
-  loads: 1.e+7  # 300267349 all
-  car: 1.e+7  # 4449164 all
+  n_items: 50
 
