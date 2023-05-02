@@ -623,7 +623,7 @@ def compute_profile_generators(
         'dropout_generator': 0.15,
         # 'lr_end': 0.0005,
         'day_type': day_type,
-        'dim_latent_noise': 10,
+        'dim_latent_noise': 1,
     }
     params['lr_decay'] = (params['lr_end'] / params['lr_start']) ** (1 / params['n_epochs'])
     params['size_input_generator_one_item'] = params['dim_latent_noise']
