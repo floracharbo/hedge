@@ -36,7 +36,7 @@ class GAN_Trainer():
     def update_value_type(self, value_type):
         save_folder = f"{self.data_type}_{value_type}_generation"
         self.value_type = value_type
-        self.save_path = self.general_saving_folder / save_folder
+        self.save_path = self.prm['save_other'] / save_folder
         if not self.save_path.exists():
             self.save_path.mkdir(parents=True)
         self.normalised = False
@@ -422,10 +422,12 @@ class GAN_Trainer():
             f"mean generated outputs last 10: {np.mean(means_outputs[-10:])}, "
             f"std {np.mean(stds_outputs[-10:])}"
         )
+        generator_type = 'norm'
         try:
             th.save(
                 self.generator.model,
-                self.save_path / f"generator_{self.get_saving_label()}.pt"
+                self.prm['save_hedge'] / 'profiles' / f"norm_{self.data_type}"
+                / f"generator_{self.data_type}_{self.day_type}_{self.k}_{generator_type}.pt"
             )
         except Exception as ex1:
             try:
@@ -593,24 +595,20 @@ class Generator(nn.Module):
 
 
 def compute_profile_generators(
-        profiles, n, k, percentiles_inputs, data_type,
-        day_type, general_saving_folder, prm
+        profiles, k, percentiles_inputs, data_type,
+        day_type, prm
 ):
     print("profile generators")
     params = {
         'profiles': True,
         'batch_size': 100,
         'n_epochs': 200,
-        # 'lr_start': 0.1,
-        # 'lr_end': 0.01,
-        # 'weight_sum_profiles': 1e-3 * 10 * 10,
         'weight_sum_profiles': 1e-3 * 10 * 10,
         'weight_diff_percentiles': 100,
-        'size_input_discriminator_one_item': n,
-        'size_output_generator_one_item': n,
+        'size_input_discriminator_one_item': prm['n'],
+        'size_output_generator_one_item': prm['n'],
         'k': k,
         'percentiles_inputs': percentiles_inputs,
-        'general_saving_folder': general_saving_folder,
         'data_type': data_type,
         'n_items_generated': 50,
         'nn_type_generator': 'linear',
@@ -621,7 +619,6 @@ def compute_profile_generators(
         'lr_end': 0.001,
         'dropout_discriminator': 0.3,
         'dropout_generator': 0.15,
-        # 'lr_end': 0.0005,
         'day_type': day_type,
         'dim_latent_noise': 1,
     }
