@@ -423,28 +423,31 @@ class GAN_Trainer():
             f"mean generated outputs last 10: {np.mean(means_outputs[-10:])}, "
             f"std {np.mean(stds_outputs[-10:])}"
         )
-        if 'model' in self.generator.__dict__:
+        try:
             th.save(
                 self.generator.model,
                 self.save_path / f"generator_{self.get_saving_label()}.pt"
             )
-            print(f"saving model as {self.save_path / f'generator_{self.get_saving_label()}.pt'}")
-        elif 'fc' in self.generator.__dict__:
-            th.save(
-                self.generator.fc,
-                self.save_path / f"generator_{self.get_saving_label()}_fc.pt"
-            )
-            th.save(
-                self.generator.conv,
-                self.save_path / f"generator_{self.get_saving_label()}_conv.pt"
-            )
-        else:
-            print(f"not saving anything. self.generator.__dict__.keys() = {self.generator.__dict__.keys()}")
+        except Exception as ex1:
+            try:
+                th.save(
+                    self.generator.fc,
+                    self.save_path / f"generator_{self.get_saving_label()}_fc.pt"
+                )
+                th.save(
+                    self.generator.conv,
+                    self.save_path / f"generator_{self.get_saving_label()}_conv.pt"
+                )
+            except Exception as ex2:
+                print(f"Could not save model weights: ex1 {ex1}, ex2 {ex2}")
 
 
 class Discriminator(nn.Module):
     def __init__(self, size_inputs=1, nn_type='linear', dropout=0.3):
         super().__init__()
+        self._initialise_model(size_inputs, nn_type, dropout)
+
+    def _initialise_model(self, size_inputs, nn_type, dropout):
         if nn_type == 'linear':
             self.model = nn.Sequential(
                 nn.Linear(size_inputs, 256),
@@ -488,11 +491,17 @@ class Generator(nn.Module):
             dropout=0.3
     ):
         super().__init__()
-        self.nn_type = nn_type
-        self.size_outputs = size_outputs
+
         self.hidden_dim = 256
         self.n_layers = 2
+        self._initialise_model(size_inputs, dropout, size_outputs, nn_type, batch_size)
+        self.noise0 = noise0
+        self.noise_reduction = math.exp(math.log(noise_end / noise0) / n_epochs)
+        self.noise_factor = self.noise0
 
+    def _initialise_model(self, size_inputs, dropout, size_outputs, nn_type, batch_size):
+        self.nn_type = nn_type
+        self.size_outputs = size_outputs
         if nn_type == 'linear':
             self.model = nn.Sequential(
                 nn.Linear(size_inputs, 16),
@@ -550,10 +559,6 @@ class Generator(nn.Module):
         elif nn_type == 'lstm':
             self.lstm = nn.LSTM(size_inputs, self.hidden_dim, self.n_layers, batch_first=True)
             self.fc = nn.Linear(self.hidden_dim, size_outputs)
-
-        self.noise0 = noise0
-        self.noise_reduction = math.exp(math.log(noise_end / noise0) / n_epochs)
-        self.noise_factor = self.noise0
 
     def forward(self, x):
         if self.nn_type == 'linear':
