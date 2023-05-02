@@ -106,10 +106,10 @@ def _interpolate_missing_p_pos_2d(
         interpolated_p_pos = interpolate.griddata(points, values, (grid_x, grid_y), method='linear')
         for i_prev in range(len(p_pos)):
             if (
-                    np.sum(interpolated_p_pos[i_prev]) != 0
-                    and abs(sum(interpolated_p_pos[i_prev]) - 1) > 1e-3
+                    np.nansum(interpolated_p_pos[i_prev]) != 0
+                    and abs(np.nansum(interpolated_p_pos[i_prev]) - 1) > 1e-3
             ):
-                interpolated_p_pos[i_prev] /= sum(interpolated_p_pos[i_prev])
+                interpolated_p_pos[i_prev] /= np.nansum(interpolated_p_pos[i_prev])
         if plot:
             img = [None, None]
             fig, axs = plt.subplots(2, figsize=(5, 10))
@@ -224,17 +224,6 @@ def _count_transitions(
                         print(f"184 p_pos[{i_prev}, {i_prev2}] = {p_pos[i_prev, i_prev2]}")
                         print(f"n_pos[{i_prev}, {i_prev2}]= {n_pos[i_prev, i_prev2]}")
                     assert np.all(p_pos >= 0), f"{data_type} {transition}"
-                    # non0 = np.where(p_pos[i_prev, i_prev2] != 0)[0]
-                    # if len(non0) > 1:
-                    #     interpolate_function = interpolate.interp1d(
-                    #         non0, p_pos[i_prev, i_prev2, non0]
-                    #     )
-                    #     new_xs = range(min(non0), max(non0))
-                    #     p_pos[i_prev, i_prev2, new_xs] = interpolate_function(new_xs)
-                    #
-                    # sum_p_pos = sum(p_pos[i_prev, i_prev2])
-                    # if sum_p_pos != 0 and abs(sum_p_pos - 1) > 1e-3:
-                    #     p_pos[i_prev, i_prev2] /= sum_p_pos
 
                 p_pos[i_prev] = _interpolate_missing_p_pos_2d(
                     p_pos[i_prev], mid_fs_brackets, data_type, f"{transition}_3d_i_prev{i_prev}",
