@@ -731,8 +731,8 @@ def clustering(days, prm, n_data_type):
                 [np.array(banks["gen"][i_month]['profs'])], prm['n']
             )
             compute_profile_generators(
-                 banks["gen"][i_month]["profs"], prm["n"], i_month, statistical_indicators,
-                 'gen', None, prm['save_other'], prm
+                 banks["gen"][i_month]["profs"], i_month, statistical_indicators,
+                 'gen', '', prm
             )
 
     # transitions probabilities
