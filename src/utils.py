@@ -187,6 +187,7 @@ def save_fig(fig, prm, save_path):
     else:
         fig.savefig(save_path)
 
+
 def get_cmap():
     cmap = mpl.cm.get_cmap('viridis').copy()
     cmap.set_under(color='black')
