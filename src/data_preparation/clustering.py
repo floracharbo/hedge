@@ -259,13 +259,15 @@ def _plot_clusters(
     return statistical_indicators
 
 
-def _get_vals_k(labels, norm_vals, n_clus):
-    vals_k, idx_k_clustered = {}, {}
+def _get_vals_k(labels, norm_vals, n_clus, ev_avail=None):
+    vals_k, idx_k_clustered, ev_avail_k = {}, {}, {}
     for k in range(n_clus):
         idx_k_clustered[k] = [i for i, label in enumerate(labels) if label == k]
         vals_k[k] = np.array([norm_vals[i] for i in idx_k_clustered[k]])
+        if ev_avail is not None:
+            ev_avail_k[k] = np.array([ev_avail[i] for i in idx_k_clustered[k]])
 
-    return vals_k, idx_k_clustered
+    return vals_k, idx_k_clustered, ev_avail_k
 
 
 def _get_cdfs(distances, label, prm, bank):
@@ -442,6 +444,7 @@ def _get_features(days_, data_type, prm):
 
     features = []
     norm_vals = []
+    ev_avail = []
     for i in to_cluster:
         norm_day = days_[i][f"norm_{data_type}"]
         if data_type == "loads":
@@ -466,10 +469,11 @@ def _get_features(days_, data_type, prm):
                     int(6 * 60 / prm["step_len"]):
                     int(22 * 60 / prm["step_len"])]
             )
+            ev_avail.append(days_[i]["avail"])
         norm_vals.append(days_[i][f"norm_{data_type}"])
     transformed_features = StandardScaler().fit_transform(features)
 
-    return transformed_features, to_cluster, i_zeros, norm_vals
+    return transformed_features, to_cluster, i_zeros, norm_vals, ev_avail
 
 
 def _initialise_cluster_transition_dicts(prm, n_consecutive_days, banks):
@@ -657,7 +661,7 @@ def clustering(days, prm, n_data_type):
                 print(f"day_type {day_type}")
                 days_ = days[f"{data_type}_{day_type}"]
                 if not done_clustering[data_type][day_type]:
-                    transformed_features, to_cluster, i_zeros, norm_vals = _get_features(
+                    transformed_features, to_cluster, i_zeros, norm_vals, ev_avail = _get_features(
                         days_, data_type, prm
                     )
                     if len(transformed_features) < 2:
@@ -677,9 +681,8 @@ def clustering(days, prm, n_data_type):
                         transformed_features, prm["n_clus"][data_type],
                         to_cluster, days_, i_zeros
                     )
-                    vals_k, idx_k_clustered = _get_vals_k(
-                        labels, norm_vals,
-                        prm["n_clus"][data_type]
+                    vals_k, idx_k_clustered, ev_avail_k = _get_vals_k(
+                        labels, norm_vals, prm["n_clus"][data_type], ev_avail
                     )
                     done_clustering[data_type][day_type] = True
                     banks_, n_clus_all[data_type] = _get_p_clus(
@@ -703,6 +706,11 @@ def clustering(days, prm, n_data_type):
                     if prm['gan_generation_profiles']:
                         for k in range(prm["n_clus"][data_type]):
                             print(f"k {k}")
+                            if data_type == 'car':
+                                print(
+                                    f"k {k} % car available = "
+                                    f"{np.sum(ev_avail_k[k]) / np.multiply(*np.shape(ev_avail_k[k]))}"
+                                )
                             compute_profile_generators(
                                 vals_k[k], k, statistical_indicators,
                                 data_type, day_type, prm

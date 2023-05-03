@@ -9,6 +9,7 @@ from torch import nn
 from tqdm import tqdm
 
 from src.utils import save_fig
+from src.hedge import car_loads_to_availability
 
 th.manual_seed(111)
 
@@ -217,7 +218,6 @@ class GAN_Trainer():
         generated_samples, _ = self.merge_inputs_and_outputs(real_inputs, generated_outputs)
         output_discriminator_generated = self.discriminator(generated_samples)
         loss_generator = self.loss_function(
-            # output_discriminator_generated[rows, :], self.get_real_samples_labels()
             output_discriminator_generated, self.get_real_samples_labels()
         )
         percentiles_generated, generated_samples_2d, n_samples \
@@ -358,11 +358,18 @@ class GAN_Trainer():
             save_fig(fig, self.prm, self.save_path / title)
 
     def plot_final_hist_generated_vs_real(self, generated_outputs, real_outputs, epoch):
+        generated_outputs = generated_outputs.detach().numpy()
+        if self.data_type == 'car':
+            ev_avail = np.ones(np.shape(generated_outputs))
+            for i in range(len(generated_outputs)):
+                ev_avail[i], generated_outputs[i] = car_loads_to_availability(generated_outputs[i])
+            print(
+                f"% car available generated = "
+                f"{np.sum(ev_avail) / np.multiply(*np.shape(ev_avail))}"
+            )
         if self.prm['plots']:
             nbins = 100
-            generated_outputs_reshaped = np.array(
-                generated_outputs.detach().numpy(), dtype=int
-            ).flatten()
+            generated_outputs_reshaped = np.array(generated_outputs).flatten()
             real_outputs_reshaped = np.array(real_outputs.detach().numpy(), dtype=int).flatten()
 
             fig = plt.figure()
