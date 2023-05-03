@@ -56,16 +56,12 @@ def tag_availability(
         # the first trip does not depart from home,
         # i.e. the car was not at home before the first trip
         if list_current["purposeFrom"][0] != i_home:
-            current["avail"][0: list_current["i_start"][0]] \
-                = [0] * list_current["i_start"][0]
+            current["avail"][0: list_current["i_start"][0]] = np.zeros(list_current["i_start"][0])
         for step in range(n_trips - 1):  # after all trips but last one
             if list_current["purposeTo"][step] != i_home:
                 # if the trip does not finish at home
-                current_trip, next_trip = [list_current["i_start"][idx]
-                                           for idx in [step, step + 1]]
-                current["avail"][current_trip: next_trip] = [0] * int(
-                    next_trip - current_trip
-                )
+                current_trip, next_trip = list_current["i_start"][step: step + 2]
+                current["avail"][current_trip: next_trip] = np.zeros(next_trip - current_trip)
 
                 for step in range(len(current["avail"])):
                     if current["dist"][step] > 0:
@@ -74,12 +70,12 @@ def tag_availability(
         if list_current["purposeTo"][n_trips - 1] != i_home:
             # after the last one, the car is back home and available
             idx = list_current["i_start"][n_trips - 1]
-            current["avail"][idx: n_time_steps] = [1] * (n_time_steps - idx)
+            current["avail"][idx: n_time_steps] = np.ones(n_time_steps - idx)
     else:
         # if there are no trips,
         # make sure the car is set as always available
         # rather than never available
-        current["avail"] = [1 for _ in range(n_time_steps)]
+        current["avail"] = np.ones(n_time_steps)
 
     return current
 
