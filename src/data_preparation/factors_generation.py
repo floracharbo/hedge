@@ -422,12 +422,11 @@ class GAN_Trainer():
             f"mean generated outputs last 10: {np.mean(means_outputs[-10:])}, "
             f"std {np.mean(stds_outputs[-10:])}"
         )
-        generator_type = 'norm'
         try:
             th.save(
                 self.generator.model,
                 self.prm['save_hedge'] / 'profiles' / f"norm_{self.data_type}"
-                / f"generator_{self.data_type}_{self.day_type}_{self.k}_{generator_type}.pt"
+                / f"generator_{self.data_type}_{self.day_type}_{self.k}.pt"
             )
         except Exception as ex1:
             try:

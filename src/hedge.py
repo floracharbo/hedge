@@ -84,28 +84,25 @@ class HEDGE:
         day = {}
         for data_type in self.data_types:
             day_type_ = '' if data_type == 'gen' else day_type
-            generator_types = ["cons", "avail"] if data_type == "car" else [""]
-            for generator_type in generator_types:
-                day[data_type + generator_type] = np.zeros((self.n_homes, self.n_steps))
-                for home in homes:
-                    i_profile = random.randint(0, self.n_items - 1)
-                    cluster = clusters[data_type][home] if data_type in self.behaviour_types else self.date.month - 1
-                    day[data_type + generator_type][home] \
-                        = self.profile_generator[f"{data_type}_{generator_type}_{day_type_}_{cluster}"](
-                            th.randn(1, 10)
-                        ).detach().numpy()[0, self.n_steps * i_profile: self.n_steps * (i_profile + 1)] * factors[data_type][home]
+            day[data_type] = np.zeros((self.n_homes, self.n_steps))
+            for home in homes:
+                i_profile = random.randint(0, self.n_items - 1)
+                cluster = clusters[data_type][home] if data_type in self.behaviour_types else self.date.month - 1
+                day[data_type][home] = self.profile_generator[f"{data_type}_{day_type_}_{cluster}"](
+                        th.randn(1, 10)
+                    ).detach().numpy()[0, self.n_steps * i_profile: self.n_steps * (i_profile + 1)] \
+                    * factors[data_type][home]
+                if data_type == 'car':
+                    day[data_type][home][day[data_type][home] < 1e-3] = 0
 
         if 'car' in self.data_types:
             # check loads car are consistent with maximum battery load
             interval_f['car'], factors, day = self._adjust_max_ev_loads(
-                day['car_cons'], interval_f['car'], factors, transition, clusters,
+                day['car'], interval_f['car'], factors, transition, clusters,
                 day_type, homes
             )
-            day["avail_car"] = np.array([
-                self.profs["car"]["avail"][day_type][
-                    clusters["car"][home]][i_profiles["car"][home]]
-                for home in homes
-            ])
+            for home in homes:
+                day["avail_car"][home] = self._car_loads_to_availability(day["car"][home])
 
             for i_home, home in enumerate(homes):
                 day["avail_car"][i_home] = np.where(
@@ -153,11 +150,12 @@ class HEDGE:
         self._init_params(prm)
 
         # general inputs with all data types
-        if not (Path(prm["paths"]["hedge_inputs_folder"]) / f"n{self.n_steps}").exists():
+        inputs_folder = f"n{self.n_steps}"
+        if not (Path(prm["paths"]["hedge_inputs_folder"]) / inputs_folder).exists():
             inputs_folder = f"n{self.n_steps}_sample"
             print("Using sample data. See README for how to prepare the total input data.")
 
-        self.inputs_path = Path(prm["paths"]["hedge_inputs_folder"]) / f"n{self.n_steps}"
+        self.inputs_path = Path(prm["paths"]["hedge_inputs_folder"]) / inputs_folder
         factors_path = self.inputs_path / "factors"
 
         properties = ["f_min", "f_max", "f_mean", "residual_distribution_prms"]
@@ -343,7 +341,6 @@ class HEDGE:
                     self.mid_fs_brackets[data_type][transition_][interval_f[data_type][home]]
                 )
 
-
         return factors, interval_f
 
     def _next_clusters(self, transition, prev_clusters):
@@ -390,9 +387,11 @@ class HEDGE:
                     assert sum(day[home]) == 0 or abs(sum(day[home]) - 1) < 1e-3, \
                         f"ev_cons {day[home]}"
                 else:
-                    generator = f"car_cons_{day_type}_{clusters[home]}"
+                    generator = f"car_{day_type}_{clusters[home]}"
                     day[home] = self.profile_generator[generator](th.randn(1, 1))[0: self.n_steps] \
                         * factors["car"][home]
+                    day[home][day[home] < 1e-3] = 0
+
                 it += 1
 
         return interval_f_car, factors, day
@@ -495,9 +494,9 @@ class HEDGE:
                 if file[0: len('generator')] == "generator":
                     day_type = file.split('_')[2]
                     cluster = file.split('_')[3]
-                    generator_type = file.split('_')[4].split('.')[0]
-                    profile_generator[f"{data_type}_{generator_type}_{day_type}_{cluster}"] \
-                        = th.load(prm['profiles_path'] / f"norm_{data_type}" / file)
+                    profile_generator[f"{data_type}_{day_type}_{cluster}"] = th.load(
+                        prm['profiles_path'] / f"norm_{data_type}" / file
+                    )
 
         return profile_generator
 
@@ -879,3 +878,16 @@ class HEDGE:
         self.date = datetime(*prm["syst"]["date0"])
         self.save_day_path = Path(prm["paths"]["record_folder"]) / "hedge_days"
         self.n_items = prm["syst"]["n_items"]
+
+    def _car_loads_to_availability(self, car_loads):
+        """Tag car availability based on trips' origins and destinations."""
+        i_start_trips = np.where((car_loads[:-1] == 0) & (car_loads[1:] > 0))[0]
+        n_trips = len(i_start_trip)
+        ev_avail = np.ones(self.n_steps)
+        for i in range(len(i_start_trips)):
+            i_start = i_start_trips[i]
+            i_start_next = i_start_trips[i + 1] if i < n_trips - 1 else self.n_steps
+            if i_start == 0 or ev_avail[i - 1]:
+                ev_avail[i_start: i_start_next] = 0
+
+        return ev_avail
