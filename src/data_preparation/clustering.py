@@ -264,7 +264,7 @@ def _get_vals_k(labels, norm_vals, n_clus, ev_avail=None):
     for k in range(n_clus):
         idx_k_clustered[k] = [i for i, label in enumerate(labels) if label == k]
         vals_k[k] = np.array([norm_vals[i] for i in idx_k_clustered[k]])
-        if ev_avail is not None:
+        if len(ev_avail) > 0:
             ev_avail_k[k] = np.array([ev_avail[i] for i in idx_k_clustered[k]])
 
     return vals_k, idx_k_clustered, ev_avail_k
