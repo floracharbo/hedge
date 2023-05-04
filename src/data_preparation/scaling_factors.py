@@ -326,8 +326,6 @@ def _transition_intervals(
                 f"n_intervals {prm['n_intervals']} " \
                 f"brackets_definition {prm['brackets_definition']}"
             plt.title(title)
-            # ax.set_xticklabels(tick_labels)
-            # ax.set_yticklabels(tick_labels)
             ax.set_xlabel("f(t)")
             ax.set_ylabel("f(t + 1)")
             save_path = prm["save_other"] / "factors" / title.replace(" ", "_")
