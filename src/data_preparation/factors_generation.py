@@ -241,7 +241,6 @@ class GAN_Trainer():
             self.plot_statistical_indicators_profiles(
                 percentiles_generated, epoch, n_samples
             )
-
             if epoch == self.n_epochs - 1:
                 self.plot_final_hist_generated_vs_real(generated_outputs, real_outputs, epoch)
 
@@ -322,16 +321,16 @@ class GAN_Trainer():
             colours = sns.color_palette()
             fig, ax = plt.subplots()
             twin = ax.twinx()
-            p1, = ax.plot(losses_generator, color=colours[0], label="losses_generator")
-            p2, = ax.plot(
-                losses_statistical_indicators, color=colours[1], alpha=0.5,
-                label="losses_statistical_indicators"
-            )
-            p3, = ax.plot(
-                losses_sum_profiles, color=colours[2], alpha=0.5,
-                label="losses_sum_profiles"
-            )
-            p4, = twin.plot(
+            losses = [losses_generator, losses_statistical_indicators, losses_sum_profiles]
+            labels = ["losses_generator", "losses_statistical_indicators", "losses_sum_profiles"]
+            alphas = [1, 0.5, 0.5]
+            ps = []
+            for i, (loss, label, alpha) in enumerate(zip(losses, labels, alphas)):
+                p, = ax.plot(loss, color=colours[i], label=label, alpha=alpha)
+                ps.append(p)
+                with open(self.save_path / f"{label}.pickle", 'wb') as file:
+                    pickle.dump(loss, file)
+            p3, = twin.plot(
                 losses_discriminator, color=colours[3], label="losses_discriminator"
             )
             ax.set_xlabel("Epochs")
@@ -340,7 +339,7 @@ class GAN_Trainer():
             twin.set_ylabel("Discriminator losses")
             ax.yaxis.label.set_color(p1.get_color())
             twin.yaxis.label.set_color(p4.get_color())
-            ax.legend(handles=[p1, p2, p3, p4])
+            ax.legend(handles=[ps[0], ps[1], ps[2], p3])
             title = title.replace(' ', '_')
             save_fig(fig, self.prm, self.save_path / title)
             plt.close('all')
@@ -391,28 +390,26 @@ class GAN_Trainer():
         losses_generator, losses_discriminator, losses_statistical_indicators, losses_sum_profiles \
             = [], [], [], []
         means_outputs, stds_outputs = [], []
-
+        print(F"len(self.train_loader) {len(self.train_loader)}")
         for epoch in tqdm(range(self.n_epochs)):
             for n, train_data in enumerate(self.train_loader):
                 self.batch_size_ = len(train_data)
-                if self.batch_size_ == self.batch_size:
-                    real_inputs, real_outputs = self.split_inputs_and_outputs(train_data)
-
-                    loss_discriminator = self.train_discriminator(real_inputs, real_outputs)
-                    final_n = n == len(self.train_loader) - 2
-                    loss_generator, generated_outputs, loss_percentiles, loss_sum_profiles \
-                        = self.train_generator(
-                            real_inputs, real_outputs, final_n, epoch
-                        )
-                    losses_generator.append(loss_generator.detach().numpy())
-                    losses_statistical_indicators.append(loss_percentiles.detach().numpy())
-                    losses_sum_profiles.append(loss_sum_profiles.detach().numpy())
-                    losses_discriminator.append(loss_discriminator.detach().numpy())
-                    means_outputs.append(np.mean(generated_outputs.detach().numpy()))
-                    stds_outputs.append(np.std(generated_outputs.detach().numpy()))
-
+                real_inputs, real_outputs = self.split_inputs_and_outputs(train_data)
+                loss_discriminator = self.train_discriminator(real_inputs, real_outputs)
+                final_n = n == len(self.train_loader) - 1
+                loss_generator, generated_outputs, loss_percentiles, loss_sum_profiles \
+                    = self.train_generator(
+                        real_inputs, real_outputs, final_n, epoch
+                    )
+                losses_generator.append(loss_generator.detach().numpy())
+                losses_statistical_indicators.append(loss_percentiles.detach().numpy())
+                losses_sum_profiles.append(loss_sum_profiles.detach().numpy())
+                losses_discriminator.append(loss_discriminator.detach().numpy())
+                means_outputs.append(np.mean(generated_outputs.detach().numpy()))
+                stds_outputs.append(np.std(generated_outputs.detach().numpy()))
             self.update_noise_and_lr_generator(epoch)
-
+            if losses_statistical_indicators[-1] < 1e-1:
+                break
         if len(losses_generator) == 0:
             print(
                 f"len(losses_generator) {len(losses_generator)} for "
@@ -608,7 +605,7 @@ def compute_profile_generators(
     params = {
         'profiles': True,
         'batch_size': 100,
-        'n_epochs': 200,
+        'n_epochs': int(200 * 292201/len(profiles)),
         'weight_sum_profiles': 1e-3 * 10 * 10,
         'weight_diff_percentiles': 100,
         'size_input_discriminator_one_item': prm['n'],
