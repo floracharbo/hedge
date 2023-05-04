@@ -7,6 +7,7 @@ import seaborn as sns
 import torch as th
 from torch import nn
 from tqdm import tqdm
+import pickle
 
 from src.utils import save_fig
 from src.hedge import car_loads_to_availability
@@ -337,8 +338,8 @@ class GAN_Trainer():
             ax.set_ylabel("Generator losses")
             ax.set_yscale('log')
             twin.set_ylabel("Discriminator losses")
-            ax.yaxis.label.set_color(p1.get_color())
-            twin.yaxis.label.set_color(p4.get_color())
+            ax.yaxis.label.set_color(ps[0].get_color())
+            twin.yaxis.label.set_color(p3.get_color())
             ax.legend(handles=[ps[0], ps[1], ps[2], p3])
             title = title.replace(' ', '_')
             save_fig(fig, self.prm, self.save_path / title)
@@ -390,7 +391,6 @@ class GAN_Trainer():
         losses_generator, losses_discriminator, losses_statistical_indicators, losses_sum_profiles \
             = [], [], [], []
         means_outputs, stds_outputs = [], []
-        print(F"len(self.train_loader) {len(self.train_loader)}")
         for epoch in tqdm(range(self.n_epochs)):
             for n, train_data in enumerate(self.train_loader):
                 self.batch_size_ = len(train_data)
