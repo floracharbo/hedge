@@ -733,8 +733,9 @@ def clustering(days, prm, n_data_type):
             banks, _ = _get_n_trans(
                 n_data_type, 'gen', days, n_trans, banks, n_consecutive_days
             )
+        statistical_indicators = {}
         for i_month in range(12):
-            statistical_indicators = _get_percentiles(
+            statistical_indicators[i_month] = _get_percentiles(
                 [np.array(banks["gen"][i_month]['profs'])], prm['n']
             )
             compute_profile_generators(
