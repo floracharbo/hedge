@@ -242,8 +242,6 @@ class GAN_Trainer():
             self.plot_statistical_indicators_profiles(
                 percentiles_generated, epoch, n_samples
             )
-            if epoch == self.n_epochs - 1:
-                self.plot_final_hist_generated_vs_real(generated_outputs, real_outputs, epoch)
 
         return loss_generator, generated_outputs, loss_percentiles, loss_sum_profiles
 
@@ -410,6 +408,9 @@ class GAN_Trainer():
             self.update_noise_and_lr_generator(epoch)
             if losses_statistical_indicators[-1] < 1e-1:
                 break
+
+        self.plot_final_hist_generated_vs_real(generated_outputs, real_outputs, epoch)
+
         if len(losses_generator) == 0:
             print(
                 f"len(losses_generator) {len(losses_generator)} for "
@@ -605,7 +606,7 @@ def compute_profile_generators(
     params = {
         'profiles': True,
         'batch_size': 100,
-        'n_epochs': int(200 * 292201/len(profiles)),
+        'n_epochs': int(9e7/len(profiles)),
         'weight_sum_profiles': 1e-3 * 10 * 10,
         'weight_diff_percentiles': 100,
         'size_input_discriminator_one_item': prm['n'],
