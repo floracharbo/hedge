@@ -271,7 +271,7 @@ def _get_vals_k(labels, norm_vals, n_clus, ev_avail=None):
 
 
 def _get_cdfs(distances, label, prm, bank):
-    min_cdfs_, max_cdfs_ = [], []
+    min_cdfs_, max_cdfs_, bins_edges_, cdfs_ = [], []
 
     for i, distance in enumerate(distances):
         if distance is None:
@@ -303,17 +303,19 @@ def _get_cdfs(distances, label, prm, bank):
         # get cumulative probability for each profile
         # getting data of the histogram
         count, bins_edges = np.histogram(distance, bins=1000)
+        bins_edges_.append(bins_edges)
         # finding the PDF of the histogram using count values
         pdf = count / sum(count)
         # finding the CDF of the histogram
         cdfs = np.cumsum(pdf)
+        cdfs_.append(cdfs)
         # matching each distance data point to its bin probability
         all_cdfs = [cdfs[np.where(dist >= bins_edges[:-1])[0][-1]] for dist in distance]
         bank[i]["cdfs"] = all_cdfs
         min_cdfs_.append(all_cdfs[0])
         max_cdfs_.append(all_cdfs[-1])
 
-    return bank, min_cdfs_, max_cdfs_
+    return bank, min_cdfs_, max_cdfs_, bins_edges_, cdfs_
 
 
 def _get_p_clus(vals_k, n_days, data_type, n_zeros):
@@ -370,10 +372,11 @@ def _cluster_module(
         to_cluster: list,
         days_: list,
         i_zeros: list,
+        path_to_save: str,
 ) -> Tuple[list, list, int, list]:
     # actual clustering
     clusobj = KMeans(n_clusters=n_clus, n_init=100, random_state=0)
-    obj = clusobj.fit(transformed_features)
+    fitted_kmeans_obj = clusobj.fit(transformed_features)
 
     n_zeros = len(days_) - len(to_cluster)
     # obtain main centroids of each cluster
@@ -381,7 +384,7 @@ def _cluster_module(
     # centers_alloc = obj.fit_predict(centers_unordered)
     # centers = [centers_unordered[np.where(centers_alloc == c)[0][0]]
     #            for c in range(prm["n_clus"][data_type])]
-    labels = obj.fit_predict(transformed_features)
+    labels = fitted_kmeans_obj.fit_predict(transformed_features)
     for label, i in zip(labels, to_cluster):
         days_[i]["cluster"] = label
     for i in i_zeros:
@@ -393,7 +396,7 @@ def _cluster_module(
     # of each sample to the cluster center
     cluster_distances = obj.transform(transformed_features)
 
-    return labels, cluster_distances, n_zeros, days_
+    return labels, cluster_distances, n_zeros, days_, fitted_kmeans_obj
 
 
 def _elbow_method(transformed_features, data_type, day_type, prm):
@@ -505,17 +508,18 @@ def _initialise_cluster_dicts(prm):
         ]
         banks[data_type] = {day_type: {} for day_type in prm["weekday_type"] + prm["day_trans"]}
 
-    min_cdfs, max_cdfs = [
+    min_cdfs, max_cdfs, clus_dist_bin_edges, clus_dist_cdfs, fitted_kmeans_obj = [
         {data_type: {} for data_type in prm["data_types"]}
-        for _ in range(2)
+        for _ in range(4)
     ]
 
-    return p_clus, n_zeros, n_clus_all, banks, min_cdfs, max_cdfs
+    return p_clus, n_zeros, n_clus_all, banks, min_cdfs, max_cdfs, clus_dist_bin_edges, clus_dist_cdfs, fitted_kmeans_obj
 
 
 def _group_gen_month(days_, prm):
     bank = initialise_dict(range(12), "empty_dict")
     cluster_distances = []
+    fitted_kmeans_obj_ = []
     for i_month, month in enumerate(range(1, 13)):
         i_days = [i for i, day in enumerate(days_) if day["month"] == month]
         bank[i_month]["profs"] = [days_[i]["norm_gen"] for i in i_days]
@@ -529,15 +533,17 @@ def _group_gen_month(days_, prm):
         )
 
         if len(bank[i_month]["profs"]) > 0:
-            transformed_features \
-                = StandardScaler().fit_transform(bank[i_month]["profs"])
+            transformed_features = StandardScaler().fit_transform(
+                bank[i_month]["profs"][:, int(6 * 60 / prm["step_len"]): int(22 * 60 / prm["step_len"])]
+            )
             clusobj = KMeans(n_clusters=1, n_init=100, random_state=0)
-            obj = clusobj.fit(transformed_features)
-            cluster_distances.append(obj.transform(transformed_features))
+            fitted_kmeans_obj = clusobj.fit(transformed_features)
+            fitted_kmeans_obj_.append(fitted_kmeans_obj)
+            cluster_distances.append(fitted_kmeans_obj.transform(transformed_features))
         else:
             cluster_distances.append(None)
 
-    bank, min_cdfs, max_cdfs = _get_cdfs(cluster_distances, "gen", prm, bank)
+    bank, min_cdfs, max_cdfs, clus_dist_bin_edges, clus_dist_cdfs = _get_cdfs(cluster_distances, "gen", prm, bank)
 
     for i_month in range(12):
         np.save(
@@ -546,7 +552,7 @@ def _group_gen_month(days_, prm):
             bank[i_month]["cdfs"],
         )
 
-    return bank, min_cdfs, max_cdfs
+    return bank, min_cdfs, max_cdfs, clus_dist_bin_edges, clus_dist_cdfs, fitted_kmeans_obj_
 
 
 def _save_clustering(
@@ -556,7 +562,10 @@ def _save_clustering(
         p_clus: dict,
         p_trans: dict,
         min_cdfs: dict,
-        max_cdfs: dict
+        max_cdfs: dict,
+        clus_dist_bin_edges: dict,
+        clus_dist_cdfs: dict,
+        fitted_kmeans_obj: dict,
 ):
     prof_path = save_path / "profiles"
     for data_type in prm["behaviour_types"]:
@@ -596,10 +605,10 @@ def _save_clustering(
             )
 
     path = save_path / "clusters"
-    for var, label in zip([p_clus, p_trans, min_cdfs, max_cdfs],
-                          ["p_clus", "p_trans", "min_cdfs", "max_cdfs"]):
-        if label == 'min_cdfs':
-            print(f"save min_cdfs {min_cdfs}")
+    for var, label in zip(
+            [p_clus, p_trans, min_cdfs, max_cdfs, clus_dist_bin_edges, clus_dist_cdfs, fitted_kmeans_obj],
+            ["p_clus", "p_trans", "min_cdfs", "max_cdfs", "clus_dist_bin_edges", "clus_dist_cdfs", "fitted_kmeans_obj"]
+    ):
         with open(path / f"{label}.pickle", "wb") as file:
             pickle.dump(var, file)
 
@@ -645,8 +654,9 @@ def clustering(days, prm, n_data_type):
         for data_type in prm["behaviour_types"]
     }
     days, n_day_type = split_day_types(days, prm, n_data_type)
-    p_clus, n_zeros, n_clus_all, banks, min_cdfs, max_cdfs = _initialise_cluster_dicts(prm)
-    for n_consecutive_days in [3, 2]:
+    p_clus, n_zeros, n_clus_all, banks, min_cdfs, max_cdfs, clus_dist_bin_edges, clus_dist_cdfs, fitted_kmeans_obj \
+        = _initialise_cluster_dicts(prm)
+    for n_consecutive_days in prm['n_consecutive_days']:
         print(f"clustering with {n_consecutive_days} consecutive days")
         n_trans, p_trans, banks = _initialise_cluster_transition_dicts(
             prm, n_consecutive_days, banks
@@ -676,10 +686,11 @@ def clustering(days, prm, n_data_type):
                             transformed_features, data_type, day_type, prm
                         )
                     [
-                        labels, cluster_distance, n_zeros_, days[f"{data_type}_{day_type}"]
+                        labels, cluster_distance, n_zeros_, days[f"{data_type}_{day_type}"], fitted_kmeans_obj[data_type][day_type]
                     ] = _cluster_module(
                         transformed_features, prm["n_clus"][data_type],
-                        to_cluster, days_, i_zeros
+                        to_cluster, days_, i_zeros,
+                        prm["save_hedge"] / "profiles" / f"kmeans_fit_{data_type}_{day_type}_{n_consecutive_days}",
                     )
                     vals_k, idx_k_clustered, ev_avail_k = _get_vals_k(
                         labels, norm_vals, prm["n_clus"][data_type], ev_avail
@@ -697,7 +708,8 @@ def clustering(days, prm, n_data_type):
                     if data_type == "car":
                         distances = distances[:-1]
                     [
-                        banks_, min_cdfs[data_type][day_type], max_cdfs[data_type][day_type]
+                        banks_, min_cdfs[data_type][day_type], max_cdfs[data_type][day_type],
+                        clus_dist_bin_edges[data_type][day_type], clus_dist_cdfs[data_type][day_type]
                     ] = _get_cdfs(distances, f"{data_type} {day_type}", prm, banks_)
                     statistical_indicators = _plot_clusters(
                         transformed_features, norm_vals, data_type,
@@ -727,9 +739,13 @@ def clustering(days, prm, n_data_type):
                 data_type, days, p_clus, n_trans, p_trans,
                 banks, n_clus_all[data_type], prm, n_data_type, n_consecutive_days
             )
+
     if "gen" in prm["data_types"]:
-        banks["gen"], min_cdfs["gen"], max_cdfs["gen"] = _group_gen_month(days["gen"], prm)
-        for n_consecutive_days in [3, 2]:
+        [
+            banks["gen"], min_cdfs["gen"], max_cdfs["gen"], clus_dist_bin_edges['gen'],
+            clus_dist_cdfs['gen'], fitted_kmeans_obj["gen"]
+        ] = _group_gen_month(days["gen"], prm)
+        for n_consecutive_days in prm['n_consecutive_days']:
             banks, _ = _get_n_trans(
                 n_data_type, 'gen', days, n_trans, banks, n_consecutive_days
             )
@@ -743,7 +759,8 @@ def clustering(days, prm, n_data_type):
 
     # transitions probabilities
     _save_clustering(
-        prm, prm["save_hedge"], banks, p_clus, p_trans, min_cdfs, max_cdfs
+        prm, prm["save_hedge"], banks, p_clus, p_trans, min_cdfs, max_cdfs,
+        clus_dist_bin_edges, clus_dist_cdfs, fitted_kmeans_obj
     )
     if len(banks['loads']['wd2wd'][f'f0of{n_consecutive_days}']) == 0:
         print(f"len(banks['loads']['wd2wd'][f0of{n_consecutive_days}]) == 0 in clustering")
