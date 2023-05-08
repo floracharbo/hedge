@@ -35,6 +35,8 @@ def _import_columns_info(prm):
             type_ = str_to_type[prm["type_cols"][data_source][i]]
             prm["dtypes"][data_type][name] = type_
 
+    prm['n_consecutive_days'] = sort(prm['n_consecutive_days'], reverse=True)
+
     return prm
 
 
@@ -219,7 +221,6 @@ def get_parameters() -> Tuple[dict, dict]:
     prm["n_cpu"] = (
         mp.cpu_count() if run_config["n_cpu"] is None else run_config["n_cpu"]
     )
-
     _make_dirs(prm)
 
     prm["car"]["min_charge"] = prm["car"]["cap"] * prm["car"]["SoCmin"]

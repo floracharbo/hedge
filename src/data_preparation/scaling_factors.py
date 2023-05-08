@@ -766,7 +766,7 @@ def scaling_factors(prm, banks, days, n_data_type):
         factors[data_type] = initialise_dict(prm["day_trans"], "empty_dict")
 
     _get_factors_stats(prm, days, banks)
-    for n_consecutive_days in [3, 2]:
+    for n_consecutive_days in prm['n_consecutive_days']:
         factors, mean_residual, residual_distribution_prms, n_transitions \
             = _scaling_factors_behaviour_types(prm, banks, n_consecutive_days, factors)
         p_pos, p_zero2pos, fs_brackets, mid_fs_brackets = [{} for _ in range(4)]
