@@ -117,8 +117,8 @@ def _init_data_filling(prm, run_config):
 def _update_paths(prm: dict, run_config: dict) \
         -> dict:
     prm["save_hedge"] = Path("data") / "hedge_inputs" / f"{run_id(run_config)}"
-    prm['paths'] = {"input_folder": 'data'}
-    prm['paths']['hedge_inputs'] = prm['paths']["input_folder"] / run_config['hedge_inputs_folder'] / f"n{prm['syst']['H']}"
+    prm['paths']["input_folder"] = Path(prm['paths']["input_folder"])
+    prm['paths']['hedge_inputs'] = prm['paths']["input_folder"] / prm['paths']['hedge_inputs_folder'] / f"n{run_config['syst']['H']}"
     prm["save_other"] = Path("data") / "other_outputs" / f"{run_id(run_config)}"
     prm["homes_path"] = {}  # the path to the file with homes information
     for data_source in prm["data_sources"]:
@@ -180,6 +180,8 @@ def get_parameters() -> Tuple[dict, dict]:
 
     # information about date and time
     prm["step_len"] = 60 * 24 / run_config["syst"]["H"]  # interval length in minutes
+    prm['n'] = run_config["syst"]["H"]
+    prm['syst'] = {'H': run_config["syst"]["H"]}
     prm["datetime_entries"] \
         = prm["date_entries"] + prm["time_entries"]
     prm["date0"] = datetime.date(2010, 1, 1)
@@ -222,7 +224,7 @@ def get_parameters() -> Tuple[dict, dict]:
     prm["n_cpu"] = (
         mp.cpu_count() if run_config["n_cpu"] is None else run_config["n_cpu"]
     )
-    prm['n'] = prm['syst']['H']
+    prm['n'] = run_config['syst']['H']
 
     _make_dirs(prm)
 
@@ -237,7 +239,6 @@ def get_parameters() -> Tuple[dict, dict]:
         "do_test_filling_in",
         "prob_test_filling_in",
         "do_heat_map",
-        "n",
         "n_clus",
         "n_intervals",
         "plots",
@@ -250,7 +251,7 @@ def get_parameters() -> Tuple[dict, dict]:
         'max_power_cutoff',
         'max_daily_energy_cutoff',
         'high_res',
-        'n_consecutive_days'
+        'n_consecutive_days',
     ]:
         prm[key] = run_config[key]
 

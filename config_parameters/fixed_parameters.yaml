@@ -93,3 +93,8 @@ homes_file:
 
 outs_labels: ['days', 'abs_error', 'types_replaced_eval', 'all_data',
         'granularities', 'range_dates', 'n_ids']
+
+paths:
+  hedge_inputs_folder: 'data/hedge_inputs'
+  record_folder: 'data/other_outputs'
+  input_folder: 'data'

@@ -5,11 +5,6 @@ car:
   cap: 75  # EV battery capacity [kWh]
   c_max: 22  # max charge [kW]
 
-paths:
-  hedge_inputs_folder: 'data/hedge_inputs'
-  record_folder: 'data/other_outputs'
-  input_folder: 'data'
-
 syst:
   data_types: ["gen", "loads", "car"]
   # what share of the standard deviation around perfect self-correlation of scaling factors to select.
