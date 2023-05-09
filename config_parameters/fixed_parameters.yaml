@@ -3,7 +3,7 @@ data_sources: ['CLNR', 'NTS']
 behaviour_types: ['loads', 'car']
 date_entries: ['dtm_yr', 'dtm_mth', 'dtm_day']  # type of information about date only
 time_entries: ['dtm_hr', 'dtm_min']  # type of information about time
-weekday_type: ['wd', 'we']  # week day types - wd: weekday day and we: weekend day
+weekday_types: ['wd', 'we']  # week day types - wd: weekday day and we: weekend day
 directs: ['prev', 'next']  # when looking at potential substitutes for missing data, one can look at the same time in two directions: in the past of in the future
 jumps:
   one_day: ['day']  # when looking at potential substitutes for missing data, one can make two jumps: one day in the past/future or one week in the past/future
