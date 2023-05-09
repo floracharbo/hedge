@@ -317,8 +317,10 @@ def _transition_intervals(
 
         if prm["plots"] and n_consecutive_days == 2:
             fig, ax = plt.subplots()
-            vmin = np.min(1e-4, np.min(trans_prob))
-            img = ax.imshow(trans_prob, norm=LogNorm(vmin=vmin), origin='lower', cmap=get_cmap())
+            vmin = np.min([1e-4, np.min(trans_prob[trans_prob>0])])
+            cmap = get_cmap()
+            cmap.set_bad(color='white')
+            img = ax.imshow(trans_prob, norm=LogNorm(vmin=vmin), origin='lower', cmap=cmap)
             ax = _add_tick_labels_heatmap(ax, mid_fs_brackets)
             plt.colorbar(img, ax=ax)
             title = \
