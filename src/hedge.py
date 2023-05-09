@@ -14,6 +14,7 @@ import pickle
 import random
 from datetime import datetime, timedelta
 from pathlib import Path
+from sklearn.preprocessing import StandardScaler
 from typing import List, Optional, Tuple
 
 import matplotlib
@@ -24,7 +25,7 @@ import torch as th
 import yaml
 from scipy.stats import norm
 
-from src.utils import f_to_interval, initialise_dict
+from src.utils import f_to_interval, initialise_dict, list_potential_paths
 
 
 def car_loads_to_availability(car_loads, tol=1e-2):
@@ -101,7 +102,7 @@ class HEDGE:
             for home in homes:
                 cluster = clusters[data_type][home] if data_type in self.behaviour_types \
                     else self.date.month - 1
-                generated_profile = self._generate_profile(data_type, day_type, cluster)
+                generated_profile = self._generate_profile(data_type, day_type_, cluster)
                 day[data_type][home] = generated_profile * factors[data_type][home]
 
         if 'car' in self.data_types:
@@ -139,7 +140,7 @@ class HEDGE:
         self.select_cdfs["loads"] = {}
         for day_type in prm["syst"]["weekday_type"]:
             self.select_cdfs["loads"][day_type] = [
-                min_cdf + prm["syst"]["clust_dist_share"] * (max_cdf - min_cdf)
+                min_cdf + prm["syst"]["clus_dist_share"] * (max_cdf - min_cdf)
                 for min_cdf, max_cdf in zip(
                     self.min_cdfs["loads"][day_type],
                     self.max_cdfs["loads"][day_type]
@@ -182,10 +183,24 @@ class HEDGE:
                 setattr(self, property_, pickle.load(file))
 
         clusters_path = self.inputs_path / "clusters"
-        for property_ in ["p_clus", "p_trans", "min_cdfs", "max_cdfs", "clus_dist_bin_edges", "clus_dist_cdfs"]:
-            path = clusters_path / f"{property_}.pickle"
-            with open(str(path), "rb") as file:
-                setattr(self, property_, pickle.load(file))
+        for property_ in [
+            "p_clus", "p_trans", "min_cdfs", "max_cdfs", "clus_dist_bin_edges",
+            "clus_dist_cdfs", "fitted_kmeans_obj", "fitted_scaler"
+        ]:
+            potential_paths = list_potential_paths(prm, data_types=self.data_types, data_folder='hedge_inputs', sub_data_folder='clusters')
+            file_found = False
+            for potential_path in potential_paths:
+                path = potential_path / f"{property_}.pickle"
+                try:
+                    with open(str(path), "rb") as file:
+                        setattr(self, property_, pickle.load(file))
+                    file_found = True
+                    break
+                except FileNotFoundError:
+                    pass
+
+            if not file_found:
+                print(f"no file found for {property_}")
 
         with open(clusters_path / "n_clus.pickle", "rb") as file:
             prm["n_clus"] = pickle.load(file)
@@ -206,7 +221,7 @@ class HEDGE:
             self.residual_distribution_prms["gen"] = list(self.residual_distribution_prms["gen"])
             self.residual_distribution_prms["gen"][1] *= prm["syst"]["f_std_share"]
             self.select_cdfs["gen"] = [
-                min_cdf + prm["syst"]["clust_dist_share"] * (max_cdf - min_cdf)
+                min_cdf + prm["syst"]["clus_dist_share"] * (max_cdf - min_cdf)
                 for min_cdf, max_cdf in zip(self.min_cdfs["gen"], self.max_cdfs["gen"])
             ]
 
@@ -346,9 +361,10 @@ class HEDGE:
                         random_f[data_type][home],
                     )
                 )
-                factors[data_type].append(
-                    self.mid_fs_brackets[data_type][transition_][interval_f[data_type][home]]
-                )
+                prev_factor =self.list_factors[data_type][home][-1]
+                factor = self.mid_fs_brackets[data_type][transition_][interval_f[data_type][home]]
+                factor = prev_factor + self.clus_dist_share * (factor - prev_factor)
+                factors[data_type].append(factor)
 
         return factors, interval_f
 
@@ -408,8 +424,9 @@ class HEDGE:
         # day type can also be month index
         its = 0
         profile_validated = False
-        generator = self.profile_generator[f"{data_type}_{day_type_}_{cluster}"]
+        generator = self.profile_generator[f"{data_type}_{day_type}_{cluster}"]
 
+        fitted_kmeans_id = self.date.month - 1 if data_type == 'gen' else day_type
         while not profile_validated:
             if its % self.n_items == 0:
                 generated_profiles = generator(th.randn(1, 10)).detach().numpy()
@@ -417,19 +434,21 @@ class HEDGE:
             idx = self.n_steps * i_profile
             profile = generated_profiles[0, idx: idx + self.n_steps]
 
-            if prm['clust_dist_share'] < 1:
-                transformed_features = self._get_transformed_features(profile, data_type)
-                cluster_distance = self.fitted_kmeans_obj[data_type][day_type].transform(transformed_features)
-                i_bin = np.where(cluster_distance >= self.clus_dist_bin_edges[data_type][day_type])[0][0]
-                cdf = self.clus_dist_cdfs[data_type][day_type][i_bin]
-                profile_validated = cdf < self.select_cdfs[data_type]
+            if self.clus_dist_share < 1:
+                transformed_features = self._get_transformed_features(profile, data_type, fitted_kmeans_id)
+                cluster_distance = self.fitted_kmeans_obj[data_type][fitted_kmeans_id].transform(transformed_features)
+                i_bin = np.where(cluster_distance >= self.clus_dist_bin_edges[data_type][fitted_kmeans_id])[0][0]
+                cdf = self.clus_dist_cdfs[data_type][fitted_kmeans_id][i_bin]
+                profile_validated = cdf < self.select_cdfs[data_type][fitted_kmeans_id]
             else:
                 profile_validated = True
 
             its += 1
-            if its > its < 1 / prm['clust_dist_share'] * 10:
+            if its > its < 1 / self.clus_dist_share * 10:
                 print(f"{its} iterations _generate_profile")
                 break
+
+        return profile
 
     def _compute_number_of_available_profiles(self, data, day_type, i_month):
         if data in self.behaviour_types:
@@ -781,7 +800,8 @@ class HEDGE:
         fig.tight_layout()
         title = \
             f"avail_car_home{home}_n_consecutive_days{self.n_consecutive_days}_" \
-            f"brackets_definition_{self.brackets_definition}"
+            f"brackets_definition_{self.brackets_definition}_" \
+            f"clus_dist_share{self.clus_dist_share}".replace('.', '_')
         if cumulative_plot:
             title += "_cumulative"
             for i in range(self.it_plot):
@@ -866,7 +886,8 @@ class HEDGE:
                     plt.tight_layout()
                     title = \
                         f"{data_type}_a{home}_n_consecutive_days{self.n_consecutive_days}_" \
-                        f"brackets_definition_{self.brackets_definition}"
+                        f"brackets_definition_{self.brackets_definition}_" \
+                        f"clus_dist_share{self.clus_dist_share}".replace('.', '_')
                     if cumulative_plot:
                         title += "_cumulative"
                         for i in range(self.it_plot):
@@ -901,7 +922,9 @@ class HEDGE:
 
     def _init_params(self, prm):
         # add relevant parameters to object properties
-        self.data_types = prm["syst"]["data_types"]
+        for info in ['data_types', 'n_items', 'clus_dist_share']:
+            setattr(self, info, prm['syst'][info])
+
         self.behaviour_types = [
             data_type for data_type in self.data_types if data_type != "gen"
         ]
@@ -912,9 +935,8 @@ class HEDGE:
         # update date and time information
         self.date = datetime(*prm["syst"]["date0"])
         self.save_day_path = Path(prm["paths"]["record_folder"]) / "hedge_days"
-        self.n_items = prm["syst"]["n_items"]
 
-    def _get_transformed_features(self, profile, data_type):
+    def _get_transformed_features(self, profile, data_type, cluster_id):
         features = []
         if data_type == "loads":
             peak = np.max(profile)
@@ -922,8 +944,8 @@ class HEDGE:
             values = [
                 np.mean(
                     norm_day[
-                    int(interval[0] * prm["n"] / 24):
-                    int(interval[1] * prm["n"] / 24)
+                    int(interval[0] * self.n_steps / 24):
+                    int(interval[1] * self.n_steps / 24)
                     ]
                 )
                 for interval in prm["dem_intervals"]
@@ -932,9 +954,9 @@ class HEDGE:
 
         elif data_type in ["car", "gen"]:
             features = profile[
-                int(6 * 60 / prm["step_len"]):
-                int(22 * 60 / prm["step_len"])]
+                int(6 * 24 / self.n_steps):
+                int(22 * 24 / self.n_steps)]
 
-        transformed_features = StandardScaler().fit_transform(features)
+        transformed_features = self.fitted_scaler[data_type][cluster_id].transform(features.reshape(1, -1))
 
         return transformed_features
