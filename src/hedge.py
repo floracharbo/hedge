@@ -95,24 +95,27 @@ class HEDGE:
         clusters = self._next_clusters(transition, prev_clusters)
 
         # obtain days
-        day = {}
+        day = {
+            info: np.zeros((len(homes), self.n_steps))
+            for info in ['gen', 'loads', 'loads_car', 'avail_car']
+        }
         for data_type in self.data_types:
             day_type_ = '' if data_type == 'gen' else day_type
-            day[data_type] = np.zeros((self.n_homes, self.n_steps))
-            for home in homes:
+            data_type_ = 'loads_car' if data_type == 'car' else data_type
+            for i_home, home in enumerate(homes):
                 cluster = clusters[data_type][home] if data_type in self.behaviour_types \
                     else self.date.month - 1
                 generated_profile = self._generate_profile(data_type, day_type_, cluster)
-                day[data_type][home] = generated_profile * factors[data_type][home]
+                day[data_type_][i_home] = generated_profile * factors[data_type][home]
 
         if 'car' in self.data_types:
             # check loads car are consistent with maximum battery load
             interval_f['car'], factors, day = self._adjust_max_ev_loads(
-                day['car'], interval_f['car'], factors, transition, clusters,
+                day, interval_f['car'], factors, transition, clusters,
                 day_type, homes
             )
-            for home in homes:
-                day["avail_car"][home], day["car"][home] = car_loads_to_availability(day["car"][home])
+            for i_home, home in enumerate(homes):
+                day["avail_car"][i_home], day['loads_car'][i_home] = car_loads_to_availability(day['loads_car'][i_home])
 
             for i_home, home in enumerate(homes):
                 day["avail_car"][i_home] = np.where(
@@ -138,7 +141,7 @@ class HEDGE:
 
     def _import_dem(self, prm):
         self.select_cdfs["loads"] = {}
-        for day_type in prm["syst"]["weekday_type"]:
+        for day_type in prm["syst"]["weekday_types"]:
             self.select_cdfs["loads"][day_type] = [
                 min_cdf + prm["syst"]["clus_dist_share"] * (max_cdf - min_cdf)
                 for min_cdf, max_cdf in zip(
@@ -187,7 +190,11 @@ class HEDGE:
             "p_clus", "p_trans", "min_cdfs", "max_cdfs", "clus_dist_bin_edges",
             "clus_dist_cdfs", "fitted_kmeans_obj", "fitted_scaler"
         ]:
-            potential_paths = list_potential_paths(prm, data_types=self.data_types, data_folder='hedge_inputs', sub_data_folder='clusters')
+            potential_paths = list_potential_paths(
+                prm, data_types=self.data_types,
+                root_path=prm['paths']["input_folder"],
+                data_folder='hedge_inputs', sub_data_folder='clusters'
+            )
             file_found = False
             for potential_path in potential_paths:
                 path = potential_path / f"{property_}.pickle"
@@ -400,7 +407,7 @@ class HEDGE:
     ):
         for i_home, home in enumerate(homes):
             it = 0
-            while np.max(day["car"][i_home]) > self.car['cap'][home] and it < 100:
+            while np.max(day['loads_car'][i_home]) > self.car['caps'][home] and it < 100:
                 if it == 99:
                     print("100 iterations _adjust_max_ev_loads")
                 if factors[home] > 0 and interval_f_car[home] > 0:
@@ -408,13 +415,13 @@ class HEDGE:
                     interval_f_car[home] -= 1
                     factors[home] = self.mid_fs_brackets['car'][transition][
                         int(interval_f_car[home])]
-                    day['car'][home] *= factors["car"][home]/factor0
-                    assert sum(day['car'][home]) == 0 or abs(sum(day[home]) - 1) < 1e-3, \
-                        f"ev_cons {day['car'][home]}"
+                    day['loads_car'][home] *= factors["car"][home]/factor0
+                    assert sum(day['loads_car'][home]) == 0 or abs(sum(day[home]) - 1) < 1e-3, \
+                        f"ev_cons {day['loads_car'][home]}"
                 else:
                     profile = self._generate_profile('car', day_type, clusters[home])
-                    day['car'][home] = profile * factors["car"][home]
-                    day['ev_avail'][home], day['car'][home] = car_loads_to_availability(day['car'][home])
+                    day['loads_car'][home] = profile * factors["car"][home]
+                    day['ev_avail'][home], day['loads_car'][home] = car_loads_to_availability(day['loads_car'][home])
 
                 it += 1
 
@@ -429,7 +436,7 @@ class HEDGE:
         fitted_kmeans_id = self.date.month - 1 if data_type == 'gen' else day_type
         while not profile_validated:
             if its % self.n_items == 0:
-                generated_profiles = generator(th.randn(1, 10)).detach().numpy()
+                generated_profiles = generator(th.randn(1, 1)).detach().numpy()
             i_profile = random.randint(0, self.n_items - 1)
             idx = self.n_steps * i_profile
             profile = generated_profiles[0, idx: idx + self.n_steps]
@@ -515,7 +522,7 @@ class HEDGE:
         return choice
 
     def _load_dem_profiles(self, profiles, prm):
-        profiles["loads"] = initialise_dict(prm["syst"]["weekday_type"])
+        profiles["loads"] = initialise_dict(prm["syst"]["weekday_types"])
 
         self.n_prof["loads"] = {}
         clusters = [
@@ -526,7 +533,7 @@ class HEDGE:
         n_dem_clus = max(clusters) + 1
 
         path = self.inputs_path / "profiles" / "norm_loads"
-        for day_type in prm["syst"]["weekday_type"]:
+        for day_type in prm["syst"]["weekday_types"]:
             profiles["loads"][day_type] = [
                 np.load(path / f"c{cluster}_{day_type}.npy", mmap_mode="r")
                 for cluster in range(n_dem_clus)
@@ -922,7 +929,7 @@ class HEDGE:
 
     def _init_params(self, prm):
         # add relevant parameters to object properties
-        for info in ['data_types', 'n_items', 'clus_dist_share']:
+        for info in ['data_types', 'n_items', 'clus_dist_share', 'dem_intervals']:
             setattr(self, info, prm['syst'][info])
 
         self.behaviour_types = [
@@ -943,19 +950,18 @@ class HEDGE:
             t_peak = np.argmax(profile)
             values = [
                 np.mean(
-                    norm_day[
-                    int(interval[0] * self.n_steps / 24):
-                    int(interval[1] * self.n_steps / 24)
+                    profile[
+                        int(interval[0] * self.n_steps / 24): int(interval[1] * self.n_steps / 24)
                     ]
                 )
-                for interval in prm["dem_intervals"]
+                for interval in self.dem_intervals
             ]
             features = [peak, t_peak] + values
 
         elif data_type in ["car", "gen"]:
             features = profile[
-                int(6 * 24 / self.n_steps):
-                int(22 * 24 / self.n_steps)]
+                int(6 * 24 / self.n_steps): int(22 * 24 / self.n_steps)
+            ]
 
         transformed_features = self.fitted_scaler[data_type][cluster_id].transform(features.reshape(1, -1))
 
