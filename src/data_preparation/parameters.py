@@ -179,7 +179,7 @@ def get_parameters() -> Tuple[dict, dict]:
     ]
 
     # information about date and time
-    prm["step_len"] = 60 * 24 / run_config["n"]  # interval length in minutes
+    prm["step_len"] = 60 * 24 / run_config["syst"]["H"]  # interval length in minutes
     prm["datetime_entries"] \
         = prm["date_entries"] + prm["time_entries"]
     prm["date0"] = datetime.date(2010, 1, 1)
