@@ -117,8 +117,8 @@ def _init_data_filling(prm, run_config):
 def _update_paths(prm: dict, run_config: dict) \
         -> dict:
     prm["save_hedge"] = Path("data") / "hedge_inputs" / f"{run_id(run_config)}"
-    prm['paths']["input_folder"] = 'data'
-    paths['hedge_inputs'] = paths["input_folder"] / paths['hedge_inputs_folder'] / f"n{prm['syst']['H']}"
+    prm['paths'] = {"input_folder": 'data'}
+    prm['paths']['hedge_inputs'] = prm['paths']["input_folder"] / run_config['hedge_inputs_folder'] / f"n{prm['syst']['H']}"
     prm["save_other"] = Path("data") / "other_outputs" / f"{run_id(run_config)}"
     prm["homes_path"] = {}  # the path to the file with homes information
     for data_source in prm["data_sources"]:
