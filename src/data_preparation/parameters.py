@@ -117,6 +117,8 @@ def _init_data_filling(prm, run_config):
 def _update_paths(prm: dict, run_config: dict) \
         -> dict:
     prm["save_hedge"] = Path("data") / "hedge_inputs" / f"{run_id(run_config)}"
+    prm['paths']["input_folder"] = 'data'
+    paths['hedge_inputs'] = paths["input_folder"] / paths['hedge_inputs_folder'] / f"n{prm['syst']['H']}"
     prm["save_other"] = Path("data") / "other_outputs" / f"{run_id(run_config)}"
     prm["homes_path"] = {}  # the path to the file with homes information
     for data_source in prm["data_sources"]:
@@ -187,8 +189,8 @@ def get_parameters() -> Tuple[dict, dict]:
 
     # possible types of transition between week day types (week/weekend)
     prm["day_trans"] = []
-    for prev_day in prm["weekday_type"]:
-        for next_day in prm["weekday_type"]:
+    for prev_day in prm["weekday_types"]:
+        for next_day in prm["weekday_types"]:
             prm["day_trans"].append(f"{prev_day}2{next_day}")
     # instructions for importing data
     # columns corresponding to each type of information in the data files
@@ -220,6 +222,8 @@ def get_parameters() -> Tuple[dict, dict]:
     prm["n_cpu"] = (
         mp.cpu_count() if run_config["n_cpu"] is None else run_config["n_cpu"]
     )
+    prm['n'] = prm['syst']['H']
+
     _make_dirs(prm)
 
     prm["car"]["min_charge"] = prm["car"]["cap"] * prm["car"]["SoCmin"]

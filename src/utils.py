@@ -148,18 +148,23 @@ def get_granularity(step_len: int,
 
 def data_id(prm, data_type):
     """Return string for identifying current data_type selection."""
-    return f"{data_type}_n_rows{prm['n_rows'][data_type]}_n{prm['n']}"
+    return f"{data_type}_n_rows{prm['n_rows'][data_type]}_n{prm['syst']['H']}"
 
 
-def list_potential_paths(prm, data_types=['gen','loads','car'], data_folder='other_outputs', sub_data_folder='outs'):
+def list_potential_paths(
+        prm, data_types=['gen', 'loads', 'car'],
+        root_path='data',
+        data_folder='other_outputs',
+        sub_data_folder='outs'
+):
     if 'n_rows0' not in prm:
         prm['n_rows0'] = {data_type: 'all' for data_type in data_types}
     potential_paths = []
-    for folder in os.listdir(Path("data") / data_folder):
-        if f"n{prm['n']}" in folder and all(f"{data_type}_{prm['n_rows0'][data_type]}" in folder for data_type in data_types):
+    for folder in os.listdir(Path(root_path) / data_folder):
+        if f"n{prm['syst']['H']}" in folder and all(f"{data_type}_{prm['n_rows0'][data_type]}" in folder for data_type in data_types):
             potential_paths.append(Path("data") / data_folder / folder / sub_data_folder)
     if all(prm['n_rows0'][data_type] == 'all' for data_type in data_types):
-        potential_paths.append(Path("data") / data_folder / f"n{prm['n']}" / sub_data_folder)
+        potential_paths.append(Path(root_path) / data_folder / f"n{prm['syst']['H']}" / sub_data_folder)
 
     return potential_paths
 
@@ -167,7 +172,7 @@ def list_potential_paths(prm, data_types=['gen','loads','car'], data_folder='oth
 def run_id(prm):
     """Return an identifier to save the current run's results."""
     data_types = prm['data_types'] if 'data_types' in prm else prm['syst']['data_types']
-    run_id = f"n{prm['n']}"
+    run_id = f"n{prm['syst']['H']}"
     if len(data_types) < 3 or not all(n_rows == "all" for n_rows in prm['n_rows'].values()):
         for data_type in data_types:
             n_rows_str = prm['n_rows'][data_type] if isinstance(prm['n_rows'][data_type], str) \
