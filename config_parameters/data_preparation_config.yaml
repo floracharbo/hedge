@@ -36,8 +36,9 @@ gan_generation_profiles: False
 kurtosis: False
 brackets_definition: 'percentile'
 # linspace or percentile
-max_power_cutoff: 50  # in kW (average over one time step)
-max_daily_energy_cutoff: 200  # in kW (over one day)
+car:
+  max_power_cutoff: 50  # in kW (average over one time step)
+  max_daily_energy_cutoff: 200  # in kW (over one day)
 high_res: True
 n_consecutive_days: [2]
 # 2,3

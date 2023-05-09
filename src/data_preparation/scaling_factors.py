@@ -291,9 +291,9 @@ def _transition_intervals(
         fs_brackets = np.linspace(
             np.min(factors_brackets), np.max(factors_brackets), prm["n_intervals"] + 1
         )
-        assert np.max(factors_brackets) <= prm['max_daily_energy_cutoff'], \
+        assert np.max(factors_brackets) <= prm['car']['max_daily_energy_cutoff'], \
             f"np.max(factors_brackets) {np.max(factors_brackets)} > " \
-            f"prm['max_daily_energy_cutoff'] {prm['max_daily_energy_cutoff']}"
+            f"prm['car']['max_daily_energy_cutoff'] {prm['car']['max_daily_energy_cutoff']}"
 
     mid_fs_brackets = [
         np.mean(fs_brackets[i: i + 2]) for i in range(prm["n_intervals"])

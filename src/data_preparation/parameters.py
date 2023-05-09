@@ -248,13 +248,13 @@ def get_parameters() -> Tuple[dict, dict]:
         'gan_generation_profiles',
         'kurtosis',
         'brackets_definition',
-        'max_power_cutoff',
-        'max_daily_energy_cutoff',
         'high_res',
         'n_consecutive_days',
     ]:
         prm[key] = run_config[key]
 
+    for key in ['max_power_cutoff', 'max_daily_energy_cutoff']:
+        prm['car'][key] = run_config['car'][key]
     if not prm["plots"]:
         prm["do_heat_map"] = False
 

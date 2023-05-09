@@ -233,8 +233,8 @@ def add_day_nts(
 
     # enter in days
     if (
-            np.max(current['car']) < prm['max_power_cutoff']
-            and np.sum(current['car']) < prm['max_daily_energy_cutoff']
+            np.max(current['car']) < prm['car']['max_power_cutoff']
+            and np.sum(current['car']) < prm['car']['max_daily_energy_cutoff']
     ):
         day = {}
         for key in prm["NTS_day_keys"]:
