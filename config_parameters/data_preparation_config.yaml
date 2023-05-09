@@ -29,7 +29,7 @@ test_factor_distr: True
 candidate_factor_distributions:
 save_intermediate_outs: True  # this makes the data generation more tractable
 max_size_chunk: 5.e+6  # reduce the size of individual data chunks that are processed to reduce RAM requirements.
-gan_generation_profiles: True
+gan_generation_profiles: False
 
 kurtosis: False
 brackets_definition: 'percentile'
@@ -37,3 +37,5 @@ brackets_definition: 'percentile'
 max_power_cutoff: 50  # in kW (average over one time step)
 max_daily_energy_cutoff: 200  # in kW (over one day)
 high_res: True
+n_consecutive_days: [2]
+# 2,3
