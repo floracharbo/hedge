@@ -625,7 +625,7 @@ def _scaling_factors_behaviour_types(
     n_transitions = initialise_dict(prm["data_types"], "zero")
 
     for data_type in prm["behaviour_types"]:
-        if not _enough_data(banks[data_type], prm["weekday_type"]):
+        if not _enough_data(banks[data_type], prm["weekday_types"]):
             print(f"not enough data for {data_type} to get factors")
             continue
         for transition in prm["day_trans"]:
@@ -774,7 +774,7 @@ def scaling_factors(prm, banks, days, n_data_type):
         p_pos, p_zero2pos, fs_brackets, mid_fs_brackets = [{} for _ in range(4)]
         for data_type in prm["data_types"]:
             print(data_type)
-            if _enough_data(banks[data_type], prm["weekday_type"]):
+            if _enough_data(banks[data_type], prm["weekday_types"]):
                 if data_type == 'gen':
                     [
                         factors["gen"], mean_residual["gen"],

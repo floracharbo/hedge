@@ -155,7 +155,7 @@ def _transition_probabilities(
             )
 
         p_clus[data_type] = {}
-        for day_type in prm["weekday_type"]:
+        for day_type in prm["weekday_types"]:
             pcluss = [
                 banks[data_type][day_type][k]["p_clus"] for k in range(n_clus_all_)
             ]
@@ -475,7 +475,7 @@ def _get_features(days_, data_type, prm):
             ev_avail.append(days_[i]["avail"])
         norm_vals.append(days_[i][f"norm_{data_type}"])
     fitted_scaler = StandardScaler().fit(features)
-    transformed_features = fitter_scaler.transform(features)
+    transformed_features = fitted_scaler.transform(features)
 
     return transformed_features, to_cluster, i_zeros, norm_vals, ev_avail, fitted_scaler
 
@@ -504,10 +504,10 @@ def _initialise_cluster_dicts(prm):
     ]
     for data_type in ["loads", "car"]:
         p_clus[data_type], n_zeros[data_type] = [
-            {weekday_type: [] for weekday_type in prm["weekday_type"]}
+            {weekday_type: [] for weekday_type in prm["weekday_types"]}
             for _ in range(2)
         ]
-        banks[data_type] = {day_type: {} for day_type in prm["weekday_type"] + prm["day_trans"]}
+        banks[data_type] = {day_type: {} for day_type in prm["weekday_types"] + prm["day_trans"]}
 
     min_cdfs, max_cdfs, clus_dist_bin_edges, clus_dist_cdfs, fitted_kmeans_obj, fitted_scaler = [
         {data_type: {} for data_type in prm["data_types"]}
@@ -571,7 +571,7 @@ def _save_clustering(
 ):
     prof_path = save_path / "profiles"
     for data_type in prm["behaviour_types"]:
-        for day_type in prm["weekday_type"]:
+        for day_type in prm["weekday_types"]:
             for k in range(prm["n_clus"][data_type]):
                 np.save(
                     save_path / "clusters"
@@ -596,7 +596,7 @@ def _save_clustering(
 
     if "car" in prm["data_types"]:
         k = prm["n_clus"]["car"]
-        for day_type in prm["weekday_type"]:
+        for day_type in prm["weekday_types"]:
             np.save(
                 prof_path / "car_avail" / f"c{k}_{day_type}",
                 [np.ones((prm["n"],))]
@@ -622,7 +622,7 @@ def split_day_types(days, prm, n_data_type):
     """Split week day and weekend days."""
     n_day_type = initialise_dict(prm["behaviour_types"], "empty_dict")
     for data_type in prm["behaviour_types"]:
-        for day_type in prm["weekday_type"]:
+        for day_type in prm["weekday_types"]:
             days[f"{data_type}_{day_type}"] = []
         for i in range(n_data_type[data_type]):
             day = days[data_type][i]
@@ -642,7 +642,7 @@ def split_day_types(days, prm, n_data_type):
             days[f"{data_type}_{day_type}"].append(day)
 
         # obtain length of bank for each day type
-        for day_type in prm["weekday_type"]:
+        for day_type in prm["weekday_types"]:
             n_day_type[data_type][day_type] = len(
                 days[f"{data_type}_{day_type}"])
 
@@ -652,7 +652,7 @@ def split_day_types(days, prm, n_data_type):
 def clustering(days, prm, n_data_type):
     """Cluster the data profiles in behaviour groups."""
     done_clustering = {
-        data_type: {day_type: False for day_type in prm["weekday_type"]}
+        data_type: {day_type: False for day_type in prm["weekday_types"]}
         for data_type in prm["behaviour_types"]
     }
     days, n_day_type = split_day_types(days, prm, n_data_type)
@@ -669,7 +669,7 @@ def clustering(days, prm, n_data_type):
         for data_type in prm["behaviour_types"]:
             print(f"data_type {data_type}")
             enough_data[data_type] = True
-            for day_type in prm["weekday_type"]:
+            for day_type in prm["weekday_types"]:
                 print(f"day_type {day_type}")
                 days_ = days[f"{data_type}_{day_type}"]
                 if not done_clustering[data_type][day_type]:
