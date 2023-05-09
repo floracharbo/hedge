@@ -14,7 +14,7 @@ import numpy as np
 import seaborn as sns
 
 from src.data_preparation.filling_in import stats_filling_in
-from src.utils import (data_id, initialise_dict, list_potential_paths_outs,
+from src.utils import (data_id, initialise_dict, list_potential_paths,
                        save_fig)
 
 
@@ -22,7 +22,7 @@ def _load_out(prm, data_type, chunk_rows):
     out = []
     for label in prm["outs_labels"]:
         file_name = f"{label}_{data_id(prm, data_type)}_{chunk_rows[0]}_{chunk_rows[1]}.pickle"
-        potential_paths = list_potential_paths_outs(prm, data_type)
+        potential_paths = list_potential_paths(prm, [data_type])
         for potential_path in potential_paths:
             file_path = potential_path / file_name
             if file_path.exists():

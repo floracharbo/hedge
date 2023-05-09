@@ -22,7 +22,7 @@ from src.data_preparation.define_blocks import (get_data_chunks, get_n_rows,
 from src.data_preparation.filling_in import fill_whole_days
 from src.data_preparation.import_homes_data import import_homes_data
 from src.utils import (data_id, empty, formatting, get_granularity,
-                       initialise_dict, list_potential_paths_outs, obtain_time)
+                       initialise_dict, list_potential_paths, obtain_time)
 
 
 def keep_column(dtm_no: list, start_avail: list,
@@ -729,7 +729,7 @@ def import_segment(
 ) -> list:
     """In parallel or sequentially, import and process block of data."""
     data_id_ = data_id(prm, data_type)
-    potential_paths_outs = list_potential_paths_outs(prm, data_type)
+    potential_paths_outs = list_potential_paths(prm, [data_type])
     if any(
             all(
                 (
@@ -761,8 +761,7 @@ def import_segment(
     )
 
     # 2 - split into sequences of subsequent times
-    sequences, granularities = get_sequences(
-        prm, data, data_type)
+    sequences, granularities = get_sequences(prm, data, data_type)
     del data
 
     # 3 - convert into days of data at adequate granularity
