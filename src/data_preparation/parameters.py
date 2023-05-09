@@ -35,8 +35,6 @@ def _import_columns_info(prm):
             type_ = str_to_type[prm["type_cols"][data_source][i]]
             prm["dtypes"][data_type][name] = type_
 
-    prm['n_consecutive_days'] = sort(prm['n_consecutive_days'], reverse=True)
-
     return prm
 
 
@@ -54,6 +52,7 @@ def _formatting(prm: dict, run_config: dict) \
         if value != "all":
             run_config["n_rows"][key] = int(value)
     run_config['n_rows0'] = run_config['n_rows'].copy()
+    run_config['n_consecutive_days'] = sorted(run_config['n_consecutive_days'], reverse=True)
 
     test_cell_keys = list(prm["test_cell_translation"].keys())
     for key in test_cell_keys:
@@ -246,7 +245,8 @@ def get_parameters() -> Tuple[dict, dict]:
         'brackets_definition',
         'max_power_cutoff',
         'max_daily_energy_cutoff',
-        'high_res'
+        'high_res',
+        'n_consecutive_days'
     ]:
         prm[key] = run_config[key]
 
