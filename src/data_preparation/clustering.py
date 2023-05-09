@@ -394,7 +394,7 @@ def _cluster_module(
     # -> ndarray of shape (n_samples, n_clus[data_type])
     # KMeans.transform() returns an array of distances
     # of each sample to the cluster center
-    cluster_distances = obj.transform(transformed_features)
+    cluster_distances = fitted_kmeans_obj.transform(transformed_features)
 
     return labels, cluster_distances, n_zeros, days_, fitted_kmeans_obj
 
