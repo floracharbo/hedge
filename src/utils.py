@@ -151,13 +151,15 @@ def data_id(prm, data_type):
     return f"{data_type}_n_rows{prm['n_rows'][data_type]}_n{prm['n']}"
 
 
-def list_potential_paths_outs(prm, data_type):
+def list_potential_paths(prm, data_types=['gen','loads','car'], data_folder='other_outputs', sub_data_folder='outs'):
+    if 'n_rows0' not in prm:
+        prm['n_rows0'] = {data_type: 'all' for data_type in data_types}
     potential_paths = []
-    for folder in os.listdir(Path("data") / "other_outputs"):
-        if f"n{prm['n']}" in folder and f"{data_type}_{prm['n_rows0'][data_type]}" in folder:
-            potential_paths.append(Path("data") / "other_outputs" / folder / "outs")
-    if prm['n_rows0'][data_type] == 'all':
-        potential_paths.append(Path("data") / "other_outputs" / f"n{prm['n']}" / "outs")
+    for folder in os.listdir(Path("data") / data_folder):
+        if f"n{prm['n']}" in folder and all(f"{data_type}_{prm['n_rows0'][data_type]}" in folder for data_type in data_types):
+            potential_paths.append(Path("data") / data_folder / folder / sub_data_folder)
+    if all(prm['n_rows0'][data_type] == 'all' for data_type in data_types):
+        potential_paths.append(Path("data") / data_folder / f"n{prm['n']}" / sub_data_folder)
 
     return potential_paths
 
