@@ -126,13 +126,13 @@ class HEDGE:
         self.clusters = clusters
 
         # save factors and clusters
-        for data in self.data_types:
-            self.list_factors[data] = np.hstack(
-                (self.list_factors[data], np.reshape(self.factors[data], (self.n_homes, 1)))
+        for data_type in self.data_types:
+            self.list_factors[data_type] = np.hstack(
+                (self.list_factors[data_type], np.reshape(self.factors[data_type], (self.n_homes, 1)))
             )
-        for data in self.behaviour_types:
-            self.list_clusters[data] = np.hstack(
-                (self.list_clusters[data], np.reshape(self.clusters[data], (self.n_homes, 1)))
+        for data_type in self.behaviour_types:
+            self.list_clusters[data_type] = np.hstack(
+                (self.list_clusters[data_type], np.reshape(self.clusters[data_type], (self.n_homes, 1)))
             )
 
         self._plotting_profiles(day, plotting)
@@ -286,11 +286,11 @@ class HEDGE:
                     for home in self.homes
                 ]
         else:
-            for data in self.data_types:
-                if isinstance(self.factors0[data], int):
-                    self.factors[data] = np.full(self.n_homes, self.factors0[data])
+            for data_type in self.data_types:
+                if isinstance(self.factors0[data_type], int):
+                    self.factors[data_type] = np.full(self.n_homes, self.factors0[data_type])
                 else:
-                    self.factors[data] = self.factors0[data]
+                    self.factors[data_type] = self.factors0[data_type]
         for data_type in self.behaviour_types:
             self.factors[data_type] = np.minimum(
                 np.maximum(self.f_min[data_type], self.factors[data_type]),
@@ -300,10 +300,10 @@ class HEDGE:
             data_type: np.zeros((self.n_homes, self.n_consecutive_days - 1))
             for data_type in self.data_types
         }
-        for data in self.data_types:
+        for data_type in self.data_types:
             for home in self.homes:
-                self.list_factors[data][home] = np.full(
-                    self.n_consecutive_days - 1, self.factors[data][home]
+                self.list_factors[data_type][home] = np.full(
+                    self.n_consecutive_days - 1, self.factors[data_type][home]
                 )
 
     def _init_clusters(self, clusters0):
@@ -312,26 +312,26 @@ class HEDGE:
         self.clusters = {}
 
         if self.clusters0 is None:
-            for data in self.behaviour_types:
-                self.clusters[data] \
+            for data_type in self.behaviour_types:
+                self.clusters[data_type] \
                     = [self._ps_rand_to_choice(
-                        self.p_clus[data][day_type], np.random.rand())
+                        self.p_clus[data_type][day_type], np.random.rand())
                         for _ in self.homes]
         else:
-            for data in self.behaviour_types:
-                if isinstance(self.clusters0[data], int):
-                    self.clusters[data] = [self.clusters0[data] for _ in self.homes]
+            for data_type in self.behaviour_types:
+                if isinstance(self.clusters0[data_type], int):
+                    self.clusters[data_type] = [self.clusters0[data_type] for _ in self.homes]
                 else:
-                    self.clusters[data] = self.clusters0[data]
+                    self.clusters[data_type] = self.clusters0[data_type]
 
         self.list_clusters = {
             data_type: np.zeros((self.n_homes, self.n_consecutive_days - 1))
             for data_type in self.behaviour_types
         }
-        for data in self.behaviour_types:
+        for data_type in self.behaviour_types:
             for home in self.homes:
-                self.list_clusters[data][home] = np.full(
-                    self.n_consecutive_days - 1, self.clusters[data][home]
+                self.list_clusters[data_type][home] = np.full(
+                    self.n_consecutive_days - 1, self.clusters[data_type][home]
                 )
 
     def _next_factors(self, transition, prev_clusters):
@@ -383,11 +383,11 @@ class HEDGE:
             for _ in self.behaviour_types
         ]
         for home in self.homes:
-            for it, data in enumerate(self.behaviour_types):
-                prev_cluster = prev_clusters[data][home]
-                probs = self.p_trans[data][transition][prev_cluster]
+            for it, data_type in enumerate(self.behaviour_types):
+                prev_cluster = prev_clusters[data_type][home]
+                probs = self.p_trans[data_type][transition][prev_cluster]
                 cum_p = [sum(probs[0:i]) for i in range(1, len(probs))] + [1]
-                clusters[data].append(
+                clusters[data_type].append(
                     [c > random_clus[it][home] for c in cum_p].index(True)
                 )
 
@@ -457,40 +457,40 @@ class HEDGE:
 
         return profile
 
-    def _compute_number_of_available_profiles(self, data, day_type, i_month):
-        if data in self.behaviour_types:
+    def _compute_number_of_available_profiles(self, data_type, day_type, i_month):
+        if data_type in self.behaviour_types:
             n_profs0 = [
-                self.n_prof[data][day_type][cluster]
-                for cluster in range(len(self.n_prof[data][day_type]))
+                self.n_prof[data_type][day_type][cluster]
+                for cluster in range(len(self.n_prof[data_type][day_type]))
             ]
-            if data == 'car':
-                for cluster in range(len(self.n_prof[data][day_type])):
-                    assert self.n_prof[data][day_type][cluster] \
-                           == len(self.profs[data]["cons"][day_type][cluster]), \
-                           f"self.n_prof[{data}][{day_type}][{cluster}] " \
-                           f"{self.n_prof[data][day_type][cluster]}"
+            if data_type == 'car':
+                for cluster in range(len(self.n_prof[data_type][day_type])):
+                    assert self.n_prof[data_type][day_type][cluster] \
+                           == len(self.profs[data_type]["cons"][day_type][cluster]), \
+                           f"self.n_prof[{data_type}][{day_type}][{cluster}] " \
+                           f"{self.n_prof[data_type][day_type][cluster]}"
 
         else:
-            n_profs0 = self.n_prof[data][i_month]
+            n_profs0 = self.n_prof[data_type][i_month]
 
         return n_profs0
 
     def _select_profiles(
             self,
-            data: str,
+            data_type: str,
             day_type: str = None,
             i_month: int = 0,
             clusters: List[int] = None
     ) -> List[int]:
         """Randomly generate index of profile to select for given data."""
         i_profs = []
-        n_profs0 = self._compute_number_of_available_profiles(data, day_type, i_month)
+        n_profs0 = self._compute_number_of_available_profiles(data_type, day_type, i_month)
         n_profs = n_profs0
         for home in self.homes:
-            if data in self.behaviour_types:
-                n_profs_ = n_profs[clusters[data][home]]
+            if data_type in self.behaviour_types:
+                n_profs_ = n_profs[clusters[data_type][home]]
                 if n_profs_ > 1:
-                    n_profs[clusters[data][home]] -= 1
+                    n_profs[clusters[data_type][home]] -= 1
             else:
                 n_profs_ = n_profs
                 n_profs -= 1
@@ -499,16 +499,16 @@ class HEDGE:
                 if previous_i_prof <= i_prof < n_profs_ - 1 and n_profs_ > 1:
                     i_prof += 1
             i_profs.append(i_prof)
-            if data == "car":
-                assert i_prof < len(self.profs["car"]["cons"][day_type][clusters[data][home]]), \
+            if data_type == "car":
+                assert i_prof < len(self.profs["car"]["cons"][day_type][clusters[data_type][home]]), \
                     f"i_profs {i_profs} i_prof {i_prof} " \
                     f"n_profs_ {n_profs_} n_profs {n_profs} n_profs0 {n_profs0}"
-            elif data == "loads":
-                assert i_prof < len(self.profs[data][day_type][clusters[data][home]]), \
+            elif data_type == "loads":
+                assert i_prof < len(self.profs[data_type][day_type][clusters[data_type][home]]), \
                     f"i_profs {i_profs} i_prof {i_prof} " \
                     f"n_profs_ {n_profs_} n_profs {n_profs} n_profs0 {n_profs0}"
             else:
-                assert i_prof < len(self.profs[data][i_month]), \
+                assert i_prof < len(self.profs[data_type][i_month]), \
                     f"i_profs {i_profs} i_prof {i_prof} " \
                     f"n_profs_ {n_profs_} n_profs {n_profs} n_profs0 {n_profs0}"
 
@@ -907,24 +907,24 @@ class HEDGE:
                             day_plot, avail_car_plot, hr_per_t, hours, home, cumulative_plot
                         )
 
-        for data in self.list_factors:
+        for data_type in self.list_factors:
             fig = plt.figure()
             for home in self.homes:
-                plt.plot(self.list_factors[data][home])
+                plt.plot(self.list_factors[data_type][home])
             plt.xlabel("Day")
-            plt.ylabel(f"{data} factor")
+            plt.ylabel(f"{data_type} factor")
             plt.tight_layout()
-            fig.savefig(self.save_day_path / f"{data}_factors")
+            fig.savefig(self.save_day_path / f"{data_type}_factors")
             plt.close("all")
 
-        for data in self.list_clusters:
+        for data_type in self.list_clusters:
             fig = plt.figure()
             for home in self.homes:
-                plt.plot(self.list_clusters[data][home])
+                plt.plot(self.list_clusters[data_type][home])
             plt.xlabel("Day")
-            plt.ylabel(f"{data} cluster")
+            plt.ylabel(f"{data_type} cluster")
             plt.tight_layout()
-            fig.savefig(self.save_day_path / f"{data}_clusters")
+            fig.savefig(self.save_day_path / f"{data_type}_clusters")
             plt.close("all")
 
     def _init_params(self, prm):
