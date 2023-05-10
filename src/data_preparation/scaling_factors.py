@@ -484,7 +484,7 @@ def _fit_residual_distribution(f_prevs, f_nexts, prm, data_type, label=None):
             mean_residual = norm.stats(*norm_prms, moments="m")
             residual_distribution_prms = ['kurtosis'] + list(norm_prms) + [kurtosis]
         else:
-            distr = prm["candidate_factor_distributions"][distr_str] if prm["test_factor_distr"] else 'norm'
+            distr = prm["candidate_factor_distributions"][distr_str]
             residual_distribution_prms = [distr_str] + list(distr.fit(errors))
             factor_residuals = np.linspace(
                 distr.ppf(0.01, *residual_distribution_prms[1:]),

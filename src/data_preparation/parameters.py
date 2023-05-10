@@ -90,26 +90,25 @@ def _init_data_filling(prm, run_config):
         if fill_type != "lin_interp"
     ]
 
-    if run_config["test_factor_distr"]:
-        distributions = {
-            'alpha': alpha,
-            'chi': chi,
-            'chi2': chi2,
-            'gamma': gamma,
-            'maxwell': maxwell,
-            'norm': norm
-        }
-        if run_config["candidate_factor_distributions"] is None:
-            prm["candidate_factor_distributions"] = distributions
-        else:
-            prm["candidate_factor_distributions"] = {}
-            for candidate in run_config["candidate_distr"]:
-                if candidate in distributions:
-                    prm["candidate_factor_distributions"][candidate] \
-                        = distributions[candidate]
-                else:
-                    print(f"Please add {candidate} to the "
-                          f"distributions dictionary in parameters.py")
+    distributions = {
+        'alpha': alpha,
+        'chi': chi,
+        'chi2': chi2,
+        'gamma': gamma,
+        'maxwell': maxwell,
+        'norm': norm
+    }
+    if run_config["candidate_factor_distributions"] is None:
+        prm["candidate_factor_distributions"] = distributions
+    else:
+        prm["candidate_factor_distributions"] = {}
+        for candidate in run_config["candidate_distr"]:
+            if candidate in distributions:
+                prm["candidate_factor_distributions"][candidate] \
+                    = distributions[candidate]
+            else:
+                print(f"Please add {candidate} to the "
+                      f"distributions dictionary in parameters.py")
 
     return prm
 
