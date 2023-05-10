@@ -231,9 +231,10 @@ class GAN_Trainer():
                     - th.from_numpy(self.percentiles_inputs[self.k][key])
                 )
             ) * self.weight_diff_percentiles
-        loss_sum_profiles = (
-            th.sum(generated_samples) / (self.batch_size_ * self.n_items_generated) - 1
-        ) ** 2 * self.weight_sum_profiles
+        loss_sum_profiles = th.sum(
+            (th.sum(generated_samples[i * self.n: (i + 1) * self.n]) - 1) ** 2
+            for i in self.batch_size_ * self.n_items_generated
+        ) * self.weight_sum_profiles
         loss_generator += loss_percentiles + loss_sum_profiles
 
         loss_generator.backward()
@@ -606,7 +607,7 @@ def compute_profile_generators(
     params = {
         'profiles': True,
         'batch_size': 100,
-        'n_epochs': int(9e7/len(profiles)),
+        'n_epochs': int(9e7 / len(profiles)),
         'weight_sum_profiles': 1e-3 * 10 * 10,
         'weight_diff_percentiles': 100,
         'size_input_discriminator_one_item': prm['n'],
