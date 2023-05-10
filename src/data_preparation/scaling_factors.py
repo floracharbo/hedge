@@ -319,27 +319,27 @@ def _transition_intervals(
                 assert np.sum(trans_prob) > 0, "error not np.sum(trans_prob) > 0"
 
         if prm["plots"] and n_consecutive_days == 2:
-            fig, ax = plt.subplots()
-            min_trans_prob = np.min(trans_prob[trans_prob > 0]) if np.sum(trans_prob > 0) > 0 else 10
-            print(f"min_trans_prob {min_trans_prob}")
-            vmin = np.min([1e-4, min_trans_prob])
-            print(f"vmin {vmin}")
-            np.save('trans_prob', trans_prob)
-            cmap = get_cmap()
-            cmap.set_bad(color='white')
-            img = ax.imshow(trans_prob, norm=LogNorm(vmin=vmin), origin='lower', cmap=cmap)
-            ax = _add_tick_labels_heatmap(ax, mid_fs_brackets)
-            plt.colorbar(img, ax=ax)
-            title = \
-                f"{data_type} {labels_prob[label_prob]} {transition} " \
-                f"n_intervals {prm['n_intervals']} " \
-                f"brackets_definition {prm['brackets_definition']}"
-            plt.title(title)
-            ax.set_xlabel("f(t)")
-            ax.set_ylabel("f(t + 1)")
-            save_path = prm["save_other"] / "factors" / title.replace(" ", "_")
-            save_fig(fig, prm, save_path)
-            plt.close("all")
+            if np.sum(trans_prob > 0) > 0:
+                fig, ax = plt.subplots()
+                min_trans_prob = np.min(trans_prob[trans_prob > 0])
+                vmin = np.min([1e-4, min_trans_prob])
+                cmap = get_cmap()
+                cmap.set_bad(color='white')
+                img = ax.imshow(trans_prob, norm=LogNorm(vmin=vmin), origin='lower', cmap=cmap)
+                ax = _add_tick_labels_heatmap(ax, mid_fs_brackets)
+                plt.colorbar(img, ax=ax)
+                title = \
+                    f"{data_type} {labels_prob[label_prob]} {transition} " \
+                    f"n_intervals {prm['n_intervals']} " \
+                    f"brackets_definition {prm['brackets_definition']}"
+                plt.title(title)
+                ax.set_xlabel("f(t)")
+                ax.set_ylabel("f(t + 1)")
+                save_path = prm["save_other"] / "factors" / title.replace(" ", "_")
+                save_fig(fig, prm, save_path)
+                plt.close("all")
+            else:
+                print(f"all zeros for trans_prob {label_prob} {data_type} {transition}")
 
     return p_pos, p_zero2pos, fs_brackets, mid_fs_brackets
 
