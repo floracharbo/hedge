@@ -754,7 +754,7 @@ def clustering(days, prm, n_data_type):
         vals_k = {i_month: np.array(banks["gen"][i_month]['profs']) for i_month in range(12)}
         statistical_indicators = _get_percentiles(vals_k, prm['n'])
         if prm['gan_generation_profiles']:
-            for i_month in range(12):
+            for i_month in range(1):
                 compute_profile_generators(
                      banks["gen"][i_month]["profs"], i_month, statistical_indicators,
                      'gen', '', prm
