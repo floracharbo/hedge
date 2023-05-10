@@ -320,7 +320,7 @@ def _transition_intervals(
 
         if prm["plots"] and n_consecutive_days == 2:
             fig, ax = plt.subplots()
-            min_trans_prob = np.min(trans_prob[trans_prob > 0]) if sum(trans_prob > 0) > 0 else 10
+            min_trans_prob = np.min(trans_prob[trans_prob > 0]) if np.sum(trans_prob > 0) > 0 else 10
             vmin = np.min([1e-4, min_trans_prob])
             cmap = get_cmap()
             cmap.set_bad(color='white')
