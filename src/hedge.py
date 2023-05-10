@@ -111,7 +111,7 @@ class HEDGE:
         if 'car' in self.data_types:
             # check loads car are consistent with maximum battery load
             interval_f['car'], factors, day = self._adjust_max_ev_loads(
-                day, interval_f['car'], factors, transition, clusters,
+                day, interval_f['car'], factors['car'], transition, clusters,
                 day_type, homes
             )
             for i_home, home in enumerate(homes):
@@ -410,17 +410,17 @@ class HEDGE:
             while np.max(day['loads_car'][i_home]) > self.car['caps'][home] and it < 100:
                 if it == 99:
                     print("100 iterations _adjust_max_ev_loads")
-                if factors[home] > 0 and interval_f_car[home] > 0:
-                    factor0 = factors[home].copy()
+                if factors[i_home] > 0 and interval_f_car[home] > 0:
+                    factor0 = factors[i_home].copy()
                     interval_f_car[home] -= 1
-                    factors[home] = self.mid_fs_brackets['car'][transition][
+                    factors[i_home] = self.mid_fs_brackets['car'][transition][
                         int(interval_f_car[home])]
-                    day['loads_car'][home] *= factors["car"][home]/factor0
+                    day['loads_car'][home] *= factors[i_home]/factor0
                     assert sum(day['loads_car'][home]) == 0 or abs(sum(day[home]) - 1) < 1e-3, \
                         f"ev_cons {day['loads_car'][home]}"
                 else:
                     profile = self._generate_profile('car', day_type, clusters[home])
-                    day['loads_car'][home] = profile * factors["car"][home]
+                    day['loads_car'][home] = profile * factors[i_home]
                     day['ev_avail'][home], day['loads_car'][home] = car_loads_to_availability(day['loads_car'][home])
 
                 it += 1
