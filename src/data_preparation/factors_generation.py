@@ -232,8 +232,12 @@ class GAN_Trainer():
                 )
             ) * self.weight_diff_percentiles
         loss_sum_profiles = th.sum(
-            (th.sum(generated_samples[i * self.n: (i + 1) * self.n]) - 1) ** 2
-            for i in self.batch_size_ * self.n_items_generated
+            th.stack(
+                [
+                    (th.sum(generated_samples[i * self.prm['n']: (i + 1) * self.prm['n']]) - 1) ** 2
+                    for i in range(self.batch_size_ * self.n_items_generated)
+                ]
+            )
         ) * self.weight_sum_profiles
         loss_generator += loss_percentiles + loss_sum_profiles
 
