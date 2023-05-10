@@ -238,7 +238,7 @@ class GAN_Trainer():
 
         loss_generator.backward()
         self.optimizer_generator.step()
-        if final_n:
+        if final_n and epoch % 10 == 0:
             self.plot_statistical_indicators_profiles(
                 percentiles_generated, epoch, n_samples
             )
