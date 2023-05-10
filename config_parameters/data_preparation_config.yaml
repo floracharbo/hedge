@@ -27,7 +27,7 @@ plots: True
 do_test_filling_in: False
 parallel: False
 do_heat_map: True  # plot data available - this is computationally expensive
-test_factor_distr: True
+test_factor_distr: False
 candidate_factor_distributions:
 save_intermediate_outs: True  # this makes the data generation more tractable
 max_size_chunk: 5.e+6  # reduce the size of individual data chunks that are processed to reduce RAM requirements.
