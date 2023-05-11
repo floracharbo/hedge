@@ -231,13 +231,24 @@ class GAN_Trainer():
                     - th.from_numpy(self.percentiles_inputs[self.k][key])
                 )
             ) * self.weight_diff_percentiles
+        divergences_from_1 = th.stack(
+            [th.stack(
+            [
+                abs(th.sum(generated_samples[j, i * self.prm['n']: (i + 1) * self.prm['n']]) - 1)
+                for i in range(self.n_items_generated)
+            ]
+        )  for j in range(self.batch_size_)])
+        mean_err_1 = th.mean(divergences_from_1)
+        std_err_1 = th.std(divergences_from_1)
+        share_large_err_1 = th.sum(divergences_from_1 > 1)/(self.n_items_generated * self.batch_size_)
         loss_sum_profiles = th.sum(
             th.stack(
+                [th.stack(
                 [
-                    (th.sum(generated_samples[i * self.prm['n']: (i + 1) * self.prm['n']]) - 1) ** 2
-                    for i in range(self.batch_size_ * self.n_items_generated)
+                    (th.sum(generated_samples[j, i * self.prm['n']: (i + 1) * self.prm['n']]) - 1) ** 2
+                    for i in range(self.n_items_generated)
                 ]
-            )
+            )  for j in range(self.batch_size_)])
         ) * self.weight_sum_profiles
         loss_generator += loss_percentiles + loss_sum_profiles
 
@@ -248,7 +259,7 @@ class GAN_Trainer():
                 percentiles_generated, epoch, n_samples
             )
 
-        return loss_generator, generated_outputs, loss_percentiles, loss_sum_profiles
+        return loss_generator, generated_outputs, loss_percentiles, loss_sum_profiles, mean_err_1, std_err_1, share_large_err_1
 
     def plot_statistical_indicators_profiles(
             self, percentiles_generated, epoch, n_samples
@@ -391,8 +402,10 @@ class GAN_Trainer():
     def train(self):
         self.get_train_loader()
         self.initialise_generator_and_discriminator()
-        losses_generator, losses_discriminator, losses_statistical_indicators, losses_sum_profiles \
-            = [], [], [], []
+        [
+            losses_generator, losses_discriminator, losses_statistical_indicators,
+            losses_sum_profiles,  mean_errs_1, std_errs_1, shares_large_err_1
+        ] = [[] for _ in range(7)]
         means_outputs, stds_outputs = [], []
         for epoch in tqdm(range(self.n_epochs)):
             for n, train_data in enumerate(self.train_loader):
@@ -400,7 +413,7 @@ class GAN_Trainer():
                 real_inputs, real_outputs = self.split_inputs_and_outputs(train_data)
                 loss_discriminator = self.train_discriminator(real_inputs, real_outputs)
                 final_n = n == len(self.train_loader) - 1
-                loss_generator, generated_outputs, loss_percentiles, loss_sum_profiles \
+                loss_generator, generated_outputs, loss_percentiles, loss_sum_profiles, mean_err_1, std_err_1, share_large_err_1 \
                     = self.train_generator(
                         real_inputs, real_outputs, final_n, epoch
                     )
@@ -410,11 +423,15 @@ class GAN_Trainer():
                 losses_discriminator.append(loss_discriminator.detach().numpy())
                 means_outputs.append(np.mean(generated_outputs.detach().numpy()))
                 stds_outputs.append(np.std(generated_outputs.detach().numpy()))
+                mean_errs_1.append(mean_err_1.detach().numpy())
+                std_errs_1.append(std_err_1.detach().numpy())
+                shares_large_err_1.append(share_large_err_1.detach().numpy())
             self.update_noise_and_lr_generator(epoch)
             if losses_statistical_indicators[-1] < 1e-1:
                 break
 
         self.plot_final_hist_generated_vs_real(generated_outputs, real_outputs, epoch)
+        self._plot_errors_normalisation_profiles(mean_errs_1, std_errs_1, shares_large_err_1)
 
         if len(losses_generator) == 0:
             print(
@@ -451,6 +468,22 @@ class GAN_Trainer():
             except Exception as ex2:
                 print(f"Could not save model weights: ex1 {ex1}, ex2 {ex2}")
 
+    def _plot_errors_normalisation_profiles(self, mean_errs_1, std_errs_1, shares_large_err_1):
+        if not self.prm['plots']:
+            return
+        title = f"{self.get_saving_label()} normalisation errors over time"
+        colours = sns.color_palette()
+        fig, ax = plt.subplots(3)
+        ax[0].plot(mean_errs_1, color=colours[0])
+        ax[0].set_title('mean error')
+        ax[1].plot(std_errs_1, color=colours[1])
+        ax[1].set_title('std error')
+        ax[2].plot(shares_large_err_1, color=colours[2])
+        ax[2].set_title('share large error > 1')
+        ax[2].set_xlabel("Epochs")
+        title = title.replace(' ', '_')
+        save_fig(fig, self.prm, self.save_path / title)
+        plt.close('all')
 
 class Discriminator(nn.Module):
     def __init__(self, size_inputs=1, nn_type='linear', dropout=0.3):
@@ -612,7 +645,8 @@ def compute_profile_generators(
         'profiles': True,
         'batch_size': 100,
         'n_epochs': int(9e7 / len(profiles)),
-        'weight_sum_profiles': 1e-3 * 10 * 10,
+        # 'n_epochs': 1000,
+        'weight_sum_profiles': 1e-3 * 10 * 10 * 1e-6,
         'weight_diff_percentiles': 100,
         'size_input_discriminator_one_item': prm['n'],
         'size_output_generator_one_item': prm['n'],

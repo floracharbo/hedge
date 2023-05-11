@@ -31,7 +31,7 @@ test_factor_distr: False
 candidate_factor_distributions:
 save_intermediate_outs: True  # this makes the data generation more tractable
 max_size_chunk: 5.e+6  # reduce the size of individual data chunks that are processed to reduce RAM requirements.
-gan_generation_profiles: False
+gan_generation_profiles: True
 
 kurtosis: False
 brackets_definition: 'percentile'
