@@ -14,7 +14,6 @@ import pickle
 import random
 from datetime import datetime, timedelta
 from pathlib import Path
-from sklearn.preprocessing import StandardScaler
 from typing import List, Optional, Tuple
 
 import matplotlib
@@ -24,6 +23,7 @@ import numpy as np
 import torch as th
 import yaml
 from scipy.stats import norm
+from sklearn.preprocessing import StandardScaler
 
 from src.utils import f_to_interval, initialise_dict, list_potential_paths
 

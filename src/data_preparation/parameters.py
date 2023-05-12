@@ -117,7 +117,9 @@ def _update_paths(prm: dict, run_config: dict) \
         -> dict:
     prm["save_hedge"] = Path("data") / "hedge_inputs" / f"{run_id(run_config)}"
     prm['paths']["input_folder"] = Path(prm['paths']["input_folder"])
-    prm['paths']['hedge_inputs'] = prm['paths']["input_folder"] / prm['paths']['hedge_inputs_folder'] / f"n{run_config['syst']['H']}"
+    prm['paths']['hedge_inputs'] = \
+        prm['paths']["input_folder"] / prm['paths']['hedge_inputs_folder'] \
+        / f"n{run_config['syst']['H']}"
     prm["save_other"] = Path("data") / "other_outputs" / f"{run_id(run_config)}"
     prm["homes_path"] = {}  # the path to the file with homes information
     for data_source in prm["data_sources"]:
