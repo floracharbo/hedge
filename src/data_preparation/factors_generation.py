@@ -644,9 +644,8 @@ def compute_profile_generators(
     params = {
         'profiles': True,
         'batch_size': 100,
-        'n_epochs': int(9e7 / len(profiles)),
-        # 'n_epochs': 1000,
-        'weight_sum_profiles': 1e-3 * 10 * 10 * 1e-6,
+        'n_epochs': int(1e8 / len(profiles)),
+        'weight_sum_profiles': 1e-7,
         'weight_diff_percentiles': 100,
         'size_input_discriminator_one_item': prm['n'],
         'size_output_generator_one_item': prm['n'],
