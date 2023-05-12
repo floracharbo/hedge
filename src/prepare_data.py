@@ -16,7 +16,7 @@ import datetime
 
 import torch
 
-from src.data_preparation.clustering import clustering
+from src.data_preparation.clustering import Clusterer
 from src.data_preparation.importer import import_data
 from src.data_preparation.parameters import get_parameters
 from src.data_preparation.scaling_factors import scaling_factors
@@ -37,7 +37,8 @@ if __name__ == "__main__":
 
     # 2 - clustering - for demand and transport
     print("(2) clustering")
-    banks = clustering(days, prm, n_data_type)
+    clusterer = Clusterer(prm)
+    banks = clusterer.clustering(days, n_data_type)
     dtm_3 = datetime.datetime.now()
     print(f"(2) done clustering in {(dtm_3 - dtm_2)/60} minutes")
 
