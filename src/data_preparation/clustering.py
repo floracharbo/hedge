@@ -689,10 +689,10 @@ class Clusterer:
         for n_consecutive_days in self.prm['n_consecutive_days']:
             print(f"clustering with {n_consecutive_days} consecutive days")
             self._initialise_cluster_transition_dicts(n_consecutive_days)
-            enough_data = {}
+            self.enough_data = {}
             for data_type in self.behaviour_types:
                 print(f"data_type {data_type}")
-                enough_data[data_type] = True
+                self.enough_data[data_type] = True
                 for day_type in self.weekday_types:
                     print(f"day_type {day_type}")
                     if not self.done_clustering[data_type][day_type]:
