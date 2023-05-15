@@ -329,8 +329,8 @@ class GAN_Trainer():
             title += "over time"
             if self.normalised:
                 title += ' normalised'
-            assert len(episodes['losses_generator']) > 0
-            assert len(episodes['losses_discriminator']) > 0
+            assert len(episodes['loss_generator']) > 0
+            assert len(episodes['loss_discriminator']) > 0
             colours = sns.color_palette()
             fig, ax = plt.subplots()
             twin = ax.twinx()
@@ -408,7 +408,6 @@ class GAN_Trainer():
             ]
         }
         idx = 0
-        means_outputs, stds_outputs = [], []
         for epoch in tqdm(range(self.n_epochs)):
             for n, train_data in enumerate(self.train_loader):
                 idx += 1
@@ -418,19 +417,18 @@ class GAN_Trainer():
                 final_n = n == len(self.train_loader) - 1
                 generated_outputs, episode = self.train_generator(real_inputs, final_n, epoch)
                 for key in episode:
-                    print(key)
                     episodes[key][idx] = episode[key].detach().numpy()
 
             self.update_noise_and_lr_generator(epoch)
-            if losses_statistical_indicators[-1] < 1e-1:
+            if episodes['loss_percentiles'][(epoch + 1) * n_train_loader] < 1e-1:
                 break
 
         self.plot_final_hist_generated_vs_real(generated_outputs, real_outputs, epoch)
         self._plot_errors_normalisation_profiles(episodes)
 
-        if len(episodes['losses_generator']) == 0:
+        if len(episodes['loss_generator']) == 0:
             print(
-                f"len(losses_generator) {len(episodes['losses_generator'])} for "
+                f"len(losses_generator) {len(episodes['loss_generator'])} for "
                 f"{self.data_type} {self.value_type} {self.day_type}"
             )
         else:
@@ -466,11 +464,11 @@ class GAN_Trainer():
         title = f"{self.get_saving_label()} normalisation errors over time"
         colours = sns.color_palette()
         fig, ax = plt.subplots(3)
-        ax[0].plot(episodes['mean_errs_1'], color=colours[0])
+        ax[0].plot(episodes['mean_err_1'], color=colours[0])
         ax[0].set_title('mean error')
-        ax[1].plot(episodes['std_errs_1'], color=colours[1])
+        ax[1].plot(episodes['std_err_1'], color=colours[1])
         ax[1].set_title('std error')
-        ax[2].plot(episodes['shares_large_err_1'], color=colours[2])
+        ax[2].plot(episodes['share_large_err_1'], color=colours[2])
         ax[2].set_title('share large error > 1')
         ax[2].set_xlabel("Epochs")
         title = title.replace(' ', '_')

@@ -724,7 +724,7 @@ class Clusterer:
 
         # transitions probabilities
         self._save_clustering()
-        if len(self.banks['loads']['wd2wd'][f'f0of{n_consecutive_days}']) == 0:
+        if 'loads' in self.data_types and len(self.banks['loads']['wd2wd'][f'f0of{n_consecutive_days}']) == 0:
             print(f"len(self.banks['loads']['wd2wd'][f0of{n_consecutive_days}]) == 0 in clustering")
 
         return self.banks
