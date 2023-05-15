@@ -403,7 +403,8 @@ class GAN_Trainer():
         episodes = {
             info: np.zeros(self.n_epochs * n_train_loader) for info in [
                 'loss_generator', 'loss_discriminator', 'loss_percentiles',
-                'loss_sum_profiles',  'mean_err_1', 'std_err_1', 'share_large_err_1'
+                'loss_sum_profiles',  'mean_err_1', 'std_err_1', 'share_large_err_1',
+                'means_outputs', 'stds_outputs'
             ]
         }
         idx = 0
