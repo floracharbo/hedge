@@ -590,7 +590,7 @@ class Clusterer:
         path = save_path / "clusters"
         for info in [
             "p_clus", "p_trans", "min_cdfs", "max_cdfs", "clus_dist_bin_edges", "clus_dist_cdfs",
-            "fitted_kmeans_obj", "fitted_scaler"
+            "fitted_kmeans_obj", "fitted_scalers"
         ]:
             with open(path / f"{info}.pickle", "wb") as file:
                 pickle.dump(getattr(self, info), file)
