@@ -155,12 +155,12 @@ class Clusterer:
         for info in ['n_trans', 'p_trans']:
             setattr(self, info, {data_type: {} for data_type in ["loads", "car"]})
 
-            for data_type in ["loads", "car"]:
+            for data_type in self.behaviour_types:
                 self.__dict__[info][data_type] = {day_trans: [] for day_trans in self.day_trans}
 
-            for transition in self.day_trans:
-                for i in range(n_consecutive_days):
-                    self.banks[data_type][transition][f"f{i}of{n_consecutive_days}"] = []
+                for transition in self.day_trans:
+                    for i in range(n_consecutive_days):
+                        self.banks[data_type][transition][f"f{i}of{n_consecutive_days}"] = []
 
     def _cluster_data_and_day_type(self, data_type, day_type, days):
         days_ = days[f"{data_type}_{day_type}"]
