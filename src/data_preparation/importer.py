@@ -22,7 +22,7 @@ from src.data_preparation.define_blocks import (get_data_chunks, get_n_rows,
 from src.data_preparation.filling_in import fill_whole_days
 from src.data_preparation.import_homes_data import import_homes_data
 from src.utils import (data_id, empty, formatting, get_granularity,
-                       initialise_dict, obtain_time)
+                       initialise_dict, list_potential_paths, obtain_time)
 
 
 def keep_column(dtm_no: list, start_avail: list,
@@ -56,16 +56,12 @@ def tag_availability(
         # the first trip does not depart from home,
         # i.e. the car was not at home before the first trip
         if list_current["purposeFrom"][0] != i_home:
-            current["avail"][0: list_current["i_start"][0]] \
-                = [0] * list_current["i_start"][0]
+            current["avail"][0: list_current["i_start"][0]] = np.zeros(list_current["i_start"][0])
         for step in range(n_trips - 1):  # after all trips but last one
             if list_current["purposeTo"][step] != i_home:
                 # if the trip does not finish at home
-                current_trip, next_trip = [list_current["i_start"][idx]
-                                           for idx in [step, step + 1]]
-                current["avail"][current_trip: next_trip] = [0] * int(
-                    next_trip - current_trip
-                )
+                current_trip, next_trip = list_current["i_start"][step: step + 2]
+                current["avail"][current_trip: next_trip] = np.zeros(next_trip - current_trip)
 
                 for step in range(len(current["avail"])):
                     if current["dist"][step] > 0:
@@ -74,12 +70,12 @@ def tag_availability(
         if list_current["purposeTo"][n_trips - 1] != i_home:
             # after the last one, the car is back home and available
             idx = list_current["i_start"][n_trips - 1]
-            current["avail"][idx: n_time_steps] = [1] * (n_time_steps - idx)
+            current["avail"][idx: n_time_steps] = np.ones(n_time_steps - idx)
     else:
         # if there are no trips,
         # make sure the car is set as always available
         # rather than never available
-        current["avail"] = [1 for _ in range(n_time_steps)]
+        current["avail"] = np.ones(n_time_steps)
 
     return current
 
@@ -193,13 +189,16 @@ def get_days_clnr(
     if len(sequences) == 0:
         print("len(sequences) == 0")
 
+    print(f"before filling in days {data_type}, len(days) = {len(days)}")
     # get whole days only - fill in if only one missing
     days, to_throw, abs_error, types_replaced_eval = fill_whole_days(
         prm, days, data_type, sequences, save_path
     )
+    print(f"after filling in days {data_type}, len(days) = {len(days)}")
 
     del sequences
     days = remove_incomplete_days(days, to_throw, prm["n"])
+    print(f"after removing incomplete days {data_type}, len(days) = {len(days)}")
 
     return days, abs_error, types_replaced_eval
 
@@ -233,13 +232,17 @@ def add_day_nts(
         print(f"current['dist'] = {current['dist']}")
 
     # enter in days
-    day = {}
-    for key in prm["NTS_day_keys"]:
-        day[key] = current[key]
-    assert len(day["car"]) == prm["n"], \
-        f"error len(day['car']) = {len(day['car'])}"
-    day["id"] = int(id_)
-    days.append(day)
+    if (
+            np.max(current['car']) < prm['car']['max_power_cutoff']
+            and np.sum(current['car']) < prm['car']['max_daily_energy_cutoff']
+    ):
+        day = {}
+        for key in prm["NTS_day_keys"]:
+            day[key] = current[key]
+        assert len(day["car"]) == prm["n"], \
+            f"error len(day['car']) = {len(day['car'])}"
+        day["id"] = int(id_)
+        days.append(day)
 
     if step == len(sequence["dist"]) - 1 and sequence["weekday"][step] != 7:
         # missing day(s) with no trips at the end of the week
@@ -726,11 +729,19 @@ def import_segment(
 ) -> list:
     """In parallel or sequentially, import and process block of data."""
     data_id_ = data_id(prm, data_type)
-    if all(
-            (prm["outs_path"] / f"{label}_{data_id_}_{chunk_rows[0]}_{chunk_rows[1]}.pickle").is_file()
-            for label in prm["outs_labels"]
+    potential_paths_outs = list_potential_paths(prm, [data_type])
+    if any(
+            all(
+                (
+                    potential_path / f"{label}_{data_id_}_{chunk_rows[0]}_{chunk_rows[1]}.pickle"
+                ).is_file()
+                for label in prm["outs_labels"]
+            )
+            for potential_path in potential_paths_outs
     ):
-        print(f"load previous out {chunk_rows[0]} -> {chunk_rows[1]}")
+        # the second one is a folder with all data types
+        if chunk_rows[0] == 0:
+            print("load previously saved chunks of data")
         return [None] * 7
 
     data_source = prm["data_type_source"][data_type]
@@ -750,8 +761,7 @@ def import_segment(
     )
 
     # 2 - split into sequences of subsequent times
-    sequences, granularities = get_sequences(
-        prm, data, data_type)
+    sequences, granularities = get_sequences(prm, data, data_type)
     del data
 
     # 3 - convert into days of data at adequate granularity
@@ -894,7 +904,6 @@ def import_data(
         # savings paths
         n_data_type_path \
             = prm["save_other"] / f"n_dt0_{data_id(prm, data_type)}.npy"
-
         if prm["n_rows"][data_type] == "all":
             prm["n_rows"][data_type] = get_n_rows(data_type, prm)
         chunks_rows = get_data_chunks(prm, data_type)
@@ -918,10 +927,6 @@ def import_data(
         )
         n_data_type[data_type] = len(days[data_type])
 
-        # save days for next time
-        # print("save days")
-        # with open(day0_path, "wb") as file:
-        #     pickle.dump(days[data_type], file)
         np.save(n_data_type_path, n_data_type[data_type])
 
         assert len(days[data_type]) > 0, \

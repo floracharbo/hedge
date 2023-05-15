@@ -1,8 +1,11 @@
 """User-defined tool functions used in the project."""
 
 import datetime
+import os
+from pathlib import Path
 from typing import List
 
+import matplotlib as mpl
 import numpy as np
 import pandas as pd
 
@@ -145,14 +148,55 @@ def get_granularity(step_len: int,
 
 def data_id(prm, data_type):
     """Return string for identifying current data_type selection."""
-    return f"{data_type}_n_rows{prm['n_rows'][data_type]}_n{prm['n']}"
+    return f"{data_type}_n_rows{prm['n_rows'][data_type]}_n{prm['syst']['H']}"
+
+
+def list_potential_paths(
+        prm, data_types=['gen', 'loads', 'car'],
+        root_path='data',
+        data_folder='other_outputs',
+        sub_data_folder='outs'
+):
+    if 'n_rows0' not in prm:
+        prm['n_rows0'] = {data_type: 'all' for data_type in data_types}
+    potential_paths = []
+    for folder in os.listdir(Path(root_path) / data_folder):
+        if f"n{prm['syst']['H']}" in folder and all(f"{data_type}_{prm['n_rows0'][data_type]}" in folder for data_type in data_types):
+            potential_paths.append(Path("data") / data_folder / folder / sub_data_folder)
+    if all(prm['n_rows0'][data_type] == 'all' for data_type in data_types):
+        potential_paths.append(Path(root_path) / data_folder / f"n{prm['syst']['H']}" / sub_data_folder)
+
+    return potential_paths
 
 
 def run_id(prm):
     """Return an identifier to save the current run's results."""
-    run_id = f"n{prm['n']}"
-    if len(prm["data_types"]) < 3 or not all(n_rows == "all" for n_rows in prm['n_rows'].values()):
-        for data_type in prm["data_types"]:
-            run_id += f"_{data_type}_{prm['n_rows'][data_type]}"
+    data_types = prm['data_types'] if 'data_types' in prm else prm['syst']['data_types']
+    run_id = f"n{prm['syst']['H']}"
+    if len(data_types) < 3 or not all(n_rows == "all" for n_rows in prm['n_rows'].values()):
+        for data_type in data_types:
+            n_rows_str = prm['n_rows'][data_type] if isinstance(prm['n_rows'][data_type], str) \
+                else int(prm['n_rows'][data_type])
+            run_id += f"_{data_type}_{n_rows_str}"
 
     return run_id
+
+
+def f_to_interval(f, fs_brackets):
+    interval = np.where(f >= fs_brackets[:-1])[0][-1]
+
+    return interval
+
+
+def save_fig(fig, prm, save_path):
+    if prm['high_res']:
+        fig.savefig(f"{save_path}.pdf", bbox_inches='tight', format='pdf', dpi=1200)
+    else:
+        fig.savefig(save_path)
+
+
+def get_cmap():
+    cmap = mpl.cm.get_cmap('viridis').copy()
+    cmap.set_under(color='black')
+
+    return cmap

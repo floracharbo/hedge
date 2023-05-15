@@ -14,7 +14,9 @@ the reinforcement learning environment
 # import packages
 import datetime
 
-from src.data_preparation.clustering import clustering
+import torch
+
+from src.data_preparation.clustering import Clusterer
 from src.data_preparation.importer import import_data
 from src.data_preparation.parameters import get_parameters
 from src.data_preparation.scaling_factors import scaling_factors
@@ -25,6 +27,8 @@ if __name__ == "__main__":
     prm, run_config = get_parameters()
     dtm_1 = datetime.datetime.now()
 
+    print(f"torch.cuda.is_available() {torch.cuda.is_available()}")
+
     # 1 - import generation and electricity demand data
     print("(1) import profiles")
     days, n_data_type = import_data(prm)
@@ -33,7 +37,8 @@ if __name__ == "__main__":
 
     # 2 - clustering - for demand and transport
     print("(2) clustering")
-    banks = clustering(days, prm, n_data_type)
+    clusterer = Clusterer(prm)
+    banks = clusterer.clustering(days, n_data_type)
     dtm_3 = datetime.datetime.now()
     print(f"(2) done clustering in {(dtm_3 - dtm_2)/60} minutes")
 
@@ -44,4 +49,4 @@ if __name__ == "__main__":
     print(f"(3) done scaling factors in {(dtm_4 - dtm_3)/60} minutes")
 
     toc_dtm = datetime.datetime.now()
-    print(f"END. Total duration {(toc_dtm - tic_dtm)/60} minutes")
+    print(f"END. Total duration {(toc_dtm - tic_dtm).seconds/60} minutes")

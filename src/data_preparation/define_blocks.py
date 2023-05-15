@@ -14,17 +14,21 @@ import numpy as np
 import seaborn as sns
 
 from src.data_preparation.filling_in import stats_filling_in
-from src.utils import data_id, initialise_dict
+from src.utils import data_id, initialise_dict, list_potential_paths, save_fig
 
 
 def _load_out(prm, data_type, chunk_rows):
     out = []
     for label in prm["outs_labels"]:
-        with open(
-                prm["outs_path"] / f"{label}_{data_id(prm, data_type)}_{chunk_rows[0]}_{chunk_rows[1]}.pickle",
-                "rb"
-        ) as file:
-            out.append(pickle.load(file))
+        file_name = f"{label}_{data_id(prm, data_type)}_{chunk_rows[0]}_{chunk_rows[1]}.pickle"
+        potential_paths = list_potential_paths(prm, [data_type])
+        for potential_path in potential_paths:
+            file_path = potential_path / file_name
+            if file_path.exists():
+                with open(file_path, "rb") as file:
+                    out.append(pickle.load(file))
+                break
+
     return out
 
 
@@ -175,16 +179,18 @@ def save_outs(outs, prm, data_type, chunks_rows):
             granularities
         )
 
-    if prm["do_heat_map"]:
+    if prm["do_heat_map"] and prm['plots']:
         if len(np.shape(all_data)) == 2:
             fig = plt.figure()
             ax = sns.heatmap(all_data)
-            ax.set_title("existing data trips")
-            fig.savefig(prm["save_other"] / f"existing_data_{data_type}")
+            ax.set_title("existing data")
+            fig_save_path = prm["save_other"] / f"existing_data_{data_type}"
+            save_fig(fig, prm, fig_save_path)
             plt.close("all")
 
         else:
             print(f"{data_type} np.shape(all_data) {np.shape(all_data)}")
+        print(f"np.sum(all_data) {np.sum(all_data)} {data_type}")
     if (
             prm["do_test_filling_in"]
             and prm["data_type_source"][data_type] == "CLNR"
@@ -210,7 +216,9 @@ def save_intermediate_out(prm, out, chunk_rows, data_type):
     if prm["save_intermediate_outs"]:
         for obj, label in zip(out, prm["outs_labels"]):
             with open(
-                prm["outs_path"] / f"{label}_{data_id(prm, data_type)}_{chunk_rows[0]}_{chunk_rows[1]}.pickle", "wb"
+                prm["outs_path"]
+                / f"{label}_{data_id(prm, data_type)}_{chunk_rows[0]}_{chunk_rows[1]}.pickle",
+                "wb"
             ) as file:
                 pickle.dump(obj, file)
         out = [None] * 7
@@ -225,9 +233,11 @@ def get_data_chunks(prm, data_type):
     Without interrupting id sequences.
     """
     unique_ids_path \
-        = prm["save_other"] / f"unique_ids_{data_type}_{prm['n_rows'][data_type]}.npy"
+        = prm["save_other"] \
+        / f"unique_ids_{data_type}_{prm['n_rows'][data_type]}.npy"
     chunks_path \
-        = prm["save_other"] / f"chunks_rows_{data_type}_{prm['n_rows'][data_type]}_max{prm['max_size_chunk']}.npy"
+        = prm["save_other"] \
+        / f"chunks_rows_{data_type}_{prm['n_rows'][data_type]}_max{prm['max_size_chunk']}.npy"
     if unique_ids_path.is_file() and chunks_path.is_file():
         # if the unique_ids have already been computed, load them
         chunks_rows = np.load(chunks_path)

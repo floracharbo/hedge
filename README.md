@@ -49,9 +49,11 @@ make install
 ```sh
 python3 -m src/prepare_data.py
 ```
-Note that this step takes some time due to the large size of the datasets (e.g. ~1 day for hourly resolution data, as performed on an Intel(R) Core(TM) i7-9800X CPU @ 3.80 GHz). If you hit RAM issues and the code is unable to run on your machine, you may find that reducing `max_size_chunk` in `config_parameters/data_preparation_config.yaml` may help (though this will increase run time).
+Note that this step takes some time due to the large size of the datasets (e.g. ~1 day for hourly resolution data, as performed on an Intel(R) Core(TM) i7-9800X CPU @ 3.80 GHz). 
 
-### B. Using the HEDGE tool
+If you hit RAM issues and the code is unable to run on your machine, you may find that reducing `max_size_chunk` in `config_parameters/data_preparation_config.yaml` may help (though this will increase run time). Alternatively, you can run the code for one data type at a time (setting this in `config_parameters/data_preparation_config.yaml`, `data_types`).
+
+### B. Using the HEDGE tool (example in `test_hedge.py`)
 1. Inputs personal parameters in `config_parameters/hedge_config.yaml`
 2. Import home energy data generator object
 `from src.hedge import HEDGE`
@@ -70,11 +72,11 @@ other optional inputs are:
 `day = data_generator.load_next_day()`
 
 where day contains the following entries:
-- day['avail_car'] (n_homes, n) integers 0 for unavailable, 1 for available]
+- `day['avail_car']` (`n_homes` x `n`) integers 0 for unavailable, 1 for available]
   where n was defined in run_config.yaml as the number of time intervals per day
-- day['loads_car'] (n_homes, n) car consumption in kWh for each time interval of the day
-- day['gen'] (n_homes, n) PV generation in kWh for each time interval of the day
-- day['loads'] (n_homes, n) household consumption in kWh for each time interval of the day
+- `day['loads_car']` (`n_homes` x `n`) car consumption in kWh for each time interval of the day
+- `day['gen']` (`n_homes` x `n`) PV generation in kWh for each time interval of the day
+- `day['loads']` (`n_homes` x `n`) household consumption in kWh for each time interval of the day
 
 an optional parameter to this method is `plotting`, which will save plots of the data that has been generated for each home.
 

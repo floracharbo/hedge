@@ -78,10 +78,10 @@ def _load_data(
 ) -> Tuple[List[dict], dict, dict]:
     # if data was already loaded and computed before,
     # load it from the saved files
-    start_id, end_id, test_cell \
-        = [np.load(save_path / f"{label}.npy",
-                   allow_pickle=True).item()
-           for label in str_save]
+    start_id, end_id, test_cell = [
+        np.load(save_path / f"{label}.npy", allow_pickle=True).item()
+        for label in str_save
+    ]
 
     if data_source == "NTS":
         with open(save_path / "home_type_NTS.pickle", "rb") as file:
@@ -122,9 +122,9 @@ def import_homes_data(prm: dict) -> Tuple[dict, List[dict], dict]:
             make_homes_data = True
 
         if make_homes_data:
-            start_end_id, test_cell, home_type_ \
-                = _make_data(
-                    prm, data_source, test_cell, str_save)
+            start_end_id, test_cell, home_type_ = _make_data(
+                prm, data_source, test_cell, str_save
+            )
             if data_source == "NTS":
                 home_type = home_type_
         else:
