@@ -126,8 +126,7 @@ class Clusterer:
 
             # obtain length of bank for each day type
             for day_type in self.weekday_types:
-                self.n_day_type[data_type][day_type] = len(
-                    days[f"{data_type}_{day_type}"])
+                self.n_day_type[data_type][day_type] = len(days[f"{data_type}_{day_type}"])
 
         return days
 
@@ -256,7 +255,7 @@ class Clusterer:
         fitted_scaler = StandardScaler().fit(features)
         transformed_features = fitted_scaler.transform(features)
 
-        self.fitted_scaler[data_type][day_type] = fitted_scaler
+        self.fitted_scalers[data_type][day_type] = fitted_scaler
 
         return transformed_features, to_cluster, i_zeros, norm_vals, ev_avail
 
@@ -329,8 +328,8 @@ class Clusterer:
             # matching each distance data point to its bin probability
             all_cdfs = [cdfs[np.where(dist >= bins_edges[:-1])[0][-1]] for dist in distance]
             bank[i]["cdfs"] = all_cdfs
-            min_cdfs_.append(all_cdfs[0])
-            max_cdfs_.append(all_cdfs[-1])
+            min_cdfs_.append(np.min(all_cdfs))
+            max_cdfs_.append(np.max(all_cdfs))
 
         return bank, min_cdfs_, max_cdfs_, bins_edges_, cdfs_
 
@@ -531,7 +530,7 @@ class Clusterer:
                 self.p_clus[data_type][day_type] = pcluss
 
     def _get_p_clus(self, vals_k, day_type, data_type, n_zeros):
-        n_days = self.n_day_type[data_type][day_type],
+        n_days = self.n_day_type[data_type][day_type]
         n_clus = max(list(vals_k.keys())) + 1
         self.n_clus_all[data_type] = (
             n_clus
