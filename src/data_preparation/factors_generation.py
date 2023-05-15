@@ -1,4 +1,5 @@
 import math
+import pickle
 import sys
 
 import matplotlib.pyplot as plt
@@ -7,10 +8,9 @@ import seaborn as sns
 import torch as th
 from torch import nn
 from tqdm import tqdm
-import pickle
 
-from src.utils import save_fig
 from src.hedge import car_loads_to_availability
+from src.utils import save_fig
 
 th.manual_seed(111)
 
@@ -213,19 +213,20 @@ class GAN_Trainer():
 
         return percentiles_generated, generated_samples_2d, n_samples
 
-    def train_generator(self, real_inputs, real_outputs, final_n, epoch):
+    def train_generator(self, real_inputs, final_n, epoch):
+        episode = {}
         self.generator.zero_grad()
         generated_outputs = self.generator(real_inputs.to(th.float32))
         generated_samples, _ = self.merge_inputs_and_outputs(real_inputs, generated_outputs)
         output_discriminator_generated = self.discriminator(generated_samples)
-        loss_generator = self.loss_function(
+        episode['loss_generator'] = self.loss_function(
             output_discriminator_generated, self.get_real_samples_labels()
         )
         percentiles_generated, generated_samples_2d, n_samples \
             = self._compute_statistical_indicators_generated_profiles(generated_samples)
-        loss_percentiles = 0
+        episode['loss_percentiles'] = 0
         for key in ['p10', 'p25', 'p50', 'mean', 'p75', 'p90']:
-            loss_percentiles += th.sum(
+            episode['loss_percentiles'] += th.sum(
                 th.square(
                     percentiles_generated[key]
                     - th.from_numpy(self.percentiles_inputs[self.k][key])
@@ -238,10 +239,10 @@ class GAN_Trainer():
                 for i in range(self.n_items_generated)
             ]
         )  for j in range(self.batch_size_)])
-        mean_err_1 = th.mean(divergences_from_1)
-        std_err_1 = th.std(divergences_from_1)
-        share_large_err_1 = th.sum(divergences_from_1 > 1)/(self.n_items_generated * self.batch_size_)
-        loss_sum_profiles = th.sum(
+        episode['mean_err_1'] = th.mean(divergences_from_1)
+        episode['std_err_1'] = th.std(divergences_from_1)
+        episode['share_large_err_1'] = th.sum(divergences_from_1 > 1)/(self.n_items_generated * self.batch_size_)
+        episode['loss_sum_profiles'] = th.sum(
             th.stack(
                 [th.stack(
                 [
@@ -250,16 +251,19 @@ class GAN_Trainer():
                 ]
             )  for j in range(self.batch_size_)])
         ) * self.weight_sum_profiles
-        loss_generator += loss_percentiles + loss_sum_profiles
+        episode['loss_generator'] += episode['loss_percentiles'] + episode['loss_sum_profiles']
 
-        loss_generator.backward()
+        episode['loss_generator'].backward()
         self.optimizer_generator.step()
         if final_n and epoch % 10 == 0:
             self.plot_statistical_indicators_profiles(
                 percentiles_generated, epoch, n_samples
             )
+        episode['means_outputs'] = th.mean(generated_outputs)
+        episode['stds_outputs'] = th.std(generated_outputs)
 
-        return loss_generator, generated_outputs, loss_percentiles, loss_sum_profiles, mean_err_1, std_err_1, share_large_err_1
+        return generated_outputs, episode
+
 
     def plot_statistical_indicators_profiles(
             self, percentiles_generated, epoch, n_samples
@@ -319,34 +323,27 @@ class GAN_Trainer():
         for g in self.optimizer_discriminator.param_groups:
             g['lr'] = self.lr_start * self.lr_decay ** epoch
 
-    def plot_losses_over_time(
-            self, losses_generator, losses_discriminator,
-            losses_statistical_indicators, losses_sum_profiles,
-            means_outputs, stds_outputs
-    ):
+    def plot_losses_over_time(self, episodes):
         if self.prm['plots']:
             title = f"{self.get_saving_label()} losses "
             title += "over time"
             if self.normalised:
                 title += ' normalised'
-            if len(losses_generator) == 0:
-                print("error")
-            assert len(losses_generator) > 0
-            assert len(losses_discriminator) > 0
+            assert len(episodes['losses_generator']) > 0
+            assert len(episodes['losses_discriminator']) > 0
             colours = sns.color_palette()
             fig, ax = plt.subplots()
             twin = ax.twinx()
-            losses = [losses_generator, losses_statistical_indicators, losses_sum_profiles]
-            labels = ["losses_generator", "losses_statistical_indicators", "losses_sum_profiles"]
+            labels = ["loss_generator", "loss_percentiles", "loss_sum_profiles"]
             alphas = [1, 0.5, 0.5]
             ps = []
-            for i, (loss, label, alpha) in enumerate(zip(losses, labels, alphas)):
-                p, = ax.plot(loss, color=colours[i], label=label, alpha=alpha)
+            for i, (label, alpha) in enumerate(zip(labels, alphas)):
+                p, = ax.plot(episodes[label], color=colours[i], label=label, alpha=alpha)
                 ps.append(p)
                 with open(self.save_path / f"{label}.pickle", 'wb') as file:
-                    pickle.dump(loss, file)
+                    pickle.dump(episodes[label], file)
             p3, = twin.plot(
-                losses_discriminator, color=colours[3], label="losses_discriminator"
+                episodes['loss_discriminator'], color=colours[3], label="Discriminator losses"
             )
             ax.set_xlabel("Epochs")
             ax.set_ylabel("Generator losses")
@@ -401,53 +398,46 @@ class GAN_Trainer():
 
     def train(self):
         self.get_train_loader()
+        n_train_loader = len(self.train_loader)
         self.initialise_generator_and_discriminator()
-        [
-            losses_generator, losses_discriminator, losses_statistical_indicators,
-            losses_sum_profiles,  mean_errs_1, std_errs_1, shares_large_err_1
-        ] = [[] for _ in range(7)]
+        episodes = {
+            info: np.zeros(self.n_epochs * n_train_loader) for info in [
+                'loss_generator', 'loss_discriminator', 'loss_percentiles',
+                'loss_sum_profiles',  'mean_err_1', 'std_err_1', 'share_large_err_1'
+            ]
+        }
+        idx = 0
         means_outputs, stds_outputs = [], []
         for epoch in tqdm(range(self.n_epochs)):
             for n, train_data in enumerate(self.train_loader):
+                idx += 1
                 self.batch_size_ = len(train_data)
                 real_inputs, real_outputs = self.split_inputs_and_outputs(train_data)
-                loss_discriminator = self.train_discriminator(real_inputs, real_outputs)
+                episodes['loss_discriminator'][idx] = self.train_discriminator(real_inputs, real_outputs)
                 final_n = n == len(self.train_loader) - 1
-                loss_generator, generated_outputs, loss_percentiles, loss_sum_profiles, mean_err_1, std_err_1, share_large_err_1 \
-                    = self.train_generator(
-                        real_inputs, real_outputs, final_n, epoch
-                    )
-                losses_generator.append(loss_generator.detach().numpy())
-                losses_statistical_indicators.append(loss_percentiles.detach().numpy())
-                losses_sum_profiles.append(loss_sum_profiles.detach().numpy())
-                losses_discriminator.append(loss_discriminator.detach().numpy())
-                means_outputs.append(np.mean(generated_outputs.detach().numpy()))
-                stds_outputs.append(np.std(generated_outputs.detach().numpy()))
-                mean_errs_1.append(mean_err_1.detach().numpy())
-                std_errs_1.append(std_err_1.detach().numpy())
-                shares_large_err_1.append(share_large_err_1.detach().numpy())
+                generated_outputs, episode = self.train_generator(real_inputs, final_n, epoch)
+                for key in episode:
+                    print(key)
+                    episodes[key][idx] = episode[key].detach().numpy()
+
             self.update_noise_and_lr_generator(epoch)
             if losses_statistical_indicators[-1] < 1e-1:
                 break
 
         self.plot_final_hist_generated_vs_real(generated_outputs, real_outputs, epoch)
-        self._plot_errors_normalisation_profiles(mean_errs_1, std_errs_1, shares_large_err_1)
+        self._plot_errors_normalisation_profiles(episodes)
 
-        if len(losses_generator) == 0:
+        if len(episodes['losses_generator']) == 0:
             print(
-                f"len(losses_generator) {len(losses_generator)} for "
+                f"len(losses_generator) {len(episodes['losses_generator'])} for "
                 f"{self.data_type} {self.value_type} {self.day_type}"
             )
         else:
-            self.plot_losses_over_time(
-                losses_generator, losses_discriminator,
-                losses_statistical_indicators, losses_sum_profiles,
-                means_outputs, stds_outputs
-            )
+            self.plot_losses_over_time(episodes)
         self.plot_noise_over_time()
         print(
-            f"mean generated outputs last 10: {np.mean(means_outputs[-10:])}, "
-            f"std {np.mean(stds_outputs[-10:])}"
+            f"mean generated outputs last 10: {np.mean(episodes['means_outputs'][-10:])}, "
+            f"std {np.mean(episodes['stds_outputs'][-10:])}"
         )
         try:
             th.save(
@@ -468,22 +458,24 @@ class GAN_Trainer():
             except Exception as ex2:
                 print(f"Could not save model weights: ex1 {ex1}, ex2 {ex2}")
 
-    def _plot_errors_normalisation_profiles(self, mean_errs_1, std_errs_1, shares_large_err_1):
+    def _plot_errors_normalisation_profiles(self, episodes):
         if not self.prm['plots']:
             return
+
         title = f"{self.get_saving_label()} normalisation errors over time"
         colours = sns.color_palette()
         fig, ax = plt.subplots(3)
-        ax[0].plot(mean_errs_1, color=colours[0])
+        ax[0].plot(episodes['mean_errs_1'], color=colours[0])
         ax[0].set_title('mean error')
-        ax[1].plot(std_errs_1, color=colours[1])
+        ax[1].plot(episodes['std_errs_1'], color=colours[1])
         ax[1].set_title('std error')
-        ax[2].plot(shares_large_err_1, color=colours[2])
+        ax[2].plot(episodes['shares_large_err_1'], color=colours[2])
         ax[2].set_title('share large error > 1')
         ax[2].set_xlabel("Epochs")
         title = title.replace(' ', '_')
         save_fig(fig, self.prm, self.save_path / title)
         plt.close('all')
+
 
 class Discriminator(nn.Module):
     def __init__(self, size_inputs=1, nn_type='linear', dropout=0.3):
