@@ -232,26 +232,27 @@ class GAN_Trainer():
                     - th.from_numpy(self.percentiles_inputs[self.k][key])
                 )
             ) * self.weight_diff_percentiles
-        divergences_from_1 = th.stack(
-            [th.stack(
-            [
-                abs(th.sum(generated_samples[j, i * self.prm['n']: (i + 1) * self.prm['n']]) - 1)
-                for i in range(self.n_items_generated)
-            ]
-        )  for j in range(self.batch_size_)])
-        episode['mean_err_1'] = th.mean(divergences_from_1)
-        episode['std_err_1'] = th.std(divergences_from_1)
-        episode['share_large_err_1'] = th.sum(divergences_from_1 > 1)/(self.n_items_generated * self.batch_size_)
-        episode['loss_sum_profiles'] = th.sum(
-            th.stack(
-                [th.stack(
-                [
-                    (th.sum(generated_samples[j, i * self.prm['n']: (i + 1) * self.prm['n']]) - 1) ** 2
-                    for i in range(self.n_items_generated)
-                ]
-            )  for j in range(self.batch_size_)])
-        ) * self.weight_sum_profiles
-        episode['loss_generator'] += episode['loss_percentiles'] + episode['loss_sum_profiles']
+        # divergences_from_1 = th.stack(
+        #     [th.stack(
+        #     [
+        #         abs(th.sum(generated_samples[j, i * self.prm['n']: (i + 1) * self.prm['n']]) - 1)
+        #         for i in range(self.n_items_generated)
+        #     ]
+        # )  for j in range(self.batch_size_)])
+        # episode['mean_err_1'] = th.mean(divergences_from_1)
+        # episode['std_err_1'] = th.std(divergences_from_1)
+        # episode['share_large_err_1'] = th.sum(divergences_from_1 > 1)/(self.n_items_generated * self.batch_size_)
+        # episode['loss_sum_profiles'] = th.sum(
+        #     th.stack(
+        #         [th.stack(
+        #         [
+        #             (th.sum(generated_samples[j, i * self.prm['n']: (i + 1) * self.prm['n']]) - 1) ** 2
+        #             for i in range(self.n_items_generated)
+        #         ]
+        #     )  for j in range(self.batch_size_)])
+        # ) * self.weight_sum_profiles
+        episode['loss_generator'] += episode['loss_percentiles']
+                                     # + episode['loss_sum_profiles']
 
         episode['loss_generator'].backward()
         self.optimizer_generator.step()
@@ -323,27 +324,26 @@ class GAN_Trainer():
         for g in self.optimizer_discriminator.param_groups:
             g['lr'] = self.lr_start * self.lr_decay ** epoch
 
-    def plot_losses_over_time(self, episodes):
+    def plot_losses_over_time(self, episodes, epoch):
         if self.prm['plots']:
             title = f"{self.get_saving_label()} losses "
             title += "over time"
             if self.normalised:
                 title += ' normalised'
-            assert len(episodes['loss_generator']) > 0
-            assert len(episodes['loss_discriminator']) > 0
             colours = sns.color_palette()
             fig, ax = plt.subplots()
             twin = ax.twinx()
-            labels = ["loss_generator", "loss_percentiles", "loss_sum_profiles"]
-            alphas = [1, 0.5, 0.5]
+            labels = ["loss_generator", "loss_percentiles"]
+            # , "loss_sum_profiles"]
+            alphas = [1, 0.5]
             ps = []
             for i, (label, alpha) in enumerate(zip(labels, alphas)):
-                p, = ax.plot(episodes[label], color=colours[i], label=label, alpha=alpha)
+                p, = ax.plot(episodes[label][:epoch], color=colours[i], label=label, alpha=alpha)
                 ps.append(p)
                 with open(self.save_path / f"{label}.pickle", 'wb') as file:
                     pickle.dump(episodes[label], file)
             p3, = twin.plot(
-                episodes['loss_discriminator'], color=colours[3], label="Discriminator losses"
+                episodes['loss_discriminator'][:epoch], color=colours[3], label="Discriminator losses"
             )
             ax.set_xlabel("Epochs")
             ax.set_ylabel("Generator losses")
@@ -351,7 +351,8 @@ class GAN_Trainer():
             twin.set_ylabel("Discriminator losses")
             ax.yaxis.label.set_color(ps[0].get_color())
             twin.yaxis.label.set_color(p3.get_color())
-            ax.legend(handles=[ps[0], ps[1], ps[2], p3])
+            ax.legend(handles=[ps[0], ps[1], p3])
+            ax.set_title(epoch)
             title = title.replace(' ', '_')
             save_fig(fig, self.prm, self.save_path / title)
             plt.close('all')
@@ -403,7 +404,7 @@ class GAN_Trainer():
         episodes = {
             info: np.zeros(self.n_epochs * n_train_loader) for info in [
                 'loss_generator', 'loss_discriminator', 'loss_percentiles',
-                'loss_sum_profiles',  'mean_err_1', 'std_err_1', 'share_large_err_1',
+                # 'loss_sum_profiles',  'mean_err_1', 'std_err_1', 'share_large_err_1',
                 'means_outputs', 'stds_outputs'
             ]
         }
@@ -420,11 +421,16 @@ class GAN_Trainer():
                     episodes[key][idx] = episode[key].detach().numpy()
 
             self.update_noise_and_lr_generator(epoch)
-            if episodes['loss_percentiles'][(epoch + 1) * n_train_loader] < 1e-1:
+            if epoch % 50 == 0:
+                self._save_model(ext=epoch)
+                # self._plot_errors_normalisation_profiles(episodes, epoch)
+                self.plot_losses_over_time(episodes, epoch)
+
+            if episodes['loss_percentiles'][(epoch + 1) * n_train_loader] < 9e-1:
                 break
 
         self.plot_final_hist_generated_vs_real(generated_outputs, real_outputs, epoch)
-        self._plot_errors_normalisation_profiles(episodes)
+        # self._plot_errors_normalisation_profiles(episodes, epoch)
 
         if len(episodes['loss_generator']) == 0:
             print(
@@ -432,44 +438,47 @@ class GAN_Trainer():
                 f"{self.data_type} {self.value_type} {self.day_type}"
             )
         else:
-            self.plot_losses_over_time(episodes)
+            self.plot_losses_over_time(episodes, epoch)
         self.plot_noise_over_time()
         print(
             f"mean generated outputs last 10: {np.mean(episodes['means_outputs'][-10:])}, "
             f"std {np.mean(episodes['stds_outputs'][-10:])}"
         )
+        self._save_model()
+
+    def _save_model(self, ext=''):
         try:
             th.save(
                 self.generator.model,
                 self.prm['save_hedge'] / 'profiles' / f"norm_{self.data_type}"
-                / f"generator_{self.data_type}_{self.day_type}_{self.k}.pt"
+                / f"generator_{self.data_type}_{self.day_type}_{self.k}{ext}.pt"
             )
         except Exception as ex1:
             try:
                 th.save(
                     self.generator.fc,
-                    self.save_path / f"generator_{self.get_saving_label()}_fc.pt"
+                    self.save_path / f"generator_{self.get_saving_label()}{ext}_fc.pt"
                 )
                 th.save(
                     self.generator.conv,
-                    self.save_path / f"generator_{self.get_saving_label()}_conv.pt"
+                    self.save_path / f"generator_{self.get_saving_label()}{ext}_conv.pt"
                 )
             except Exception as ex2:
                 print(f"Could not save model weights: ex1 {ex1}, ex2 {ex2}")
 
-    def _plot_errors_normalisation_profiles(self, episodes):
+    def _plot_errors_normalisation_profiles(self, episodes, epoch):
         if not self.prm['plots']:
             return
 
         title = f"{self.get_saving_label()} normalisation errors over time"
         colours = sns.color_palette()
         fig, ax = plt.subplots(3)
-        ax[0].plot(episodes['mean_err_1'], color=colours[0])
+        ax[0].plot(episodes['mean_err_1'][:epoch], color=colours[0])
         ax[0].set_title('mean error')
-        ax[1].plot(episodes['std_err_1'], color=colours[1])
-        ax[1].set_title('std error')
-        ax[2].plot(episodes['share_large_err_1'], color=colours[2])
-        ax[2].set_title('share large error > 1')
+        ax[1].plot(episodes['std_err_1'][:epoch], color=colours[1])
+        ax[1].set_title(f'std error {epoch}')
+        ax[2].plot(episodes['share_large_err_1'][:epoch], color=colours[2])
+        ax[2].set_title(f'share large error > 1 {epoch}')
         ax[2].set_xlabel("Epochs")
         title = title.replace(' ', '_')
         save_fig(fig, self.prm, self.save_path / title)
@@ -616,6 +625,8 @@ class Generator(nn.Module):
 
         noise = th.randn(output.shape) * self.noise_factor
         output = th.clamp(output + noise, min=0, max=1)
+        output = output.reshape(-1, 24)
+        output = th.div(output, th.sum(output, dim=1).reshape(-1, 1)).reshape(-1, self.size_outputs)
         # output = th.exp(output)
 
         return output
@@ -646,9 +657,9 @@ def compute_profile_generators(
         'n_items_generated': 50,
         'nn_type_generator': 'linear',
         'nn_type_discriminator': 'linear',
-        'noise0': 1,
+        'noise0': 0.1,
         'noise_end': 1e-4,
-        'lr_start': 0.01,
+        'lr_start': 0.1,
         'lr_end': 0.001,
         'dropout_discriminator': 0.3,
         'dropout_generator': 0.15,
