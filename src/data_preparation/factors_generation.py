@@ -157,6 +157,7 @@ class GAN_Trainer():
             noise0=self.noise0,
             noise_end=self.noise_end,
             dropout=self.dropout_generator,
+            data_type=self.data_type
         )
         self.discriminator = Discriminator(
             size_inputs=self.size_input_discriminator,
@@ -232,27 +233,29 @@ class GAN_Trainer():
                     - th.from_numpy(self.percentiles_inputs[self.k][key])
                 )
             ) * self.weight_diff_percentiles
-        # divergences_from_1 = th.stack(
-        #     [th.stack(
-        #     [
-        #         abs(th.sum(generated_samples[j, i * self.prm['n']: (i + 1) * self.prm['n']]) - 1)
-        #         for i in range(self.n_items_generated)
-        #     ]
-        # )  for j in range(self.batch_size_)])
-        # episode['mean_err_1'] = th.mean(divergences_from_1)
-        # episode['std_err_1'] = th.std(divergences_from_1)
-        # episode['share_large_err_1'] = th.sum(divergences_from_1 > 1)/(self.n_items_generated * self.batch_size_)
-        # episode['loss_sum_profiles'] = th.sum(
-        #     th.stack(
-        #         [th.stack(
-        #         [
-        #             (th.sum(generated_samples[j, i * self.prm['n']: (i + 1) * self.prm['n']]) - 1) ** 2
-        #             for i in range(self.n_items_generated)
-        #         ]
-        #     )  for j in range(self.batch_size_)])
-        # ) * self.weight_sum_profiles
         episode['loss_generator'] += episode['loss_percentiles']
-                                     # + episode['loss_sum_profiles']
+
+        if self.data_type != 'gen':
+            divergences_from_1 = th.stack(
+                [th.stack(
+                    [
+                        abs(th.sum(generated_samples[j, i * self.prm['n']: (i + 1) * self.prm['n']]) - 1)
+                        for i in range(self.n_items_generated)
+                    ]
+                ) for j in range(self.batch_size_)])
+            episode['mean_err_1'] = th.mean(divergences_from_1)
+            episode['std_err_1'] = th.std(divergences_from_1)
+            episode['share_large_err_1'] = th.sum(divergences_from_1 > 1)/(self.n_items_generated * self.batch_size_)
+            episode['loss_sum_profiles'] = th.sum(
+                th.stack(
+                    [th.stack(
+                    [
+                        (th.sum(generated_samples[j, i * self.prm['n']: (i + 1) * self.prm['n']]) - 1) ** 2
+                        for i in range(self.n_items_generated)
+                    ]
+                )  for j in range(self.batch_size_)])
+            ) * self.weight_sum_profiles
+            episode['loss_generator'] += episode['loss_sum_profiles']
 
         episode['loss_generator'].backward()
         self.optimizer_generator.step()
@@ -334,7 +337,8 @@ class GAN_Trainer():
             fig, ax = plt.subplots()
             twin = ax.twinx()
             labels = ["loss_generator", "loss_percentiles"]
-            # , "loss_sum_profiles"]
+            if self.data_type != 'gen':
+                labels.append("loss_sum_profiles")
             alphas = [1, 0.5]
             ps = []
             for i, (label, alpha) in enumerate(zip(labels, alphas)):
@@ -401,12 +405,14 @@ class GAN_Trainer():
         self.get_train_loader()
         n_train_loader = len(self.train_loader)
         self.initialise_generator_and_discriminator()
-        episodes = {
-            info: np.zeros(self.n_epochs * n_train_loader) for info in [
+        episode_entries = [
                 'loss_generator', 'loss_discriminator', 'loss_percentiles',
-                # 'loss_sum_profiles',  'mean_err_1', 'std_err_1', 'share_large_err_1',
                 'means_outputs', 'stds_outputs'
             ]
+        if self.data_type != 'gen':
+            episode_entries += ['loss_sum_profiles',  'mean_err_1', 'std_err_1', 'share_large_err_1']
+        episodes = {
+            info: np.zeros(self.n_epochs * n_train_loader) for info in episode_entries
         }
         idx = 0
         for epoch in tqdm(range(self.n_epochs)):
@@ -423,22 +429,17 @@ class GAN_Trainer():
             self.update_noise_and_lr_generator(epoch)
             if epoch % 50 == 0:
                 self._save_model(ext=epoch)
-                # self._plot_errors_normalisation_profiles(episodes, epoch)
+                if self.data_type != 'gen':
+                    self._plot_errors_normalisation_profiles(episodes, epoch)
                 self.plot_losses_over_time(episodes, epoch)
 
             if episodes['loss_percentiles'][(epoch + 1) * n_train_loader] < 9e-1:
                 break
 
         self.plot_final_hist_generated_vs_real(generated_outputs, real_outputs, epoch)
-        # self._plot_errors_normalisation_profiles(episodes, epoch)
-
-        if len(episodes['loss_generator']) == 0:
-            print(
-                f"len(losses_generator) {len(episodes['loss_generator'])} for "
-                f"{self.data_type} {self.value_type} {self.day_type}"
-            )
-        else:
-            self.plot_losses_over_time(episodes, epoch)
+        if self.data_type != 'gen':
+            self._plot_errors_normalisation_profiles(episodes, epoch)
+        self.plot_losses_over_time(episodes, epoch)
         self.plot_noise_over_time()
         print(
             f"mean generated outputs last 10: {np.mean(episodes['means_outputs'][-10:])}, "
@@ -447,21 +448,22 @@ class GAN_Trainer():
         self._save_model()
 
     def _save_model(self, ext=''):
+        path = self.prm['save_hedge'] / 'profiles' / f"norm_{self.data_type}" if ext == '' else self.save_path
         try:
             th.save(
                 self.generator.model,
-                self.prm['save_hedge'] / 'profiles' / f"norm_{self.data_type}"
+                path
                 / f"generator_{self.data_type}_{self.day_type}_{self.k}{ext}.pt"
             )
         except Exception as ex1:
             try:
                 th.save(
                     self.generator.fc,
-                    self.save_path / f"generator_{self.get_saving_label()}{ext}_fc.pt"
+                    path / f"generator_{self.get_saving_label()}{ext}_fc.pt"
                 )
                 th.save(
                     self.generator.conv,
-                    self.save_path / f"generator_{self.get_saving_label()}{ext}_conv.pt"
+                    path / f"generator_{self.get_saving_label()}{ext}_conv.pt"
                 )
             except Exception as ex2:
                 print(f"Could not save model weights: ex1 {ex1}, ex2 {ex2}")
@@ -483,7 +485,7 @@ class GAN_Trainer():
         title = title.replace(' ', '_')
         save_fig(fig, self.prm, self.save_path / title)
         plt.close('all')
-
+        print(f"episodes['share_large_err_1'][{epoch}] = {episodes['share_large_err_1'][epoch]}")
 
 class Discriminator(nn.Module):
     def __init__(self, size_inputs=1, nn_type='linear', dropout=0.3):
@@ -531,12 +533,14 @@ class Generator(nn.Module):
             noise0=1, noise_end=5e-2, n_epochs=100,
             batch_size=100,
             nn_type='linear',
-            dropout=0.3
+            dropout=0.3,
+            data_type='car'
     ):
         super().__init__()
 
         self.hidden_dim = 256
         self.n_layers = 2
+        self.data_type = data_type
         self._initialise_model(size_inputs, dropout, size_outputs, nn_type, batch_size)
         self.noise0 = noise0
         self.noise_reduction = math.exp(math.log(noise_end / noise0) / n_epochs)
@@ -625,8 +629,9 @@ class Generator(nn.Module):
 
         noise = th.randn(output.shape) * self.noise_factor
         output = th.clamp(output + noise, min=0, max=1)
-        output = output.reshape(-1, 24)
-        output = th.div(output, th.sum(output, dim=1).reshape(-1, 1)).reshape(-1, self.size_outputs)
+        if self.data_type == 'gen':
+            output = output.reshape(-1, 24)
+            output = th.div(output, th.sum(output, dim=1).reshape(-1, 1)).reshape(-1, self.size_outputs)
         # output = th.exp(output)
 
         return output
@@ -657,7 +662,7 @@ def compute_profile_generators(
         'n_items_generated': 50,
         'nn_type_generator': 'linear',
         'nn_type_discriminator': 'linear',
-        'noise0': 0.1,
+        'noise0': 1,
         'noise_end': 1e-4,
         'lr_start': 0.1,
         'lr_end': 0.001,
