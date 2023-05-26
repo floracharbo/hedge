@@ -257,6 +257,8 @@ class GAN_Trainer():
             ) * self.weight_sum_profiles
             episode['loss_generator'] += episode['loss_sum_profiles']
 
+        transformed_features = self._get_transformed_features(profile, data_type, fitted_kmeans_id)
+
         episode['loss_generator'].backward()
         self.optimizer_generator.step()
         if final_n and epoch % 10 == 0:
@@ -427,10 +429,10 @@ class GAN_Trainer():
                     episodes[key][idx] = episode[key].detach().numpy()
 
             self.update_noise_and_lr_generator(epoch)
-            if epoch % 50 == 0:
+            if epoch % 2 == 0:
                 self._save_model(ext=epoch)
                 if self.data_type != 'gen':
-                    self._plot_errors_normalisation_profiles(episodes, epoch)
+                    self._plot_errors_normalisation_profiles(episodes, idx)
                 self.plot_losses_over_time(episodes, epoch)
 
             if episodes['loss_percentiles'][(epoch + 1) * n_train_loader] < 9e-1:
@@ -438,7 +440,7 @@ class GAN_Trainer():
 
         self.plot_final_hist_generated_vs_real(generated_outputs, real_outputs, epoch)
         if self.data_type != 'gen':
-            self._plot_errors_normalisation_profiles(episodes, epoch)
+            self._plot_errors_normalisation_profiles(episodes, idx)
         self.plot_losses_over_time(episodes, epoch)
         self.plot_noise_over_time()
         print(
@@ -468,24 +470,24 @@ class GAN_Trainer():
             except Exception as ex2:
                 print(f"Could not save model weights: ex1 {ex1}, ex2 {ex2}")
 
-    def _plot_errors_normalisation_profiles(self, episodes, epoch):
+    def _plot_errors_normalisation_profiles(self, episodes, idx):
         if not self.prm['plots']:
             return
 
         title = f"{self.get_saving_label()} normalisation errors over time"
         colours = sns.color_palette()
         fig, ax = plt.subplots(3)
-        ax[0].plot(episodes['mean_err_1'][:epoch], color=colours[0])
+        ax[0].plot(episodes['mean_err_1'][:idx + 1], color=colours[0])
         ax[0].set_title('mean error')
-        ax[1].plot(episodes['std_err_1'][:epoch], color=colours[1])
-        ax[1].set_title(f'std error {epoch}')
-        ax[2].plot(episodes['share_large_err_1'][:epoch], color=colours[2])
-        ax[2].set_title(f'share large error > 1 {epoch}')
+        ax[1].plot(episodes['std_err_1'][:idx + 1], color=colours[1])
+        ax[1].set_title(f'std error {idx}')
+        ax[2].plot(episodes['share_large_err_1'][:idx + 1], color=colours[2])
+        ax[2].set_title(f'share large error > 1 {idx}')
         ax[2].set_xlabel("Epochs")
         title = title.replace(' ', '_')
         save_fig(fig, self.prm, self.save_path / title)
         plt.close('all')
-        print(f"episodes['share_large_err_1'][{epoch}] = {episodes['share_large_err_1'][epoch]}")
+        print(f"episodes['share_large_err_1'][{idx}] = {episodes['share_large_err_1'][idx]}")
 
 class Discriminator(nn.Module):
     def __init__(self, size_inputs=1, nn_type='linear', dropout=0.3):
