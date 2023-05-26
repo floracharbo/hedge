@@ -257,8 +257,6 @@ class GAN_Trainer():
             ) * self.weight_sum_profiles
             episode['loss_generator'] += episode['loss_sum_profiles']
 
-        transformed_features = self._get_transformed_features(profile, data_type, fitted_kmeans_id)
-
         episode['loss_generator'].backward()
         self.optimizer_generator.step()
         if final_n and epoch % 10 == 0:
