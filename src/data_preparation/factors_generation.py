@@ -433,7 +433,7 @@ class GAN_Trainer():
                     self._plot_errors_normalisation_profiles(episodes, idx)
                 self.plot_losses_over_time(episodes, epoch)
 
-            if episodes['loss_percentiles'][(epoch + 1) * n_train_loader] < 9e-1:
+            if episodes['loss_percentiles'][(epoch + 1) * n_train_loader - 1] < 9e-1:
                 break
 
         self.plot_final_hist_generated_vs_real(generated_outputs, real_outputs, epoch)
