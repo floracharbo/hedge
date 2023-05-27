@@ -417,7 +417,6 @@ class GAN_Trainer():
         idx = 0
         for epoch in tqdm(range(self.n_epochs)):
             for n, train_data in enumerate(self.train_loader):
-                idx += 1
                 self.batch_size_ = len(train_data)
                 real_inputs, real_outputs = self.split_inputs_and_outputs(train_data)
                 episodes['loss_discriminator'][idx] = self.train_discriminator(real_inputs, real_outputs)
@@ -425,6 +424,7 @@ class GAN_Trainer():
                 generated_outputs, episode = self.train_generator(real_inputs, final_n, epoch)
                 for key in episode:
                     episodes[key][idx] = episode[key].detach().numpy()
+                idx += 1
 
             self.update_noise_and_lr_generator(epoch)
             if epoch % 2 == 0:
