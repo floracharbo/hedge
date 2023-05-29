@@ -430,7 +430,7 @@ class GAN_Trainer():
             if epoch % 2 == 0:
                 self._save_model(ext=epoch)
                 if self.data_type != 'gen':
-                    self._plot_errors_normalisation_profiles(episodes, idx)
+                    self._plot_errors_normalisation_profiles(episodes, idx - 1)
                 self.plot_losses_over_time(episodes, epoch)
 
             if episodes['loss_percentiles'][(epoch + 1) * n_train_loader - 1] < 9e-1:
@@ -438,7 +438,7 @@ class GAN_Trainer():
 
         self.plot_final_hist_generated_vs_real(generated_outputs, real_outputs, epoch)
         if self.data_type != 'gen':
-            self._plot_errors_normalisation_profiles(episodes, idx)
+            self._plot_errors_normalisation_profiles(episodes, idx - 1)
         self.plot_losses_over_time(episodes, epoch)
         self.plot_noise_over_time()
         print(
