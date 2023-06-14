@@ -696,7 +696,11 @@ def filter_validity(
     data["keep"] = keep_column(
         data["cum_day"], data["start_avail"], data["end_avail"]
     )
-
+    if data_type == 'gen':
+        data["keep"] = data.apply(
+            lambda x: x.keep if x.description == "solar power" else False,
+            axis=1,
+        )
     # set small negative values to zero and remove larger negative values
     var_label = "dist" if data_type == "car" else data_type
     data[var_label] = data[var_label].map(
@@ -811,7 +815,8 @@ def get_data(
 
     # 2 - filter data
     data, range_dates = filter_validity(
-        data, data_type, test_cell, start_end_id, prm)
+        data, data_type, test_cell, start_end_id, prm
+    )
 
     if data_source == "NTS":
         data = filter_validity_nts(data, home_type, start_end_id[0]["NTS"])
