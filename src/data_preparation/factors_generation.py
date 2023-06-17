@@ -85,7 +85,7 @@ class GAN_Trainer():
     def plot_inputs(self):
         if self.prm['plots']:
             fig = plt.figure()
-            for i in range(20):
+            for i in range(min(20, len(self.outputs))):
                 plt.plot(self.outputs[i])
 
             title = f"{self.get_saving_label()} series"
@@ -202,10 +202,10 @@ class GAN_Trainer():
         )
         n_samples = len(generated_samples_2d[0])
         percentiles_generated = {}
-        for statistical_indicator in ['p10', 'p25', 'p50', 'p75', 'p90', 'mean']:
+        for statistical_indicator in [f'p{percentile}' for percentile in self.percentiles] + ['mean']:
             percentiles_generated[statistical_indicator] = th.zeros(n_samples)
         for time in range(n_samples):
-            for percentile in [10, 25, 50, 75, 90]:
+            for percentile in self.percentiles:
                 percentiles_generated[f'p{percentile}'][time] = th.quantile(
                     generated_samples_2d[:, time],
                     percentile/100
@@ -226,7 +226,7 @@ class GAN_Trainer():
         percentiles_generated, generated_samples_2d, n_samples \
             = self._compute_statistical_indicators_generated_profiles(generated_samples)
         episode['loss_percentiles'] = 0
-        for key in ['p10', 'p25', 'p50', 'mean', 'p75', 'p90']:
+        for key in [f'p{percentile}' for percentile in self.percentiles] + ['mean']:
             episode['loss_percentiles'] += th.sum(
                 th.square(
                     percentiles_generated[key]
@@ -280,7 +280,7 @@ class GAN_Trainer():
                     [percentiles_generated, self.percentiles_inputs[self.k]],
                     ['generated', 'original']
             ):
-                for indicator in ['p10', 'p25', 'p50', 'p75', 'p90', 'mean']:
+                for indicator in [f'p{percentile}' for percentile in self.percentiles] + ['mean']:
                     percentiles_np = percentiles_[indicator] if label == 'original' \
                         else percentiles_[indicator].detach().numpy()
                     plt.plot(
@@ -670,7 +670,9 @@ def compute_profile_generators(
         'dropout_generator': 0.15,
         'day_type': day_type,
         'dim_latent_noise': 1,
+        'percentiles': [10, 25, 50, 75, 90],
     }
+
     params['lr_decay'] = (params['lr_end'] / params['lr_start']) ** (1 / params['n_epochs'])
     params['size_input_generator_one_item'] = params['dim_latent_noise']
     gan_trainer = GAN_Trainer(params, prm)
