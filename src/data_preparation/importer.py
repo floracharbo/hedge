@@ -11,6 +11,9 @@ import pickle
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from pyarrow.parquet import ParquetFile
+import pyarrow as pa
+import matplotlib.pyplot as plt
 
 import numpy as np
 import pandas as pd
@@ -150,6 +153,19 @@ def remove_incomplete_days(days: list, to_throw: list, n: int) -> list:
     return days
 
 
+def _append_current_day(days, current_day, id_, sequence, prm, step_keys, step):
+    current_day["id"] = id_
+    for day_key in ["cum_day", "month"]:
+        current_day[day_key] = sequence[day_key][step]
+    days.append(current_day)
+    assert len(current_day["mins"]) <= prm["n"], \
+        f"error len(current_day['mins']) {len(current_day['mins'])}"
+    assert len(set(current_day["mins"])) == len(current_day["mins"]), \
+        f"mins duplicates {current_day['mins']}"
+    current_day = initialise_dict(step_keys)
+
+    return current_day, days
+
 def get_days_clnr(
         prm: dict,
         sequences: dict,
@@ -166,25 +182,12 @@ def get_days_clnr(
         # go through all the data for the current id
         for step in range(len(sequence["cum_day"])):
             if step > 0 and sequence["cum_day"][step] != sequence["cum_day"][step - 1]:
-                # if starting a new day
-                current_day["id"] = int(id_)
-                days.append(current_day)
-                assert len(current_day["mins"]) <= prm["n"], \
-                    "error len(current_day['mins']) " \
-                    f"{len(current_day['mins'])}"
-                current_day = initialise_dict(step_keys)
-
+                current_day, days = _append_current_day(days, current_day, id_, sequence, prm, step_keys, step)
             for step_key in step_keys:
                 current_day[step_key].append(sequence[step_key][step])
-            for day_key in ["cum_day", "month", "id"]:
-                current_day[day_key] = sequence[day_key][step]
 
         # store final day
-        days.append(current_day)
-        assert len(set(current_day["mins"])) == len(current_day["mins"]), \
-            f"mins duplicates {current_day['mins']}"
-
-        current_day = initialise_dict(step_keys)
+        current_day, days = _append_current_day(days, current_day, id_, sequence, prm, step_keys, step)
 
     if len(sequences) == 0:
         print("len(sequences) == 0")
@@ -197,6 +200,7 @@ def get_days_clnr(
     print(f"after filling in days {data_type}, len(days) = {len(days)}")
 
     del sequences
+
     days = remove_incomplete_days(days, to_throw, prm["n"])
     print(f"after removing incomplete days {data_type}, len(days) = {len(days)}")
 
@@ -407,8 +411,16 @@ def normalise(
         data_type: str
 ) -> list:
     """Normalise daily profiles and obtain scaling factors."""
+    no_sun_hours = np.full(n_time_steps, False)
+    no_sun_hours[0:5] = True
+    no_sun_hours[-3:] = True
     for i, day in enumerate(days):
         if day[data_type] is not None:
+            if data_type == 'gen':
+                day[data_type] = np.array(day[data_type])
+                day[data_type][day[data_type] < 1e-2] = 0
+                # day[data_type][no_sun_hours] = 0
+
             sum_day = sum(day[data_type])
             day[f"norm_{data_type}"] = [
                 x / sum_day if sum_day > 0 else 0 for x in day[data_type]
@@ -582,28 +594,57 @@ def get_sequences(
     """Split data into sequences per id."""
     sequences: Dict[int, Any] = {}
     # order data in ascending id number
-    data.sort_values("id")
-    current_sequence = initialise_dict(prm["sequence_entries"][data_type])
 
-    id_ = data["id"][0]
-    granularities: List[int] = []
-    for step in range(len(data["id"])):
-        if id_ != data["id"][step]:  # change of id
-            current_sequence, sequences[id_] \
-                = append_id_sequences(
-                    prm, data_type, current_sequence, granularities)
-            id_ = data["id"][step]
-        for key in prm["sequence_entries"][data_type]:
-            # append id sequence with data
-            current_sequence[key].append(data[key][step])
-            if key == data_type and np.isnan(data[key][step]):
-                print(f"l320 np.isnan(data[{key}][{step}])")
+    if data_type == 'car':
+        current_sequence = initialise_dict(prm["sequence_entries"][data_type])
 
-    # add the final one to sequences
-    _, sequences[id_] \
-        = append_id_sequences(
-            prm, data_type, current_sequence, granularities)
-    assert len(sequences) > 0, "len(sequences) == 0"
+        id_ = data["id"][0]
+        granularities: List[int] = []
+        for step in range(len(data["id"])):
+            if id_ != data["id"][step]:  # change of id
+                current_sequence, sequences[id_] \
+                    = append_id_sequences(
+                        prm, data_type, current_sequence, granularities
+                )
+                id_ = data["id"][step]
+            for key in prm["sequence_entries"][data_type]:
+                # append id sequence with data
+                current_sequence[key].append(data[key][step])
+                if key == data_type and np.isnan(data[key][step]):
+                    print(f"l320 np.isnan(data[{key}][{step}])")
+
+        # add the final one to sequences
+        _, sequences[id_] = append_id_sequences(
+            prm, data_type, current_sequence, granularities
+        )
+        assert len(sequences) > 0, "len(sequences) == 0"
+    else:
+        sequences0 = {id_: data[data['id'] == id_] for id_ in set(data['id'])}
+        sequences_columns = ['cum_min', 'mins', data_type, 'cum_day', 'month', 'n']
+        sequences = {id_: pd.DataFrame(columns=sequences_columns) for id_ in set(data['id'])}
+        granularities: List[int] = []
+        for id_ in sequences:
+            sequences0[id_] = sequences0[id_].sort_values(by=["cum_min"])
+            granularity, granularities \
+                = get_granularity(prm["step_len"], sequences0[id_] ["cum_min"], granularities)
+            start_cum_min = sequences0[id_]["cum_min"].iloc[0] - (sequences0[id_]["cum_min"].iloc[0] % prm["step_len"])
+            end_cum_min = sequences0[id_]["cum_min"].iloc[-1] - (sequences0[id_]["cum_min"].iloc[0] % prm["step_len"])
+            n_slots = int((end_cum_min - start_cum_min) / prm["step_len"]) + 1
+            for i_slot in range(n_slots):
+                start_slot = start_cum_min + i_slot * prm["step_len"]
+                end_slot = start_cum_min + (i_slot + 1) * prm["step_len"]
+                indexes = sequences0[id_]["cum_min"].between(start_slot, end_slot, inclusive='left')
+                if sum(indexes) > 0:
+                    index0 = np.where(indexes)[0][0]
+                    current_time_step = pd.DataFrame.from_dict({
+                        data_type: [sequences0[id_]["gen"].loc[indexes].mean()],
+                        'cum_min': [start_slot],
+                        'mins': [start_slot % (24 * 60)],
+                        'cum_day': [sequences0[id_]["cum_day"].iloc[index0]],
+                        'month': [sequences0[id_]["month"].iloc[index0]],
+                        'n': [sum(indexes)]
+                    })
+                    sequences[id_] = pd.concat([sequences[id_], current_time_step], ignore_index=True)
 
     return sequences, granularities
 
@@ -679,28 +720,57 @@ def filter_validity(
     """Filter rows in data, only keep valid data."""
     start_id, end_id = start_end_id
     data_source = prm["data_type_source"][data_type]
-    data["start_avail"] = data["id"].apply(
-        lambda id_: start_id[data_source][id_]
-        if id_ in start_id[data_source]
-        else None
-    )
-
-    data["end_avail"] = data["id"].apply(
-        lambda id_: end_id[data_source][id_]
-        if id_ in end_id[data_source]
-        else None
-    )
-
-    data = obtain_time(data, data_source)
-
-    data["keep"] = keep_column(
-        data["cum_day"], data["start_avail"], data["end_avail"]
-    )
-    if data_type == 'gen':
-        data["keep"] = data.apply(
-            lambda x: x.keep if x.description == "solar power" else False,
-            axis=1,
+    if not (data_type == 'gen' and prm['var_file']['gen'][-len('TrialMonitoringData.csv'):] != 'TrialMonitoringData.csv'):
+        data["start_avail"] = data["id"].apply(
+            lambda id_: start_id[data_source][id_]
+            if id_ in start_id[data_source]
+            else None
         )
+
+        data["end_avail"] = data["id"].apply(
+            lambda id_: end_id[data_source][id_]
+            if id_ in end_id[data_source]
+            else None
+        )
+    elif data_type == 'gen' and prm['var_file']['gen'][-len('parquet'):] == 'parquet':
+        metadata = pd.read_csv(
+            'data/data_preparation_inputs/metadata.csv',
+            usecols=['ss_id', 'kwp', 'operational_at']
+        )
+        metadata = metadata.drop(metadata[metadata.kwp > 5].index)
+        metadata['operational_at_dtm'] = pd.to_datetime(metadata['operational_at'])
+        data['keep'] = data['id'].apply(lambda x: x in metadata['ss_id'].values)
+        # data['operational_at'] = data.apply(
+        #     lambda x: metadata[metadata['ss_id'] == x.id]['operational_at_dtm'].values[0]
+        #     if x.keep else None,
+        #     axis=1
+        # )
+
+        # data['keep'] = data.apply(
+        #     lambda x: x.keep and x.operational_at <= x.dtm.date(),
+        #     axis=1
+        # )
+    elif data_type == 'gen' and prm['var_file']['gen'] in ['EXPORT HourlyData - Customer Endpoints.csv', '15minute_data_austin.csv']:
+        data['keep'] = True
+
+    data = obtain_time(data, data_type, prm)
+    if not (data_type == 'gen' and prm['var_file']['gen'][-len('TrialMonitoringData.csv'):] != 'TrialMonitoringData.csv'):
+        data["keep"] = keep_column(
+            data["cum_day"], data["start_avail"], data["end_avail"]
+        )
+        if data_type == 'gen':
+            # data['keep'] = data['test_cell'].apply(
+            #     lambda x: False if x not in ['TC5', 'TC20 Auto', 'TC20 IHD'] else x
+            # )
+            data['keep'] = data.apply(
+                lambda x: False if x['Measurement Description'] != 'solar power' else x.keep,
+                axis=1
+            )
+        elif data_type == 'loads':
+            data['keep'] = data['test_cell'].apply(
+                lambda x: False if x != 'TC1' else x
+            )
+
     # set small negative values to zero and remove larger negative values
     var_label = "dist" if data_type == "car" else data_type
     data[var_label] = data[var_label].map(
@@ -715,7 +785,7 @@ def filter_validity(
 
     data["keep"] = data.apply(_remove_none, axis=1)
 
-    if data_source == "CLNR":
+    if data_type == "loads":
         data["keep"] = data.apply(
             lambda x: x.keep
             and x.id in test_cell
@@ -729,7 +799,7 @@ def filter_validity(
 
 
 def import_segment(
-        prm, chunk_rows, data_type
+        prm, chunk_rows, data_type, pf_iter_batches
 ) -> list:
     """In parallel or sequentially, import and process block of data."""
     data_id_ = data_id(prm, data_type)
@@ -749,15 +819,38 @@ def import_segment(
         return [None] * 7
 
     data_source = prm["data_type_source"][data_type]
-    data = pd.read_csv(
-        prm["var_path"][data_type],
-        usecols=list(prm["i_cols"][data_type].values()),
-        skiprows=max(1, chunk_rows[0]),
-        nrows=chunk_rows[1] - chunk_rows[0],
-        names=list(prm["i_cols"][data_type]),
-        sep=prm["separator"][data_source],
-        lineterminator=prm["line_terminator"][data_source]
-    )
+
+    if data_type == "gen" and prm['var_file']['gen'][-len('parquet'):] == 'parquet':
+        data = pa.Table.from_batches([next(pf_iter_batches)]).to_pandas()
+        data.columns = ['gen', 'dtm', 'id']
+    elif data_type == "gen" and prm['var_file']['gen'] == 'EXPORT HourlyData - Customer Endpoints.csv':
+        data = pd.read_csv(
+                prm["var_path"][data_type],
+                usecols=prm['i_cols_gen'],
+                # nrows=chunk_rows[1] - chunk_rows[0],
+                # names=['y', 'M', 'd', 'h', 'm', 'q_gen_min', 'p_gen_max'],
+            )
+        data['gen'] = data.apply(
+            lambda x: (x.P_GEN_MIN + x.P_GEN_MAX)/2,
+            axis=1
+        )
+    elif data_type == 'gen' and prm['var_file']['gen'] == '15minute_data_austin.csv':
+        data = pd.read_csv(
+            prm["var_path"][data_type],
+            usecols=list(prm["i_cols"][data_type].values()),
+            skiprows=max(1, chunk_rows[0]),
+            names=list(prm["i_cols"][data_type]),
+        )
+    else:
+        data = pd.read_csv(
+            prm["var_path"][data_type],
+            usecols=list(prm["i_cols"][data_type].values()),
+            skiprows=max(1, chunk_rows[0]),
+            nrows=chunk_rows[1] - chunk_rows[0],
+            names=list(prm["i_cols"][data_type]),
+            sep=prm["separator"][data_source],
+            lineterminator=prm["line_terminator"][data_source]
+        )
 
     # 1 - get the data in initial format
     data, all_data, range_dates, n_ids = get_data(
@@ -808,7 +901,7 @@ def get_data(
 
     data = formatting(
         data,
-        prm["type_cols"][data_source],
+        prm["type_cols"][data_type],
         name_col=list(prm["i_cols"][data_type]),
         hour_min=0,
     )
@@ -835,8 +928,8 @@ def get_data(
     data = data.reset_index()
 
     # check only one test_cell
-    if data_source == "CLNR":
-        data["test_cell"] = data["id"].map(lambda id_: test_cell[id_])
+    if data_type == "loads" or data_type == 'gen' and prm['var_file']['gen'][-len('TrialMonitoringData.csv'):] == 'TrialMonitoringData.csv':
+        data["test_cell"] = data["id"].map(lambda id_: test_cell[id_] if id_ in test_cell else None)
 
     # register mapping of data for producing heatmap later
     all_data = map_all_data(data_source, data, prm)
@@ -904,6 +997,21 @@ def import_data(
 
     for data_type in prm["data_types"]:
         print(f"start import {data_type}")
+        if data_type == "gen" and prm['var_file']['gen'][-len('parquet'):] == 'parquet':
+            n_rows_per_chunk = 1e6
+            n_batches_max = 2
+            pf = ParquetFile(prm["var_path"][data_type])
+            pf_iter_batches = pf.iter_batches(batch_size=n_rows_per_chunk)
+            try:
+                n_batches = 0
+                while n_batches < n_batches_max:
+                    next_batch = next(pf_iter_batches)
+                    n_batches += 1
+            except Exception:
+                pf_iter_batches = pf.iter_batches(batch_size=1e8)
+        else:
+            pf_iter_batches = None
+            n_batches = 0
 
         # identifier for saving data_type-related data
         # savings paths
@@ -911,19 +1019,24 @@ def import_data(
             = prm["save_other"] / f"n_dt0_{data_id(prm, data_type)}.npy"
         if prm["n_rows"][data_type] == "all":
             prm["n_rows"][data_type] = get_n_rows(data_type, prm)
-        chunks_rows = get_data_chunks(prm, data_type)
+        if data_type == "gen" and prm['var_file']['gen'][-len('parquet'):] == 'parquet':
+            chunks_rows = [[i, n_rows_per_chunk] for i in range(n_batches)]
+        elif data_type == "gen" and prm['var_file']['gen'] == 'EXPORT HourlyData - Customer Endpoints.csv':
+            chunks_rows = [[0, prm["n_rows"][data_type]]]
+        else:
+            chunks_rows = get_data_chunks(prm, data_type)
         if prm["parallel"]:
             pool = mp.Pool(prm["n_cpu"])
             outs = pool.starmap(
                 import_segment,
-                [(prm, chunk_rows, data_type)
+                [(prm, chunk_rows, data_type, pf_iter_batches)
                  for chunk_rows in chunks_rows],
             )
             pool.close()
 
         else:
             outs = [
-                import_segment(prm, chunk_rows, data_type)
+                import_segment(prm, chunk_rows, data_type, pf_iter_batches)
                 for chunk_rows in tqdm(chunks_rows)
             ]
 
@@ -939,4 +1052,13 @@ def import_data(
 
     get_percentiles(days, prm)
 
+    days_gen = np.zeros((len(days['gen']), 24))
+    for i in range(len(days['gen'])):
+        days_gen[i] = days["gen"][i]["gen"]
+    fig=plt.figure()
+    for i in range(len(days_gen)):
+        if np.max(days_gen[i])<5:
+            plt.plot(days_gen[i],color='gray',alpha=0.1)
+    plt.plot(np.mean(days_gen,axis=0),color='black')
+    fig.savefig('gen.png')
     return days, n_data_type
