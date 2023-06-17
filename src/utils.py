@@ -36,10 +36,15 @@ def initialise_dict(
 
 def str_to_cum_day(str_):
     """From datetime str, get number of days since 1/1/2010."""
-    if isinstance(str_, str) and len(str_) > 9:
-        date = datetime.date(int(str_[6:10]), int(str_[3:5]), int(str_[0:2]))
-        date0 = datetime.date(2010, 1, 1)
-        return (date - date0).days
+    if isinstance(str_, str):
+        if len(str_) == 22:
+            date = datetime.date(int(str_[0:4]), int(str_[5:7]), int(str_[8:10]))
+            date0 = datetime.date(2010, 1, 1)
+            return (date - date0).days
+        elif len(str_) > 9:
+            date = datetime.date(int(str_[6:10]), int(str_[3:5]), int(str_[0:2]))
+            date0 = datetime.date(2010, 1, 1)
+            return (date - date0).days
 
     return None
 
@@ -75,10 +80,11 @@ def formatting(data, type_cols, name_col=None, hour_min=0):
     for i, type_col in enumerate(type_cols):
         col = i if name_col is None else name_col[i]
         if data[col] is not None:
-            if type_col == "int":
+            if type_col == "int" and not isinstance(data[col][0], int):
                 data[col] = data[col].apply(
-                    lambda x: int(x) if x != " " else None)
-            elif type_col == "flt":
+                    lambda x: int(x) if x != " " else None
+                )
+            elif type_col == "flt" and not isinstance(data[col][0], float):
                 data[col] = data[col].apply(
                     lambda x: float(x) if x != " " else None)
             elif type_col == "dtm":
@@ -92,18 +98,35 @@ def empty(data):
     return data in ["", " ", "  ", []] or data is None or pd.isnull(data)
 
 
-def obtain_time(data: pd.DataFrame, data_source: str) -> pd.DataFrame:
+def obtain_time(data: pd.DataFrame, data_type: str, prm: dict) -> pd.DataFrame:
     """Compute time-related values in DataFrame."""
-    if data_source == "CLNR":
+    if data_type =='gen' and prm['var_file']['gen'][-len('parquet'):] == 'parquet':
+        data['mins'] = data['dtm'].apply(lambda x: x.minute + x.hour * 60)
+        data['cum_day'] = data['dtm'].apply(lambda x: (x.date() - datetime.date(2010, 1, 1)).days)
+        data["month"] = data['dtm'].apply(lambda x: x.month)
+        data["cum_min"] = data.apply(lambda x: x.mins + x.cum_day * 24 * 60, axis=1)
+    elif data_type =='gen' and prm['var_file']['gen'] == 'EXPORT HourlyData - Customer Endpoints.csv':
+        data['mins'] = data.apply(lambda x: x.t_h * 60 + x.t_m, axis=1)
+        data['cum_day'] = data.apply(
+            lambda x: (datetime.date(x.d_y, x.d_m, x.d_d) - datetime.date(2010, 1, 1)).days,
+            axis=1
+        )
+        data = data.rename(columns={"d_m": "month", "SerialNo": 'id'})
+        data["cum_min"] = data.apply(lambda x: x.mins + x.cum_day * 24 * 60, axis=1)
+
+    elif data_type in ["loads", "gen"]:
         mins = [
             int(x[14: 16]) + int(x[11: 13]) * 60 if len(x) > 16 else None
             for x in data["dtm"]]
         cum_day = [
             str_to_cum_day(x) if len(x) > 0 else None
             for x in data["dtm"]]
-        month = [int(x[3: 5]) if len(x) > 5
-                 else None
-                 for x in data["dtm"]]
+        if len(data['dtm'][0]) == 22:
+            month = [int(x[5: 7]) for x in data["dtm"]]
+        else:
+            month = [int(x[3: 5]) if len(x) > 5
+                     else None
+                     for x in data["dtm"]]
 
         data["mins"] = np.array(mins)
         data["cum_day"] = np.array(cum_day)
@@ -116,7 +139,7 @@ def obtain_time(data: pd.DataFrame, data_source: str) -> pd.DataFrame:
             axis=1,
         )
 
-    elif data_source == "NTS":
+    elif data_type == "car":
         data["cum_day"] = data.apply(
             lambda x: x.start_avail + x.weekday - 1, axis=1
         )
