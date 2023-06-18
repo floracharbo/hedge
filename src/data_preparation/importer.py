@@ -11,8 +11,8 @@ import pickle
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from pyarrow.parquet import ParquetFile
-import pyarrow as pa
+# from pyarrow.parquet import ParquetFile
+# import pyarrow as pa
 import matplotlib.pyplot as plt
 
 import numpy as np
@@ -954,17 +954,18 @@ def import_data(
     for data_type in prm["data_types"]:
         print(f"start import {data_type}")
         if data_type == "gen" and prm['var_file']['gen'][-len('parquet'):] == 'parquet':
-            n_rows_per_chunk = 1e6
-            n_batches_max = 2
-            pf = ParquetFile(prm["var_path"][data_type])
-            pf_iter_batches = pf.iter_batches(batch_size=n_rows_per_chunk)
-            try:
-                n_batches = 0
-                while n_batches < n_batches_max:
-                    next_batch = next(pf_iter_batches)
-                    n_batches += 1
-            except Exception:
-                pf_iter_batches = pf.iter_batches(batch_size=1e8)
+            pass
+        #     n_rows_per_chunk = 1e6
+        #     n_batches_max = 2
+        #     pf = ParquetFile(prm["var_path"][data_type])
+        #     pf_iter_batches = pf.iter_batches(batch_size=n_rows_per_chunk)
+        #     try:
+        #         n_batches = 0
+        #         while n_batches < n_batches_max:
+        #             next_batch = next(pf_iter_batches)
+        #             n_batches += 1
+        #     except Exception:
+        #         pf_iter_batches = pf.iter_batches(batch_size=1e8)
         else:
             pf_iter_batches = None
             n_batches = 0
