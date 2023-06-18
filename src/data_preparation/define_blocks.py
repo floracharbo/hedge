@@ -8,6 +8,7 @@ import csv
 import os
 import pickle
 from typing import Dict, List, Tuple
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -133,11 +134,10 @@ def add_out(
 
     if out[3] is not None:
         all_data += out[3]
-
-    granularities += [
-        granularity for granularity in out[4]
-        if granularity not in granularities
-    ]
+    if out[4] is not None:
+        granularities += [
+            granularity for granularity in out[4] if granularity not in granularities
+        ]
     if out[5][0] < range_dates[0]:
         range_dates[0] = out[5][0]
     if out[5][1] > range_dates[1]:
@@ -232,20 +232,24 @@ def get_data_chunks(prm, data_type):
 
     Without interrupting id sequences.
     """
-    unique_ids_path \
-        = prm["save_other"] \
-        / f"unique_ids_{data_type}_{prm['n_rows'][data_type]}.npy"
-    chunks_path \
-        = prm["save_other"] \
-        / f"chunks_rows_{data_type}_{prm['n_rows'][data_type]}_max{prm['max_size_chunk']}.npy"
-    if unique_ids_path.is_file() and chunks_path.is_file():
-        # if the unique_ids have already been computed, load them
-        chunks_rows = np.load(chunks_path)
-    else:
-        idx, ids = _get_rows_ids(prm, data_type, unique_ids_path)
-        chunks_rows = _rows_ids_to_chunks(
-            prm, idx, ids, data_type, chunks_path
-        )
+    potential_paths = list_potential_paths(prm, [data_type])
+    for potential_path in potential_paths:
+        i_cut = [i for i, p in enumerate(str(potential_path)) if p == '/'][-1]
+        potential_path_ = Path(str(potential_path)[:i_cut])
+        unique_ids_path \
+            = potential_path_ \
+            / f"unique_ids_{data_type}_{prm['n_rows'][data_type]}.npy"
+        chunks_path \
+            = potential_path_ \
+            / f"chunks_rows_{data_type}_{prm['n_rows'][data_type]}_max{prm['max_size_chunk']}.npy"
+        if unique_ids_path.is_file() and chunks_path.is_file():
+            # if the unique_ids have already been computed, load them
+            return np.load(chunks_path)
+
+    idx, ids = _get_rows_ids(prm, data_type, unique_ids_path)
+    chunks_rows = _rows_ids_to_chunks(
+        prm, idx, ids, data_type, chunks_path
+    )
 
     return chunks_rows
 
