@@ -563,26 +563,6 @@ def update_granularity(
     return output, granularities
 
 
-def append_id_sequences(
-        prm: dict,
-        data_type: str,
-        current_sequence: dict,
-        granularities: list
-) -> Tuple[dict, dict]:
-    """Add current sequence for given id to sequences dictionary."""
-    # reduce granularity & add to sequences
-    if data_type == "car":
-        sequences_id = current_sequence
-    else:
-        sequences_id, granularities = update_granularity(
-            prm["step_len"], current_sequence, data_type, granularities
-        )
-
-    current_sequence = initialise_dict(prm["sequence_entries"][data_type])
-
-    return current_sequence, sequences_id
-
-
 def get_sequences(
         prm: dict,
         data: pd.DataFrame,
