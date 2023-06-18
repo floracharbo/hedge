@@ -338,14 +338,21 @@ class Clusterer:
         n_clus = len(data)
         statistical_indicators = {k: {} for k in range(n_clus)}
         for k in range(n_clus):
-            for statistical_indicator in ['p10', 'p25', 'p50', 'p75', 'p90', 'mean']:
-                statistical_indicators[k][statistical_indicator] = np.zeros(self.n)
-            for time in range(self.n):
-                for percentile in [10, 25, 50, 75, 90]:
-                    statistical_indicators[k][f'p{percentile}'][time] = np.percentile(
-                        data[k][:, time], percentile
-                    )
-                statistical_indicators[k]['mean'][time] = np.mean(data[k][:, time])
+            if len(data[k]) > 0:
+                for statistical_indicator in ['p10', 'p25', 'p50', 'p75', 'p90', 'mean']:
+                    statistical_indicators[k][statistical_indicator] = np.zeros(self.n)
+                for time in range(self.n):
+                    for percentile in [10, 25, 50, 75, 90]:
+                        statistical_indicators[k][f'p{percentile}'][time] = np.percentile(
+                            data[k][:, time], percentile
+                        )
+                    statistical_indicators[k]['mean'][time] = np.mean(data[k][:, time])
+                fig = plt.figure()
+                plt.plot(statistical_indicators[k]['mean'], label='mean')
+                fig.savefig(self.prm['save_other'] / 'clusters' / f'mean_{k}.png')
+                plt.close('all')
+            else:
+                print(f"Cluster {k} is empty")
 
         return statistical_indicators
 
@@ -412,6 +419,7 @@ class Clusterer:
         for i_month, month in enumerate(range(1, 13)):
             i_days = [i for i, day in enumerate(days_) if day["month"] == month]
             self.banks['gen'][i_month]["profs"] = np.array([days_[i]["norm_gen"] for i in i_days])
+            self.banks['gen'][i_month]["gen"] = np.array([days_[i]["gen"] for i in i_days])
             for property_ in ["factor", "id", "cum_day"]:
                 self.banks['gen'][i_month][property_] = [days_[i][property_] for i in i_days]
 
@@ -714,6 +722,14 @@ class Clusterer:
             vals_k = {
                 i_month: np.array(self.banks["gen"][i_month]['profs']) for i_month in range(12)
             }
+            for i_month in range(12):
+                print(f"i_month {i_month} {np.shape(vals_k[i_month])}")
+                fig = plt.figure()
+                for i in range(min(len(vals_k[i_month]), 1e3)):
+                    plt.plot(vals_k[i_month][i, :], color="grey", alpha=0.1)
+                plt.title(f"i_month {i_month}")
+                fig.savefig(f"gen_{i_month}.png")
+                plt.close(fig)
             statistical_indicators = self._get_percentiles(vals_k)
             if self.prm['gan_generation_profiles']:
                 for i_month in range(1):
