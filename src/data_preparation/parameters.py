@@ -17,7 +17,7 @@ def _import_columns_info(prm):
     prm["i_cols"] = initialise_dict(prm["data_types"], "empty_dict")
     if 'loads' in prm["data_types"]:
         for name_col, i_col in zip(["id", "dtm", 'loads'],  prm["i_cols_CLNR"]):
-            prm["i_cols"][data_type][name_col] = i_col
+            prm["i_cols"]['loads'][name_col] = i_col
     if "car" in prm["data_types"]:
         for name_col, i_col in zip(prm["name_cols_NTS"], prm["i_cols_NTS"]):
             prm["i_cols"]["car"][name_col] = i_col
