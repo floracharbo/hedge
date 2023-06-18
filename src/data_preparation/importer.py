@@ -64,7 +64,8 @@ def tag_availability(
             if list_current["purposeTo"][step] != i_home:
                 # if the trip does not finish at home
                 current_trip, next_trip = list_current["i_start"][step: step + 2]
-                current["avail"][current_trip: next_trip] = np.zeros(next_trip - current_trip)
+                if next_trip > current_trip:
+                    current["avail"][current_trip: next_trip] = np.zeros(next_trip - current_trip)
                 for step in range(len(current["avail"])):
                     if current["dist"][step] > 0:
                         assert not current["avail"][step]
