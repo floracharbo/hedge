@@ -14,8 +14,11 @@ consfactor: [2.25, 1.62, 1.36] # convert dist consumption tag for each trip # mo
 
 i_home: 23 # for purposeFrom/purposeTo, which one is home
 type_cols:
-  CLNR: ['int', 'str', 'str', 'flt']
-  NTS: ['int', 'int', 'int', 'int', 'int', 'int', 'int', 'int', 'int', 'int', 'flt', 'flt', 'int']
+  gen: ['int', 'str', 'str', 'flt']  #  this is for CLNR
+#  gen: ['int', 'str', 'flt']  #  this is for pecan street
+#  gen: ['str', 'int','int','int','int','int','flt','flt']  #  this is for https://data.london.gov.uk/dataset/photovoltaic--pv--solar-panel-energy-generation-data
+  loads: ['int', 'str', 'flt']
+  car: ['int', 'int', 'int', 'int', 'int', 'int', 'int', 'int', 'int', 'int', 'flt', 'flt', 'int']
 
 line_terminator:
   CLNR: null
@@ -37,7 +40,10 @@ name_cols_NTS: ['id', 'weekday', 'mode', 'purposeFrom',
                 'purposeTo', 'start_h', 'start_min', 'check_time',
                 'end_h', 'end_min', 'dist', 'duration', 'year']
 i_cols_NTS: [3, 6, 13, 16, 17, 21, 22, 24, 26, 27, 31, 35, 47]
-i_cols_CLNR: [0, 1, 3, 4]
+i_cols_CLNR: [0, 3, 4]
+#i_cols_gen: [0, 5, 6, 7, 8, 9, 10, 23, 24] this is for uk power networks
+i_cols_gen: [0, 1, 3, 4] #  this is for CLNR
+#i_cols_gen: [0, 1, 67] #  pecan street
 
 i_cols_homes_info:
     CLNR: [0, 2, 4, 5]
@@ -84,6 +90,10 @@ data_type_source:
 
 var_file:
   gen: 'TC5/TrialMonitoringData.csv'
+#  gen: 'TC20IHD/TrialMonitoringData.csv'
+#  gen: '30min.parquet'
+#  gen: 'EXPORT HourlyData - Customer Endpoints.csv'  #  this is for uk power networks
+ #   'gen': '15minute_data_austin.csv'  #  this is pecan street
   loads: 'TC1a/TrialMonitoringDataHH.csv'
   car: 'UKDA-5340-tab/tab/trip_eul_2002-2020.tab'
 
