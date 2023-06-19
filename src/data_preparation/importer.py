@@ -410,15 +410,11 @@ def normalise(
         data_type: str
 ) -> list:
     """Normalise daily profiles and obtain scaling factors."""
-    no_sun_hours = np.full(n_time_steps, False)
-    no_sun_hours[0:5] = True
-    no_sun_hours[-3:] = True
     for i, day in enumerate(days):
         if day[data_type] is not None:
             if data_type == 'gen':
                 day[data_type] = np.array(day[data_type])
                 day[data_type][day[data_type] < 1e-2] = 0
-                # day[data_type][no_sun_hours] = 0
 
             sum_day = sum(day[data_type])
             day[f"norm_{data_type}"] = [
