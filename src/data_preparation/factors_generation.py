@@ -214,7 +214,52 @@ class GAN_Trainer():
 
         return percentiles_generated, generated_samples_2d, n_samples
 
-    def train_generator(self, real_inputs, final_n, epoch):
+    def _compute_metrics_episode(self, episode, generated_samples):
+        mean_real_t = th.mean(self.outputs, dim=0)
+        generated_samples_2d = generated_samples.view(
+            self.batch_size_ * self.n_items_generated, -1
+        )
+        mean_generated_t = th.mean(generated_samples_2d, dim=0)
+        episode['ave_diff_mean'] = th.mean(th.square(mean_generated_t - mean_real_t))
+        n_real = len(self.outputs)
+        n_generated = int(self.batch_size_ * self.n_items_generated)
+        n_sum = min(n_generated, n_real)
+        n_steps = self.outputs.size()[1]
+        sum_diff_x_mean = 0
+        sum_diff_x2 = 0
+        sum_diff_y_mean = 0
+        sum_diff_y2 = 0
+        sum_diff_x_y_2 = 0
+        sum_x2 = 0
+        sum_diff_forecast = 0
+        n_forecast = 0
+        for t in range(n_steps):
+            for i in range(n_sum):
+                i_real = np.random.choice(n_real)
+                i_generated = np.random.choice(n_generated)
+                sum_diff_x_mean += self.outputs[i_real, t] - mean_real_t[t]
+                sum_diff_x2 += th.square(self.outputs[i_real, t] - mean_real_t[t])
+                sum_diff_y_mean += generated_samples_2d[i_generated, t] - mean_generated_t[t]
+                sum_diff_y2 += th.square(generated_samples_2d[i_generated, t] - mean_generated_t[t])
+                sum_diff_x_y_2 += th.square(self.outputs[i_real, t] - generated_samples_2d[i_generated, t])
+                sum_x2 += th.square(self.outputs[i_real, t])
+                if t > 0:
+                    f = generated_samples_2d[i_generated, t - 1]
+                    if th.abs(self.outputs[i_real, t] - f) > 1e-4:
+                        sum_diff_forecast += th.abs(
+                            (self.outputs[i_real, t] - generated_samples_2d[i_generated, t]) /
+                            (self.outputs[i_real, t] - f)
+                        )
+                        n_forecast += 1
+
+        episode['pcc'] = (sum_diff_x_mean * sum_diff_y_mean) / th.sqrt(sum_diff_x2 * sum_diff_y2)
+        episode['prd'] = th.sqrt(sum_diff_x_y_2 / sum_x2)
+        episode['rmse'] = th.sqrt(1/th.tensor(n_sum * n_steps) * sum_diff_x_y_2)
+        episode['mrae'] = 1/n_forecast * sum_diff_forecast
+
+        return episode
+
+    def train_generator(self, real_inputs, final_n, epoch, real_outputs):
         episode = {}
         self.generator.zero_grad()
         generated_outputs = self.generator(real_inputs.to(th.float32))
@@ -234,7 +279,7 @@ class GAN_Trainer():
                 )
             ) * self.weight_diff_percentiles
         episode['loss_generator'] += episode['loss_percentiles']
-
+        episode = self._compute_metrics_episode(episode, generated_samples)
         if self.data_type != 'gen':
             divergences_from_1 = th.stack(
                 [th.stack(
@@ -327,39 +372,60 @@ class GAN_Trainer():
         for g in self.optimizer_discriminator.param_groups:
             g['lr'] = self.lr_start * self.lr_decay ** epoch
 
+    def plot_metrics_over_time(self, episodes, epoch):
+        if not self.prm['plots']:
+            return
+
+        title = f"{self.get_saving_label()} metrics over time"
+        if self.normalised:
+            title += ' normalised'
+        fig, axs = plt.subplots(2, 2)
+        for label, x, y in zip(
+            ['pcc', 'prd', 'rmse', 'mrae'],
+            [0, 0, 1, 1],
+            [0, 1, 0, 1]
+        ):
+            axs[x, y].plot(episodes[label][:epoch])
+            axs[x, y].set_xlabel("Epochs")
+            axs[x, y].set_ylabel(label)
+
+        title = title.replace(' ', '_')
+        save_fig(fig, self.prm, self.save_path / title)
+        plt.close('all')
+
     def plot_losses_over_time(self, episodes, epoch):
-        if self.prm['plots']:
-            title = f"{self.get_saving_label()} losses "
-            title += "over time"
-            if self.normalised:
-                title += ' normalised'
-            colours = sns.color_palette()
-            fig, ax = plt.subplots()
-            twin = ax.twinx()
-            labels = ["loss_generator", "loss_percentiles"]
-            if self.data_type != 'gen':
-                labels.append("loss_sum_profiles")
-            alphas = [1, 0.5]
-            ps = []
-            for i, (label, alpha) in enumerate(zip(labels, alphas)):
-                p, = ax.plot(episodes[label][:epoch], color=colours[i], label=label, alpha=alpha)
-                ps.append(p)
-                with open(self.save_path / f"{label}.pickle", 'wb') as file:
-                    pickle.dump(episodes[label], file)
-            p3, = twin.plot(
-                episodes['loss_discriminator'][:epoch], color=colours[3], label="Discriminator losses"
-            )
-            ax.set_xlabel("Epochs")
-            ax.set_ylabel("Generator losses")
-            ax.set_yscale('log')
-            twin.set_ylabel("Discriminator losses")
-            ax.yaxis.label.set_color(ps[0].get_color())
-            twin.yaxis.label.set_color(p3.get_color())
-            ax.legend(handles=[ps[0], ps[1], p3])
-            ax.set_title(epoch)
-            title = title.replace(' ', '_')
-            save_fig(fig, self.prm, self.save_path / title)
-            plt.close('all')
+        if not self.prm['plots']:
+            return
+        title = f"{self.get_saving_label()} losses over time"
+        if self.normalised:
+            title += ' normalised'
+        colours = sns.color_palette()
+        fig, ax = plt.subplots()
+        twin = ax.twinx()
+        labels = ["loss_generator", "loss_percentiles"]
+        if self.data_type != 'gen':
+            labels.append("loss_sum_profiles")
+        alphas = [1, 0.5]
+        ps = []
+        for i, (label, alpha) in enumerate(zip(labels, alphas)):
+            p, = ax.plot(episodes[label][:epoch], color=colours[i], label=label, alpha=alpha)
+            ps.append(p)
+            with open(self.save_path / f"{label}.pickle", 'wb') as file:
+                pickle.dump(episodes[label], file)
+        p3, = twin.plot(
+            episodes['loss_discriminator'][:epoch], color=colours[3], label="Discriminator losses"
+        )
+        ax.set_xlabel("Epochs")
+        ax.set_ylabel("Generator losses")
+        ax.set_yscale('log')
+        twin.set_ylabel("Discriminator losses")
+        ax.yaxis.label.set_color(ps[0].get_color())
+        twin.yaxis.label.set_color(p3.get_color())
+        ax.legend(handles=[ps[0], ps[1], p3])
+        ax.set_title(epoch)
+        title = title.replace(' ', '_')
+        save_fig(fig, self.prm, self.save_path / title)
+        plt.close('all')
 
     def plot_noise_over_time(self):
         if self.prm['plots']:
@@ -406,9 +472,10 @@ class GAN_Trainer():
         n_train_loader = len(self.train_loader)
         self.initialise_generator_and_discriminator()
         episode_entries = [
-                'loss_generator', 'loss_discriminator', 'loss_percentiles',
-                'means_outputs', 'stds_outputs'
-            ]
+            'loss_generator', 'loss_discriminator', 'loss_percentiles',
+            'means_outputs', 'stds_outputs', 'ave_diff_mean', 'pcc', 'prd',
+            'rmse', 'mrae'
+        ]
         if self.data_type != 'gen':
             episode_entries += ['loss_sum_profiles',  'mean_err_1', 'std_err_1', 'share_large_err_1']
         episodes = {
@@ -421,7 +488,7 @@ class GAN_Trainer():
                 real_inputs, real_outputs = self.split_inputs_and_outputs(train_data)
                 episodes['loss_discriminator'][idx] = self.train_discriminator(real_inputs, real_outputs)
                 final_n = n == len(self.train_loader) - 1
-                generated_outputs, episode = self.train_generator(real_inputs, final_n, epoch)
+                generated_outputs, episode = self.train_generator(real_inputs, final_n, epoch, real_outputs)
                 for key in episode:
                     episodes[key][idx] = episode[key].detach().numpy()
                 idx += 1
@@ -432,6 +499,7 @@ class GAN_Trainer():
                 if self.data_type != 'gen':
                     self._plot_errors_normalisation_profiles(episodes, idx - 1)
                 self.plot_losses_over_time(episodes, epoch)
+                self.plot_metrics_over_time(episodes, epoch)
 
             if episodes['loss_percentiles'][(epoch + 1) * n_train_loader - 1] < 9e-1:
                 break
@@ -440,6 +508,8 @@ class GAN_Trainer():
         if self.data_type != 'gen':
             self._plot_errors_normalisation_profiles(episodes, idx - 1)
         self.plot_losses_over_time(episodes, epoch)
+        self.plot_metrics_over_time(episodes, epoch)
+
         self.plot_noise_over_time()
         print(
             f"mean generated outputs last 10: {np.mean(episodes['means_outputs'][-10:])}, "
