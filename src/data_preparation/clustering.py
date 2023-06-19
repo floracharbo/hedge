@@ -414,10 +414,13 @@ class Clusterer:
         return statistical_indicators
 
     def _group_gen_month(self, days_):
-        self.banks['gen'] = initialise_dict(range(12), "empty_dict")
+        self.banks['gen'] = initialise_dict(range(13), "empty_dict")
         self.fitted_kmeans_obj["gen"], self.fitted_scalers['gen'], cluster_distances = [], [], []
-        for i_month, month in enumerate(range(1, 13)):
-            i_days = [i for i, day in enumerate(days_) if day["month"] == month]
+        for i_month, month in enumerate(range(1, 14)):
+            if month == 13:
+                i_days = range(len(days_))
+            else:
+                i_days = [i for i, day in enumerate(days_) if day["month"] == month]
             self.banks['gen'][i_month]["profs"] = np.array([days_[i]["norm_gen"] for i in i_days])
             self.banks['gen'][i_month]["gen"] = np.array([days_[i]["gen"] for i in i_days])
             for property_ in ["factor", "id", "cum_day"]:
@@ -447,7 +450,7 @@ class Clusterer:
             self.clus_dist_bin_edges['gen'], self.clus_dist_cdfs['gen']
         ] = self._get_cdfs(cluster_distances, "gen", self.banks['gen'])
 
-        for i_month in range(12):
+        for i_month in range(13):
             np.save(
                 self.prm["save_hedge"] / "clusters"
                 / f"cdfs_clus_gen_{i_month}",
@@ -720,9 +723,9 @@ class Clusterer:
             for n_consecutive_days in self.prm['n_consecutive_days']:
                 self._get_n_trans(n_data_type, 'gen', days, n_consecutive_days)
             vals_k = {
-                i_month: np.array(self.banks["gen"][i_month]['profs']) for i_month in range(12)
+                i_month: np.array(self.banks["gen"][i_month]['profs']) for i_month in range(13)
             }
-            for i_month in range(12):
+            for i_month in [12]:
                 print(f"i_month {i_month} {np.shape(vals_k[i_month])}")
                 fig = plt.figure()
                 for i in range(min(len(vals_k[i_month]), 1e3)):
@@ -732,7 +735,7 @@ class Clusterer:
                 plt.close(fig)
             statistical_indicators = self._get_percentiles(vals_k)
             if self.prm['gan_generation_profiles']:
-                for i_month in range(1):
+                for i_month in [12]:
                     compute_profile_generators(
                         self.banks["gen"][i_month]["profs"], i_month, statistical_indicators,
                         'gen', '', self.prm
