@@ -339,6 +339,9 @@ class Clusterer:
         statistical_indicators = {k: {} for k in range(n_clus)}
         for k in range(n_clus):
             if len(data[k]) > 0:
+                print(f"k {k} len(data[k]) = {len(data[k])}")
+                statistical_indicators[k]['min'] = np.min(data[k])
+                statistical_indicators[k]['max'] = np.max(data[k])
                 for statistical_indicator in ['p10', 'p25', 'p50', 'p75', 'p90', 'mean']:
                     statistical_indicators[k][statistical_indicator] = np.zeros(self.n)
                 for time in range(self.n):
@@ -728,7 +731,7 @@ class Clusterer:
             for i_month in [12]:
                 print(f"i_month {i_month} {np.shape(vals_k[i_month])}")
                 fig = plt.figure()
-                for i in range(min(len(vals_k[i_month]), 1e3)):
+                for i in range(min(len(vals_k[i_month]), int(1e3))):
                     plt.plot(vals_k[i_month][i, :], color="grey", alpha=0.1)
                 plt.title(f"i_month {i_month}")
                 fig.savefig(f"gen_{i_month}.png")
