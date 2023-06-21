@@ -15,6 +15,7 @@ consfactor: [2.25, 1.62, 1.36] # convert dist consumption tag for each trip # mo
 i_home: 23 # for purposeFrom/purposeTo, which one is home
 type_cols:
   gen: ['int', 'str', 'str', 'flt']  #  this is for CLNR
+#  gen: ['flt', 'str', 'int'] #  this is for open climate fix
 #  gen: ['int', 'str', 'flt']  #  this is for pecan street
 #  gen: ['str', 'int','int','int','int','int','flt','flt']  #  this is for https://data.london.gov.uk/dataset/photovoltaic--pv--solar-panel-energy-generation-data
   loads: ['int', 'str', 'flt']
@@ -91,7 +92,7 @@ data_type_source:
 var_file:
   gen: 'TC5/TrialMonitoringData.csv'
 #  gen: 'TC20IHD/TrialMonitoringData.csv'
-#  gen: '30min.parquet'
+#  gen: '30min.parquet'  #  this is from open climate fix
 #  gen: 'EXPORT HourlyData - Customer Endpoints.csv'  #  this is for uk power networks
  #   'gen': '15minute_data_austin.csv'  #  this is pecan street
   loads: 'TC1a/TrialMonitoringDataHH.csv'

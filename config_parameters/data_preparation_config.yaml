@@ -1,5 +1,5 @@
 # run configuration
-data_types: ["gen", "loads", "car"]
+data_types: ["loads"]
 
 syst:
   H: 24
@@ -42,3 +42,4 @@ car:
 high_res: True
 n_consecutive_days: [2]
 # 2,3
+months: [1]
