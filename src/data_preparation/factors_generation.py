@@ -45,7 +45,7 @@ class GAN_Trainer():
 
     def get_saving_label(self):
         saving_label \
-            = f'{self.data_type} {self.day_type}, {self.value_type} lr_start {self.lr_start:.2e} ' \
+            = f'{self.data_type} {self.day_type} {self.k} {self.value_type} lr_start {self.lr_start:.2e} ' \
         f"lr_discriminator_ratio {self.lr_discriminator_ratio:.2e} " \
               f"n_items_generated {self.n_items_generated} " \
               f"noise0{self.noise0:.2f}_noise_end{self.noise_end:.2f}".replace('.', '_')
@@ -665,7 +665,7 @@ class Generator(nn.Module):
     def _initialise_model(self, size_inputs, dropout, size_outputs, nn_type, batch_size):
         self.nn_type = nn_type
         self.size_outputs = size_outputs
-        multiplier = 2
+        multiplier = 1
         if nn_type == 'linear':
             self.model = nn.Sequential(
                 nn.Linear(size_inputs, 16 * multiplier),
