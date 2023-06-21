@@ -11,8 +11,8 @@ import pickle
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-# from pyarrow.parquet import ParquetFile
-# import pyarrow as pa
+from pyarrow.parquet import ParquetFile
+import pyarrow as pa
 import matplotlib.pyplot as plt
 
 import numpy as np
@@ -173,7 +173,7 @@ def get_days_clnr(
         save_path: Path
 ) -> Tuple[list, Optional[List[float]], Optional[Dict[str, int]]]:
     """Split CLNR sequences into days, fill in, or throw incomplete days."""
-    step_keys = ["n", data_type, "mins", "cum_min"]
+    step_keys = [data_type, "mins", "cum_min"]
     days = []
     current_day = initialise_dict(step_keys)
     for id_, sequence in sequences.items():
@@ -573,36 +573,51 @@ def get_sequences(
         sequences = {id_: data[data['id'] == id_] for id_ in set(data['id'])}
         for id_ in sequences:
             sequences[id_] = sequences[id_].sort_values(by=["cum_min", "cum_min_end"])
-        granularities = None
+        # granularities = None
     else:
-        sequences0 = {id_: data[data['id'] == id_] for id_ in set(data['id'])}
-        sequences_columns = ['cum_min', 'mins', data_type, 'cum_day', 'month', 'n']
-        sequences = {id_: pd.DataFrame(columns=sequences_columns) for id_ in set(data['id'])}
-        granularities: List[int] = []
+        data['cum_min_dtm'] = pd.to_datetime(data['cum_min'], unit='m', origin=datetime(2010, 1, 1, 0, 0))
+        data.set_index('cum_min_dtm', inplace=True)
+        sequences = {id_: data[data['id'] == id_] for id_ in set(data['id'])}
+        # sequences_columns = ['cum_min', 'mins', data_type, 'cum_day', 'month', 'n']
+        # sequences = {id_: pd.DataFrame(columns=sequences_columns) for id_ in set(data['id'])}
+        # granularities: List[int] = []
         for id_ in sequences:
-            sequences0[id_] = sequences0[id_].sort_values(by=["cum_min"])
-            granularity, granularities = get_granularity(
-                prm["step_len"], sequences0[id_] ["cum_min"], granularities
-            )
-            start_cum_min = sequences0[id_]["cum_min"].iloc[0] - (sequences0[id_]["cum_min"].iloc[0] % prm["step_len"])
-            end_cum_min = sequences0[id_]["cum_min"].iloc[-1] - (sequences0[id_]["cum_min"].iloc[0] % prm["step_len"])
-            n_slots = int((end_cum_min - start_cum_min) / prm["step_len"]) + 1
-            for i_slot in range(n_slots):
-                start_slot = start_cum_min + i_slot * prm["step_len"]
-                end_slot = start_cum_min + (i_slot + 1) * prm["step_len"]
-                indexes = sequences0[id_]["cum_min"].between(start_slot, end_slot, inclusive='left')
-                if sum(indexes) > 0:
-                    index0 = np.where(indexes)[0][0]
-                    current_time_step = pd.DataFrame.from_dict({
-                        data_type: [sequences0[id_][data_type].loc[indexes].mean()],
-                        'cum_min': [start_slot],
-                        'mins': [start_slot % (24 * 60)],
-                        'cum_day': [sequences0[id_]["cum_day"].iloc[index0]],
-                        'month': [sequences0[id_]["month"].iloc[index0]],
-                        'n': [sum(indexes)]
-                    })
-                    sequences[id_] = pd.concat([sequences[id_], current_time_step], ignore_index=True)
+            if prm['H'] == 24:
+                sequences[id_] = sequences[id_].resample('H').agg(
+                    {data_type: 'mean', 'mins': 'first', 'cum_day': 'first', 'month': 'first', 'cum_min': 'first'}
+                )
+            else:
+                print(f"Warning: adapt resampling for H {prm['H']}")
+            sequences[id_]['cum_min'] = sequences[id_]['cum_min'].apply(lambda x: x - x % 60 * 24/prm['H'])
+            sequences[id_]['mins'] = sequences[id_]['mins'].apply(lambda x: x - x % 60 * 24/prm['H'])
+            if len(sequences[id_]) > len(set(sequences[id_]['cum_min'])):
+                print(F"591 {id_} len sequence {len(sequences[id_])} > len set cum_min {len(set(sequences[id_]['cum_min']))}")
+            sequences[id_].dropna(subset=['cum_min'], inplace=True)
+            sequences[id_].reset_index(inplace=True, drop=True)
+            # sequences0[id_] = sequences0[id_].sort_values(by=["cum_min"])
+            # granularity, granularities = get_granularity(
+            #     prm["step_len"], sequences0[id_] ["cum_min"], granularities
+            # )
+            # start_cum_min = sequences0[id_]["cum_min"].iloc[0] - (sequences0[id_]["cum_min"].iloc[0] % prm["step_len"])
+            # end_cum_min = sequences0[id_]["cum_min"].iloc[-1] - (sequences0[id_]["cum_min"].iloc[0] % prm["step_len"])
+            # n_slots = int((end_cum_min - start_cum_min) / prm["step_len"]) + 1
+            # for i_slot in range(n_slots):
+            #     start_slot = start_cum_min + i_slot * prm["step_len"]
+            #     end_slot = start_cum_min + (i_slot + 1) * prm["step_len"]
+            #     indexes = sequences0[id_]["cum_min"].between(start_slot, end_slot, inclusive='left')
+            #     if sum(indexes) > 0:
+            #         index0 = np.where(indexes)[0][0]
+            #         current_time_step = pd.DataFrame.from_dict({
+            #             data_type: [sequences0[id_][data_type].loc[indexes].mean()],
+            #             'cum_min': [start_slot],
+            #             'mins': [start_slot % (24 * 60)],
+            #             'cum_day': [sequences0[id_]["cum_day"].iloc[index0]],
+            #             'month': [sequences0[id_]["month"].iloc[index0]],
+            #             'n': [sum(indexes)]
+            #         })
+            #         sequences[id_] = pd.concat([sequences[id_], current_time_step], ignore_index=True)
     assert len(sequences) > 0, "len(sequences) == 0"
+    granularities = None
     return sequences, granularities
 
 
@@ -698,18 +713,33 @@ def filter_validity(
             usecols=['ss_id', 'kwp', 'operational_at']
         )
         metadata = metadata.drop(metadata[metadata.kwp > 5].index)
-        metadata['operational_at_dtm'] = pd.to_datetime(metadata['operational_at'])
-        data['keep'] = data['id'].apply(lambda x: x in metadata['ss_id'].values)
+        print(f"len(data) {len(data)}")
+        data["month"] = data['dtm'].apply(lambda x: x.month)
+        for month in set(data['month']):
+            if month not in prm['months']:
+                data = data.drop(data[data.month == month].index)
+        print(f"len(data) {len(data)} after selecting months {prm['months']}")
+        ids = set(data['id'])
+        for id_ in ids:
+            if id_ not in metadata['ss_id'].values:
+                data = data.drop(data[data.id == id_].index)
+        print(f"len(data) {len(data)} in ss_id with correct kwp")
+        data["keep"] = True
+
+        if len(data) == 0:
+            return None, None
+
+        # metadata['operational_at_dtm'] = pd.to_datetime(metadata['operational_at'])
         # data['operational_at'] = data.apply(
         #     lambda x: metadata[metadata['ss_id'] == x.id]['operational_at_dtm'].values[0]
         #     if x.keep else None,
         #     axis=1
         # )
-
         # data['keep'] = data.apply(
         #     lambda x: x.keep and x.operational_at <= x.dtm.date(),
         #     axis=1
         # )
+        # print(f"after checking for operational_at {sum(data['keep'])}")
     elif data_type == 'gen' and prm['var_file']['gen'] in ['EXPORT HourlyData - Customer Endpoints.csv', '15minute_data_austin.csv']:
         data['keep'] = True
 
@@ -809,6 +839,8 @@ def import_segment(
     data, all_data, range_dates, n_ids = get_data(
         data_type, prm, data_source, data
     )
+    if data is None:
+        return [None] * 7
 
     # 2 - split into sequences of subsequent times
     sequences, granularities = get_sequences(prm, data, data_type)
@@ -855,6 +887,7 @@ def get_data(
     data = formatting(
         data,
         prm["type_cols"][data_type],
+        prm,
         name_col=list(prm["i_cols"][data_type]),
         hour_min=0,
     )
@@ -863,6 +896,8 @@ def get_data(
     data, range_dates = filter_validity(
         data, data_type, test_cell, start_end_id, prm
     )
+    if data is None:
+        return None, None, None, None
 
     if data_source == "NTS":
         data = filter_validity_nts(data, home_type, start_end_id[0]["NTS"])
@@ -951,18 +986,17 @@ def import_data(
     for data_type in prm["data_types"]:
         print(f"start import {data_type}")
         if data_type == "gen" and prm['var_file']['gen'][-len('parquet'):] == 'parquet':
-            pass
-        #     n_rows_per_chunk = 1e6
-        #     n_batches_max = 2
-        #     pf = ParquetFile(prm["var_path"][data_type])
-        #     pf_iter_batches = pf.iter_batches(batch_size=n_rows_per_chunk)
-        #     try:
-        #         n_batches = 0
-        #         while n_batches < n_batches_max:
-        #             next_batch = next(pf_iter_batches)
-        #             n_batches += 1
-        #     except Exception:
-        #         pf_iter_batches = pf.iter_batches(batch_size=1e8)
+            n_rows_per_chunk = 1e7
+            n_batches_max = 300
+            pf = ParquetFile(prm["var_path"][data_type])
+            pf_iter_batches = pf.iter_batches(batch_size=n_rows_per_chunk)
+            try:
+                n_batches = 0
+                while n_batches < n_batches_max:
+                    next_batch = next(pf_iter_batches)
+                    n_batches += 1
+            except Exception:
+                pf_iter_batches = pf.iter_batches(batch_size=n_rows_per_chunk)
         else:
             pf_iter_batches = None
             n_batches = 0
@@ -988,7 +1022,6 @@ def import_data(
                  for chunk_rows in chunks_rows],
             )
             pool.close()
-
         else:
             outs = [
                 import_segment(prm, chunk_rows, data_type, pf_iter_batches)
