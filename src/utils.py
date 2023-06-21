@@ -75,8 +75,11 @@ def datetime_to_cols(data_frame, col_name, hour_min=0):
     return data_frame
 
 
-def formatting(data, type_cols, name_col=None, hour_min=0):
+def formatting(data, type_cols, prm, name_col=None, hour_min=0):
     """Format data column according to type specification."""
+    if prm['var_file']['gen'][-len('parquet'):] == 'parquet':
+        return data
+
     for i, type_col in enumerate(type_cols):
         col = i if name_col is None else name_col[i]
         if data[col] is not None:
@@ -103,7 +106,8 @@ def obtain_time(data: pd.DataFrame, data_type: str, prm: dict) -> pd.DataFrame:
     if data_type =='gen' and prm['var_file']['gen'][-len('parquet'):] == 'parquet':
         data['mins'] = data['dtm'].apply(lambda x: x.minute + x.hour * 60)
         data['cum_day'] = data['dtm'].apply(lambda x: (x.date() - datetime.date(2010, 1, 1)).days)
-        data["month"] = data['dtm'].apply(lambda x: x.month)
+        if 'month' not in data:
+            data["month"] = data['dtm'].apply(lambda x: x.month)
         data["cum_min"] = data.apply(lambda x: x.mins + x.cum_day * 24 * 60, axis=1)
     elif data_type =='gen' and prm['var_file']['gen'] == 'EXPORT HourlyData - Customer Endpoints.csv':
         data['mins'] = data.apply(lambda x: x.t_h * 60 + x.t_m, axis=1)
