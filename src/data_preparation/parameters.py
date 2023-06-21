@@ -265,6 +265,7 @@ def get_parameters() -> Tuple[dict, dict]:
         'brackets_definition',
         'high_res',
         'n_consecutive_days',
+        'months'
     ]:
         prm[key] = run_config[key]
 
@@ -273,4 +274,4 @@ def get_parameters() -> Tuple[dict, dict]:
     if not prm["plots"]:
         prm["do_heat_map"] = False
 
-    return prm, run_config
+    return prm

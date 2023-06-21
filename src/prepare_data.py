@@ -24,7 +24,7 @@ from src.data_preparation.scaling_factors import scaling_factors
 if __name__ == "__main__":
     # 0 - initialise variables
     tic_dtm = datetime.datetime.now()
-    prm, run_config = get_parameters()
+    prm = get_parameters()
     dtm_1 = datetime.datetime.now()
 
     print(f"torch.cuda.is_available() {torch.cuda.is_available()}")
