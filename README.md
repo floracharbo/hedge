@@ -69,7 +69,7 @@ other optional inputs are:
   - where home is an integer in [0, n_homes[
 - data_types; the types of data the user would like to produce, it has to list one, two of three of the strings ['car', 'PV', 'loads']; if left blank all three types will be generated
 4. For each new day to be generated, call hedge.
-`day = data_generator.load_next_day()`
+`day = data_generator.make_next_day()`
 
 where day contains the following entries:
 - `day['avail_car']` (`n_homes` x `n`) integers 0 for unavailable, 1 for available]
