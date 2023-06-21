@@ -46,6 +46,7 @@ class GAN_Trainer():
     def get_saving_label(self):
         saving_label \
             = f'{self.data_type} {self.day_type}, {self.value_type} lr_start {self.lr_start:.2e} ' \
+        f"lr_discriminator_ratio {self.lr_discriminator_ratio:.2e} " \
               f"n_items_generated {self.n_items_generated} " \
               f"noise0{self.noise0:.2f}_noise_end{self.noise_end:.2f}".replace('.', '_')
         saving_label += f" cluster {self.k}"
@@ -157,22 +158,25 @@ class GAN_Trainer():
             noise0=self.noise0,
             noise_end=self.noise_end,
             dropout=self.dropout_generator,
-            data_type=self.data_type
+            data_type=self.data_type,
+            min_outputs=self.min,
+            max_outputs=self.max,
         )
         self.discriminator = Discriminator(
             size_inputs=self.size_input_discriminator,
             nn_type=self.nn_type_discriminator,
             dropout=self.dropout_discriminator,
+            noise0=self.noise0,
         )
         self.loss_function = nn.BCELoss()
 
         self.optimizer_discriminator = th.optim.Adam(
-            self.discriminator.parameters(), lr=self.lr_start
+            self.discriminator.parameters(), lr=self.lr_start * self.lr_discriminator_ratio
         )
         self.optimizer_generator = th.optim.Adam(self.generator.parameters(), lr=self.lr_start)
 
     def train_discriminator(self, real_inputs, real_outputs):
-        generated_outputs = self.generator(real_inputs.to(th.float32))
+        generated_outputs = self.generator(real_inputs)
         generated_samples_labels = th.zeros((self.batch_size_, 1))
 
         checks_nan(real_inputs, real_outputs, generated_outputs)
@@ -215,7 +219,7 @@ class GAN_Trainer():
         return percentiles_generated, generated_samples_2d, n_samples
 
     def _compute_metrics_episode(self, episode, generated_samples):
-        mean_real_t = th.mean(self.outputs, dim=0)
+        mean_real_t = th.mean(self.outputs, dim=0)[~self.zero_values]
         generated_samples_2d = generated_samples.view(
             self.batch_size_ * self.n_items_generated, -1
         )
@@ -224,7 +228,6 @@ class GAN_Trainer():
         n_real = len(self.outputs)
         n_generated = int(self.batch_size_ * self.n_items_generated)
         n_sum = min(n_generated, n_real)
-        n_steps = self.outputs.size()[1]
         sum_diff_x_mean = 0
         sum_diff_x2 = 0
         sum_diff_y_mean = 0
@@ -233,7 +236,7 @@ class GAN_Trainer():
         sum_x2 = 0
         sum_diff_forecast = 0
         n_forecast = 0
-        for t in range(n_steps):
+        for t in range(self.n_profile):
             for i in range(n_sum):
                 i_real = np.random.choice(n_real)
                 i_generated = np.random.choice(n_generated)
@@ -254,7 +257,7 @@ class GAN_Trainer():
 
         episode['pcc'] = (sum_diff_x_mean * sum_diff_y_mean) / th.sqrt(sum_diff_x2 * sum_diff_y2)
         episode['prd'] = th.sqrt(sum_diff_x_y_2 / sum_x2)
-        episode['rmse'] = th.sqrt(1/th.tensor(n_sum * n_steps) * sum_diff_x_y_2)
+        episode['rmse'] = th.sqrt(1/th.tensor(n_sum * self.n_profile) * sum_diff_x_y_2)
         episode['mrae'] = 1/n_forecast * sum_diff_forecast
 
         return episode
@@ -275,16 +278,17 @@ class GAN_Trainer():
             episode['loss_percentiles'] += th.sum(
                 th.square(
                     percentiles_generated[key]
-                    - th.from_numpy(self.percentiles_inputs[self.k][key])
+                    - th.from_numpy(self.percentiles_inputs[self.k][key][~self.zero_values])
                 )
             ) * self.weight_diff_percentiles
         episode['loss_generator'] += episode['loss_percentiles']
         episode = self._compute_metrics_episode(episode, generated_samples)
-        if self.data_type != 'gen':
+        # if self.data_type != 'gen':
+        if True:
             divergences_from_1 = th.stack(
                 [th.stack(
                     [
-                        abs(th.sum(generated_samples[j, i * self.prm['n']: (i + 1) * self.prm['n']]) - 1)
+                        abs(th.sum(generated_samples[j, i * self.n_profile: (i + 1) * self.n_profile]) - 1)
                         for i in range(self.n_items_generated)
                     ]
                 ) for j in range(self.batch_size_)])
@@ -295,7 +299,7 @@ class GAN_Trainer():
                 th.stack(
                     [th.stack(
                     [
-                        (th.sum(generated_samples[j, i * self.prm['n']: (i + 1) * self.prm['n']]) - 1) ** 2
+                        (th.sum(generated_samples[j, i * self.n_profile: (i + 1) * self.n_profile]) - 1) ** 2
                         for i in range(self.n_items_generated)
                     ]
                 )  for j in range(self.batch_size_)])
@@ -304,14 +308,14 @@ class GAN_Trainer():
 
         episode['loss_generator'].backward()
         self.optimizer_generator.step()
-        if final_n and epoch % 10 == 0:
+        if final_n and epoch % 100 == 0:
             self.plot_statistical_indicators_profiles(
                 percentiles_generated, epoch, n_samples
             )
         episode['means_outputs'] = th.mean(generated_outputs)
         episode['stds_outputs'] = th.std(generated_outputs)
 
-        return generated_outputs, episode
+        return generated_outputs, episode, generated_samples
 
 
     def plot_statistical_indicators_profiles(
@@ -319,7 +323,6 @@ class GAN_Trainer():
     ):
         if self.prm['plots']:
             fig = plt.figure()
-            xs = np.arange(n_samples)
             for color, percentiles_, label in zip(
                     ['b', 'g'],
                     [percentiles_generated, self.percentiles_inputs[self.k]],
@@ -328,9 +331,13 @@ class GAN_Trainer():
                 for indicator in [f'p{percentile}' for percentile in self.percentiles] + ['mean']:
                     percentiles_np = percentiles_[indicator] if label == 'original' \
                         else percentiles_[indicator].detach().numpy()
+                    if label == 'generated':
+                        y = np.zeros(self.prm['n'])
+                        y[~self.zero_values] = percentiles_np
+                    else:
+                        y = percentiles_np
                     plt.plot(
-                        xs,
-                        percentiles_np,
+                        y,
                         color=color,
                         linestyle='--' if indicator[0] == 'p' else '-',
                         label=label if indicator == 'mean' else None,
@@ -366,11 +373,31 @@ class GAN_Trainer():
             plt.close('all')
 
     def update_noise_and_lr_generator(self, epoch):
-        self.generator.noise_factor *= self.generator.noise_reduction
-        for g in self.optimizer_generator.param_groups:
-            g['lr'] = self.lr_start * self.lr_decay ** epoch
-        for g in self.optimizer_discriminator.param_groups:
-            g['lr'] = self.lr_start * self.lr_decay ** epoch
+        if self.initial_noise is not None and epoch < self.n_epochs_initial_noise:
+            self.generator.noise_factor = self.initial_noise
+            self.discriminator.noise_factor = self.initial_noise
+
+        elif self.noise_reduction_type == 'exp':
+            self.generator.noise_factor *= self.generator.noise_reduction_exp
+            self.discriminator.noise_factor *= self.generator.noise_reduction_exp
+
+        elif self.noise_reduction_type == 'linear':
+            self.generator.noise_factor = self.noise0 + epoch / self.n_epochs * (self.noise_end - self.noise0)
+            self.discriminator.noise_factor = self.noise0 + epoch / self.n_epochs * (self.noise_end - self.noise0)
+
+        else:
+            print(f"noise reduction type {self.noise_reduction_type} not implemented")
+
+        if self.initial_lr is not None and epoch < self.n_epochs_initial_lr:
+            for g in self.optimizer_generator.param_groups:
+                g['lr'] = self.initial_lr
+            for g in self.optimizer_discriminator.param_groups:
+                g['lr'] = self.initial_lr
+        else:
+            for g in self.optimizer_generator.param_groups:
+                g['lr'] = self.lr_start * self.lr_decay ** epoch
+            for g in self.optimizer_discriminator.param_groups:
+                g['lr'] = self.lr_start * self.lr_decay ** epoch * self.lr_discriminator_ratio
 
     def plot_metrics_over_time(self, episodes, epoch):
         if not self.prm['plots']:
@@ -385,7 +412,7 @@ class GAN_Trainer():
             [0, 0, 1, 1],
             [0, 1, 0, 1]
         ):
-            axs[x, y].plot(episodes[label][:epoch])
+            axs[x, y].plot(episodes[label][:epoch].detach().numpy())
             axs[x, y].set_xlabel("Epochs")
             axs[x, y].set_ylabel(label)
 
@@ -403,17 +430,18 @@ class GAN_Trainer():
         fig, ax = plt.subplots()
         twin = ax.twinx()
         labels = ["loss_generator", "loss_percentiles"]
-        if self.data_type != 'gen':
+        # if self.data_type != 'gen':
+        if True:
             labels.append("loss_sum_profiles")
         alphas = [1, 0.5]
         ps = []
         for i, (label, alpha) in enumerate(zip(labels, alphas)):
-            p, = ax.plot(episodes[label][:epoch], color=colours[i], label=label, alpha=alpha)
+            p, = ax.plot(episodes[label][:epoch + 1].detach().numpy(), color=colours[i], label=label, alpha=alpha)
             ps.append(p)
             with open(self.save_path / f"{label}.pickle", 'wb') as file:
                 pickle.dump(episodes[label], file)
         p3, = twin.plot(
-            episodes['loss_discriminator'][:epoch], color=colours[3], label="Discriminator losses"
+            episodes['loss_discriminator'][:epoch + 1].detach().numpy(), color=colours[3], label="Discriminator losses"
         )
         ax.set_xlabel("Epochs")
         ax.set_ylabel("Generator losses")
@@ -438,6 +466,7 @@ class GAN_Trainer():
             title = f"{self.get_saving_label()} noise over time"
             plt.title(title)
             save_fig(fig, self.prm, self.save_path / title)
+            plt.close('all')
 
     def plot_final_hist_generated_vs_real(self, generated_outputs, real_outputs, epoch):
         generated_outputs = generated_outputs.detach().numpy()
@@ -476,40 +505,48 @@ class GAN_Trainer():
             'means_outputs', 'stds_outputs', 'ave_diff_mean', 'pcc', 'prd',
             'rmse', 'mrae'
         ]
-        if self.data_type != 'gen':
+        # if self.data_type != 'gen':
+        if True:
             episode_entries += ['loss_sum_profiles',  'mean_err_1', 'std_err_1', 'share_large_err_1']
         episodes = {
-            info: np.zeros(self.n_epochs * n_train_loader) for info in episode_entries
+            info: th.zeros(self.n_epochs * n_train_loader) for info in episode_entries
         }
         idx = 0
         for epoch in tqdm(range(self.n_epochs)):
             for n, train_data in enumerate(self.train_loader):
                 self.batch_size_ = len(train_data)
                 real_inputs, real_outputs = self.split_inputs_and_outputs(train_data)
+                real_outputs = real_outputs.view(self.n_items_generated * self.batch_size_, -1)[:, ~self.zero_values].view(self.batch_size_, -1)
                 episodes['loss_discriminator'][idx] = self.train_discriminator(real_inputs, real_outputs)
                 final_n = n == len(self.train_loader) - 1
-                generated_outputs, episode = self.train_generator(real_inputs, final_n, epoch, real_outputs)
+                generated_outputs, episode, generated_samples = self.train_generator(real_inputs, final_n, epoch, real_outputs)
                 for key in episode:
-                    episodes[key][idx] = episode[key].detach().numpy()
+                    episodes[key][idx] = episode[key]
                 idx += 1
 
             self.update_noise_and_lr_generator(epoch)
-            if epoch % 2 == 0:
+            if epoch % 100 == 0:
                 self._save_model(ext=epoch)
-                if self.data_type != 'gen':
+                # if self.data_type != 'gen':
+                if True:
                     self._plot_errors_normalisation_profiles(episodes, idx - 1)
                 self.plot_losses_over_time(episodes, epoch)
                 self.plot_metrics_over_time(episodes, epoch)
 
-            if episodes['loss_percentiles'][(epoch + 1) * n_train_loader - 1] < 9e-1:
+            if episodes['loss_percentiles'][(epoch + 1) * n_train_loader - 1] < 1e-1:
                 break
 
         self.plot_final_hist_generated_vs_real(generated_outputs, real_outputs, epoch)
-        if self.data_type != 'gen':
+        # if self.data_type != 'gen':
+        if True:
             self._plot_errors_normalisation_profiles(episodes, idx - 1)
         self.plot_losses_over_time(episodes, epoch)
         self.plot_metrics_over_time(episodes, epoch)
-
+        percentiles_generated, generated_samples_2d, n_samples \
+            = self._compute_statistical_indicators_generated_profiles(generated_samples)
+        self.plot_statistical_indicators_profiles(
+            percentiles_generated, epoch, n_samples
+        )
         self.plot_noise_over_time()
         print(
             f"mean generated outputs last 10: {np.mean(episodes['means_outputs'][-10:])}, "
@@ -545,11 +582,11 @@ class GAN_Trainer():
         title = f"{self.get_saving_label()} normalisation errors over time"
         colours = sns.color_palette()
         fig, ax = plt.subplots(3)
-        ax[0].plot(episodes['mean_err_1'][:idx + 1], color=colours[0])
+        ax[0].plot(episodes['mean_err_1'][:idx + 1].detach().numpy(), color=colours[0])
         ax[0].set_title('mean error')
-        ax[1].plot(episodes['std_err_1'][:idx + 1], color=colours[1])
+        ax[1].plot(episodes['std_err_1'][:idx + 1].detach().numpy(), color=colours[1])
         ax[1].set_title(f'std error {idx}')
-        ax[2].plot(episodes['share_large_err_1'][:idx + 1], color=colours[2])
+        ax[2].plot(episodes['share_large_err_1'][:idx + 1].detach().numpy(), color=colours[2])
         ax[2].set_title(f'share large error > 1 {idx}')
         ax[2].set_xlabel("Epochs")
         title = title.replace(' ', '_')
@@ -558,9 +595,11 @@ class GAN_Trainer():
         print(f"episodes['share_large_err_1'][{idx}] = {episodes['share_large_err_1'][idx]}")
 
 class Discriminator(nn.Module):
-    def __init__(self, size_inputs=1, nn_type='linear', dropout=0.3):
+    def __init__(self, size_inputs=1, nn_type='linear', dropout=0.3, noise0=0):
         super().__init__()
         self._initialise_model(size_inputs, nn_type, dropout)
+        self.noise_factor = noise0
+
 
     def _initialise_model(self, size_inputs, nn_type, dropout):
         if nn_type == 'linear':
@@ -593,6 +632,9 @@ class Discriminator(nn.Module):
 
     def forward(self, x):
         output = self.model(x)
+        noise = th.randn(output.shape) * self.noise_factor
+        output = th.clamp(output + noise, min=0, max=1)
+
 
         return output
 
@@ -604,7 +646,9 @@ class Generator(nn.Module):
             batch_size=100,
             nn_type='linear',
             dropout=0.3,
-            data_type='car'
+            data_type='car',
+            min_outputs=0,
+            max_outputs=1,
     ):
         super().__init__()
 
@@ -613,21 +657,24 @@ class Generator(nn.Module):
         self.data_type = data_type
         self._initialise_model(size_inputs, dropout, size_outputs, nn_type, batch_size)
         self.noise0 = noise0
-        self.noise_reduction = math.exp(math.log(noise_end / noise0) / n_epochs)
+        self.noise_reduction_exp = math.exp(math.log(noise_end / noise0) / n_epochs)
         self.noise_factor = self.noise0
+        self.min = min_outputs
+        self.max = max_outputs
 
     def _initialise_model(self, size_inputs, dropout, size_outputs, nn_type, batch_size):
         self.nn_type = nn_type
         self.size_outputs = size_outputs
+        multiplier = 2
         if nn_type == 'linear':
             self.model = nn.Sequential(
-                nn.Linear(size_inputs, 16),
+                nn.Linear(size_inputs, 16 * multiplier),
                 nn.ReLU(),
                 nn.Dropout(dropout),
-                nn.Linear(16, 32),
+                nn.Linear(16 * multiplier, 32 * multiplier),
                 nn.ReLU(),
                 nn.Dropout(dropout),
-                nn.Linear(32, size_outputs),
+                nn.Linear(32 * multiplier, size_outputs),
                 nn.Sigmoid(),
             )
 
@@ -698,8 +745,9 @@ class Generator(nn.Module):
             output = self.fc(output)
 
         noise = th.randn(output.shape) * self.noise_factor
-        output = th.clamp(output + noise, min=0, max=1)
-        if self.data_type == 'gen':
+        output = th.clamp(output + noise, min=self.min, max=self.max)
+        # if self.data_type == 'gen':
+        if False:
             output = output.reshape(-1, 24)
             output = th.div(output, th.sum(output, dim=1).reshape(-1, 1)).reshape(-1, self.size_outputs)
         # output = th.exp(output)
@@ -718,14 +766,17 @@ def compute_profile_generators(
         day_type, prm
 ):
     print("profile generators")
+    zero_values = (percentiles_inputs[k]['p90'] == 0) & (percentiles_inputs[k]['p10'] == 0)
     params = {
         'profiles': True,
         'batch_size': 100,
         'n_epochs': int(1e8 / len(profiles)),
         'weight_sum_profiles': 1e-7,
         'weight_diff_percentiles': 100,
-        'size_input_discriminator_one_item': prm['n'],
-        'size_output_generator_one_item': prm['n'],
+        'zero_values': zero_values,
+        'n_profile': prm['n'] - sum(zero_values),
+        'size_input_discriminator_one_item': prm['n'] - sum(zero_values),
+        'size_output_generator_one_item': prm['n'] - sum(zero_values),
         'k': k,
         'percentiles_inputs': percentiles_inputs,
         'data_type': data_type,
@@ -741,7 +792,30 @@ def compute_profile_generators(
         'day_type': day_type,
         'dim_latent_noise': 1,
         'percentiles': [10, 25, 50, 75, 90],
+        'noise_reduction_type': 'exp',
+        'initial_noise': None,
+        'initial_lr': None,
+        'n_epochs_initial_lr': 100,
+        'min': percentiles_inputs[k]['min'],
+        'max': percentiles_inputs[k]['max'],
+        'lr_discriminator_ratio': 1,
     }
+
+    if data_type == 'gen':
+        params['noise0'] = 0.01
+        params['lr_end'] = 0.01
+    elif data_type == 'loads':
+        params['noise0'] = 1e-3
+        params['lr_start'] = 1e-3
+        params['lr_end'] = 1e-3
+        params['batch_size'] = 10
+        params['initial_noise'] = 0.01
+        params['n_epochs_initial_noise'] = 100
+        params['dropout_generator'] = 0.5
+        # params['initial_lr'] = 0.1
+        params['n_epochs_initial_lr'] = 100
+        params['n_items_generated'] = 50
+        params['lr_discriminator_ratio'] = 1e-3
 
     params['lr_decay'] = (params['lr_end'] / params['lr_start']) ** (1 / params['n_epochs'])
     params['size_input_generator_one_item'] = params['dim_latent_noise']
