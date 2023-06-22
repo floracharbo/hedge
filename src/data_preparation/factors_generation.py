@@ -8,6 +8,7 @@ import seaborn as sns
 import torch as th
 from torch import nn
 from tqdm import tqdm
+import os
 
 from src.hedge import car_loads_to_availability
 from src.utils import save_fig
@@ -529,11 +530,11 @@ class GAN_Trainer():
         self.plot_statistical_indicators_profiles(
             percentiles_generated, epoch, n_samples
         )
-        self.plot_noise_over_time()
-        print(
-            f"mean generated outputs last 10: {np.mean(episodes['means_outputs'][-10:])}, "
-            f"std {np.mean(episodes['stds_outputs'][-10:])}"
-        )
+        # self.plot_noise_over_time()
+        # print(
+        #     f"mean generated outputs last 10: {np.mean(episodes['means_outputs'][-10:])}, "
+        #     f"std {np.mean(episodes['stds_outputs'][-10:])}"
+        # )
         self._save_model()
 
     def _save_model(self, ext=''):
@@ -596,6 +597,7 @@ class Discriminator(nn.Module):
         super().__init__()
         for attribute in ['size_input', 'nn_type', 'dropout']:
             setattr(self, attribute, getattr(gan_trainer, f"{attribute}_discriminator"))
+        self.recover_weights = gan_trainer.recover_weights
         self.noise0 = gan_trainer.noise0
         self.save_hedge_path = gan_trainer.prm['save_hedge']
         self._initialise_model(gan_trainer)
@@ -621,7 +623,7 @@ class Discriminator(nn.Module):
             )
             path = self.save_hedge_path / 'profiles' / f"norm_{gan_trainer.data_type}"
             weights_path = path / f"discriminator_weights_{gan_trainer.data_type}_{gan_trainer.day_type}_{gan_trainer.k}.pt"
-            if os.path.exists(weights_path):
+            if os.path.exists(weights_path) and self.recover_weights:
                 weights = th.load(weights_path)
                 self.model.load_state_dict(weights)
 
@@ -653,7 +655,8 @@ class Generator(nn.Module):
         super().__init__()
         attribute_list = [
             'min',
-            'max'
+            'max',
+            'recover_weights',
         ]
         for attribute in attribute_list:
             setattr(self, attribute, getattr(gan_trainer, attribute))
@@ -681,7 +684,7 @@ class Generator(nn.Module):
             )
             path = gan_trainer.prm['save_hedge'] / 'profiles' / f"norm_{gan_trainer.data_type}"
             weights_path = path / f"generator_weights_{gan_trainer.data_type}_{gan_trainer.day_type}_{gan_trainer.k}.pt"
-            if os.path.is_file(weights_path):
+            if os.path.exists(weights_path) and self.recover_weights:
                 weights = th.load(weights_path)
                 self.model.load_state_dict(weights)
 
@@ -751,14 +754,14 @@ class Generator(nn.Module):
             output, _ = self.lstm(x)
             output = self.fc(output)
 
-        noise = th.randn(output.shape) * self.noise_factor
-        output = th.clamp(output + noise, min=self.min, max=self.max)
+
         # if self.data_type == 'gen':
-        if False:
+        if True:
             output = output.reshape(-1, 24)
             output = th.div(output, th.sum(output, dim=1).reshape(-1, 1)).reshape(-1, self.size_output)
         # output = th.exp(output)
-
+        noise = th.randn(output.shape) * self.noise_factor
+        output = th.clamp(output + noise, min=self.min, max=self.max)
         return output
 
     def init_hidden(self, batch_size):
@@ -803,9 +806,10 @@ def compute_profile_generators(
         'initial_noise': None,
         'initial_lr': None,
         'n_epochs_initial_lr': 100,
-        'min': percentiles_inputs[k]['min'],
-        'max': percentiles_inputs[k]['max'],
+        'min': min(percentiles_inputs[k]['p10']),
+        'max': max(percentiles_inputs[k]['p90']),
         'lr_discriminator_ratio': 1,
+        'recover_weights': False,
     }
 
     if data_type == 'gen':
@@ -822,7 +826,9 @@ def compute_profile_generators(
         params['n_epochs_initial_lr'] = 100
         params['n_items_generated'] = 50
         params['lr_discriminator_ratio'] = 1e-3
-        params['batch_size'] = 400
+        params['batch_size'] = 100
+        params['percentiles'] = [25, 75]
+        params['recover_weights'] = False
 
     params['lr_decay'] = (params['lr_end'] / params['lr_start']) ** (1 / params['n_epochs'])
     params['size_input_generator_one_item'] = params['dim_latent_noise']
