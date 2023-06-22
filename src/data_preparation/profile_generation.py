@@ -494,6 +494,23 @@ class GAN_Trainer():
         episodes = {
             info: th.zeros(self.n_epochs * n_train_loader) for info in episode_entries
         }
+        path = self.prm['save_hedge'] / 'profiles' / f"norm_{self.data_type}"
+        ext = f"_{self.data_type}_{self.day_type}_{self.k}.pt"
+        files = {
+            'episodes': path / f"episodes{ext}",
+            'idx': path / f"episodes_idx{ext}",
+            'done': path / f"done{ext}"
+        }
+        if self.recover_weights and all(os.path.exists(file) for file in files.values()):
+            episodes_path = files['episodes']
+            episodes = th.load(episodes_path)
+            offset_idx = th.load(files['idx'])
+            done = th.load(files['done'])
+            if done:
+                return
+        else:
+            offset_idx = 0
+
         idx = 0
         for epoch in tqdm(range(self.n_epochs)):
             for n, train_data in enumerate(self.train_loader):
@@ -504,12 +521,12 @@ class GAN_Trainer():
                 final_n = n == len(self.train_loader) - 1
                 generated_outputs, episode, generated_samples = self.train_generator(real_inputs, final_n, epoch, real_outputs)
                 for key in episode:
-                    episodes[key][idx] = episode[key]
+                    episodes[key][idx + offset_idx] = episode[key]
                 idx += 1
 
             self.update_noise_and_lr_generator(epoch)
             if epoch % 100 == 0:
-                self._save_model()
+                self._save_model(episodes, idx, done=False)
                 # if self.data_type != 'gen':
                 if True:
                     self._plot_errors_normalisation_profiles(episodes, idx - 1)
@@ -535,10 +552,15 @@ class GAN_Trainer():
         #     f"mean generated outputs last 10: {np.mean(episodes['means_outputs'][-10:])}, "
         #     f"std {np.mean(episodes['stds_outputs'][-10:])}"
         # )
-        self._save_model()
+        self._save_model(episodes, idx, done=True)
 
-    def _save_model(self, ext=''):
-        path = self.prm['save_hedge'] / 'profiles' / f"norm_{self.data_type}" if ext == '' else self.save_path
+    def _save_model(self, episodes, idx, done=False):
+        path = self.prm['save_hedge'] / 'profiles' / f"norm_{self.data_type}"\
+            # if ext == '' else self.save_path
+        ext = f"_{self.data_type}_{self.day_type}_{self.k}.pt"
+        th.save(episodes, path / f"episodes{ext}")
+        th.save(idx, path / f"episodes_idx{ext}")
+        th.save(done, path / f"done{ext}")
         try:
             th.save(
                 self.generator.model,
@@ -827,8 +849,8 @@ def compute_profile_generators(
         params['n_items_generated'] = 50
         params['lr_discriminator_ratio'] = 1e-3
         params['batch_size'] = 100
-        params['percentiles'] = [25, 75]
-        params['recover_weights'] = False
+        # params['percentiles'] = [25, 75]
+        params['recover_weights'] = True
 
     params['lr_decay'] = (params['lr_end'] / params['lr_start']) ** (1 / params['n_epochs'])
     params['size_input_generator_one_item'] = params['dim_latent_noise']
