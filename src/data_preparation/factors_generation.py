@@ -149,27 +149,9 @@ class GAN_Trainer():
 
     def initialise_generator_and_discriminator(self):
         self.update_n_items_generated()
-        self.generator = Generator(
-            size_inputs=self.size_input_generator,
-            size_outputs=self.size_output_generator,
-            n_epochs=self.n_epochs,
-            nn_type=self.nn_type_generator,
-            batch_size=self.batch_size,
-            noise0=self.noise0,
-            noise_end=self.noise_end,
-            dropout=self.dropout_generator,
-            data_type=self.data_type,
-            min_outputs=self.min,
-            max_outputs=self.max,
-        )
-        self.discriminator = Discriminator(
-            size_inputs=self.size_input_discriminator,
-            nn_type=self.nn_type_discriminator,
-            dropout=self.dropout_discriminator,
-            noise0=self.noise0,
-        )
+        self.generator = Generator(self)
+        self.discriminator = Discriminator(self)
         self.loss_function = nn.BCELoss()
-
         self.optimizer_discriminator = th.optim.Adam(
             self.discriminator.parameters(), lr=self.lr_start * self.lr_discriminator_ratio
         )
@@ -526,7 +508,7 @@ class GAN_Trainer():
 
             self.update_noise_and_lr_generator(epoch)
             if epoch % 100 == 0:
-                self._save_model(ext=epoch)
+                self._save_model()
                 # if self.data_type != 'gen':
                 if True:
                     self._plot_errors_normalisation_profiles(episodes, idx - 1)
@@ -562,6 +544,21 @@ class GAN_Trainer():
                 path
                 / f"generator_{self.data_type}_{self.day_type}_{self.k}{ext}.pt"
             )
+            th.save(
+                self.generator.model.state_dict(),
+                path
+                / f"generator_weights_{self.data_type}_{self.day_type}_{self.k}{ext}.pt"
+            )
+            th.save(
+                self.discriminator.model,
+                path
+                / f"discriminator_{self.data_type}_{self.day_type}_{self.k}{ext}.pt"
+            )
+            th.save(
+                self.discriminator.model.state_dict(),
+                path
+                / f"discriminator_weights_{self.data_type}_{self.day_type}_{self.k}{ext}.pt"
+            )
         except Exception as ex1:
             try:
                 th.save(
@@ -595,21 +592,25 @@ class GAN_Trainer():
         print(f"episodes['share_large_err_1'][{idx}] = {episodes['share_large_err_1'][idx]}")
 
 class Discriminator(nn.Module):
-    def __init__(self, size_inputs=1, nn_type='linear', dropout=0.3, noise0=0):
+    def __init__(self, gan_trainer):
         super().__init__()
-        self._initialise_model(size_inputs, nn_type, dropout)
-        self.noise_factor = noise0
+        for attribute in ['size_input', 'nn_type', 'dropout']:
+            setattr(self, attribute, getattr(gan_trainer, f"{attribute}_discriminator"))
+        self.noise0 = gan_trainer.noise0
+        self.save_hedge_path = gan_trainer.prm['save_hedge']
+        self._initialise_model(gan_trainer)
+        self.noise_factor = gan_trainer.noise0
 
-
-    def _initialise_model(self, size_inputs, nn_type, dropout):
+    def _initialise_model(self, gan_trainer):
+        size_input, nn_type, dropout = self.size_input, self.nn_type, self.dropout
         if nn_type == 'linear':
             multiplier = 0.5
             self.model = nn.Sequential(
-                # nn.Linear(size_inputs, 256),
+                # nn.Linear(size_input, 256),
                 # nn.ReLU(),
                 # nn.Dropout(dropout),
                 # nn.Linear(256, 128),
-                nn.Linear(size_inputs, 128),
+                nn.Linear(size_input, 128),
                 nn.ReLU(),
                 nn.Dropout(dropout),
                 nn.Linear(128, 64),
@@ -618,14 +619,19 @@ class Discriminator(nn.Module):
                 nn.Linear(64, 1),
                 nn.Sigmoid(),
             )
+            path = self.save_hedge_path / 'profiles' / f"norm_{gan_trainer.data_type}"
+            weights_path = path / f"discriminator_weights_{gan_trainer.data_type}_{gan_trainer.day_type}_{gan_trainer.k}.pt"
+            if os.path.exists(weights_path):
+                weights = th.load(weights_path)
+                self.model.load_state_dict(weights)
 
         elif nn_type == 'cnn':
             self.model = nn.Sequential(
                 nn.Conv1d(200, 200, kernel_size=3),
-                nn.BatchNorm1d(num_features=size_inputs-2),
+                nn.BatchNorm1d(num_features=size_input-2),
                 nn.Flatten(),
                 nn.Dropout(0.3),
-                nn.Linear(size_inputs-2, 64),
+                nn.Linear(size_input-2, 64),
                 nn.ReLU(),
                 nn.Dropout(0.3),
                 nn.Linear(64, 1),
@@ -637,52 +643,51 @@ class Discriminator(nn.Module):
         noise = th.randn(output.shape) * self.noise_factor
         output = th.clamp(output + noise, min=0, max=1)
 
-
         return output
 
 
 class Generator(nn.Module):
     def __init__(
-            self, size_inputs=1, size_outputs=1,
-            noise0=1, noise_end=5e-2, n_epochs=100,
-            batch_size=100,
-            nn_type='linear',
-            dropout=0.3,
-            data_type='car',
-            min_outputs=0,
-            max_outputs=1,
+            self, gan_trainer
     ):
         super().__init__()
-
+        attribute_list = [
+            'min',
+            'max'
+        ]
+        for attribute in attribute_list:
+            setattr(self, attribute, getattr(gan_trainer, attribute))
+        self.save_hedge_path = gan_trainer.prm['save_hedge']
         self.hidden_dim = 256
         self.n_layers = 2
-        self.data_type = data_type
-        self._initialise_model(size_inputs, dropout, size_outputs, nn_type, batch_size)
-        self.noise0 = noise0
-        self.noise_reduction_exp = math.exp(math.log(noise_end / noise0) / n_epochs)
-        self.noise_factor = self.noise0
-        self.min = min_outputs
-        self.max = max_outputs
+        self._initialise_model(gan_trainer)
+        self.noise_reduction_exp = math.exp(math.log(gan_trainer.noise_end / gan_trainer.noise0) / gan_trainer.n_epochs)
+        self.noise_factor = gan_trainer.noise0
 
-    def _initialise_model(self, size_inputs, dropout, size_outputs, nn_type, batch_size):
-        self.nn_type = nn_type
-        self.size_outputs = size_outputs
+    def _initialise_model(self, gan_trainer):
+        for attribute in ['nn_type', 'size_output', 'size_input', 'dropout']:
+            setattr(self, attribute, getattr(gan_trainer, f"{attribute}_generator"))
         multiplier = 1
-        if nn_type == 'linear':
+        if self.nn_type == 'linear':
             self.model = nn.Sequential(
-                nn.Linear(size_inputs, 16 * multiplier),
+                nn.Linear(self.size_input, 16 * multiplier),
                 nn.ReLU(),
-                nn.Dropout(dropout),
+                nn.Dropout(self.dropout),
                 nn.Linear(16 * multiplier, 32 * multiplier),
                 nn.ReLU(),
-                nn.Dropout(dropout),
-                nn.Linear(32 * multiplier, size_outputs),
+                nn.Dropout(self.dropout),
+                nn.Linear(32 * multiplier, self.size_output),
                 nn.Sigmoid(),
             )
+            path = gan_trainer.prm['save_hedge'] / 'profiles' / f"norm_{gan_trainer.data_type}"
+            weights_path = path / f"generator_weights_{gan_trainer.data_type}_{gan_trainer.day_type}_{gan_trainer.k}.pt"
+            if os.path.is_file(weights_path):
+                weights = th.load(weights_path)
+                self.model.load_state_dict(weights)
 
-        elif nn_type == 'cnn':
+        elif self.nn_type == 'cnn':
             self.fc = nn.Sequential(
-                nn.Linear(size_inputs, 256),
+                nn.Linear(size_input, 256),
                 nn.ReLU(),
                 nn.Dropout(0.3),
                 nn.Linear(256, 512),
@@ -691,47 +696,47 @@ class Generator(nn.Module):
                 nn.Linear(512, 1024),
                 nn.ReLU(),
                 nn.Dropout(0.3),
-                nn.Linear(1024, size_outputs * 8),
+                nn.Linear(1024, self.size_output * 8),
                 nn.ReLU(),
             )
 
             self.conv = nn.Sequential(
                 nn.ConvTranspose1d(
-                    size_outputs * 8, size_outputs * 4, kernel_size=3, stride=2, padding=1,
+                   self.size_output * 8, self.size_output * 4, kernel_size=3, stride=2, padding=1,
                 ),
-                nn.BatchNorm1d(size_outputs * 4),
+                nn.BatchNorm1d(self.size_output * 4),
                 nn.ReLU(),
                 nn.Dropout(0.3),
                 nn.ConvTranspose1d(
-                    size_outputs * 4, size_outputs * 2, kernel_size=3, stride=2, padding=1,
+                   self.size_output * 4, self.size_output * 2, kernel_size=3, stride=2, padding=1,
                 ),
-                nn.BatchNorm1d(size_outputs * 2),
+                nn.BatchNorm1d(size_output * 2),
                 nn.ReLU(),
                 nn.Dropout(0.3),
                 nn.ConvTranspose1d(
-                    size_outputs * 2, size_outputs, kernel_size=3, stride=2, padding=1
+                   self.size_output * 2, self.size_output, kernel_size=3, stride=2, padding=1
                 ),
-                nn.BatchNorm1d(size_outputs),
+                nn.BatchNorm1d(self.size_output),
                 nn.ReLU(),
             )
-        elif nn_type == 'rnn':
+        elif self.nn_type == 'rnn':
             # Defining the layers
 
             # RNN Layer
-            self.rnn = nn.RNN(size_inputs, self.hidden_dim, self.n_layers, batch_first=True)
+            self.rnn = nn.RNN(size_input, self.hidden_dim, self.n_layers, batch_first=True)
             # Fully connected layer
-            self.fc = nn.Linear(self.hidden_dim, size_outputs)
+            self.fc = nn.Linear(self.hidden_dim, self.size_output)
 
-        elif nn_type == 'lstm':
-            self.lstm = nn.LSTM(size_inputs, self.hidden_dim, self.n_layers, batch_first=True)
-            self.fc = nn.Linear(self.hidden_dim, size_outputs)
+        elif self.nn_type == 'lstm':
+            self.lstm = nn.LSTM(size_input, self.hidden_dim, self.n_layers, batch_first=True)
+            self.fc = nn.Linear(self.hidden_dim, self.size_output)
 
     def forward(self, x):
         if self.nn_type == 'linear':
             output = self.model(x)
         elif self.nn_type == 'cnn':
             x = self.fc(x)
-            x = x.view(-1, 8 * self.size_outputs, 1)
+            x = x.view(-1, 8 * self.size_output, 1)
             output = self.conv(x)
         elif self.nn_type == 'rnn':
             batch_size = x.size(0)
@@ -751,7 +756,7 @@ class Generator(nn.Module):
         # if self.data_type == 'gen':
         if False:
             output = output.reshape(-1, 24)
-            output = th.div(output, th.sum(output, dim=1).reshape(-1, 1)).reshape(-1, self.size_outputs)
+            output = th.div(output, th.sum(output, dim=1).reshape(-1, 1)).reshape(-1, self.size_output)
         # output = th.exp(output)
 
         return output
