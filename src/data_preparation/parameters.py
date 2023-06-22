@@ -265,12 +265,13 @@ def get_parameters() -> Tuple[dict, dict]:
         'brackets_definition',
         'high_res',
         'n_consecutive_days',
-        'months'
+        'months',
     ]:
         prm[key] = run_config[key]
 
     for key in ['max_power_cutoff', 'max_daily_energy_cutoff']:
         prm['car'][key] = run_config['car'][key]
+    prm['H'] = run_config['syst']['H']
     if not prm["plots"]:
         prm["do_heat_map"] = False
 
