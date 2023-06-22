@@ -603,11 +603,13 @@ class Discriminator(nn.Module):
 
     def _initialise_model(self, size_inputs, nn_type, dropout):
         if nn_type == 'linear':
+            multiplier = 0.5
             self.model = nn.Sequential(
-                nn.Linear(size_inputs, 256),
-                nn.ReLU(),
-                nn.Dropout(dropout),
-                nn.Linear(256, 128),
+                # nn.Linear(size_inputs, 256),
+                # nn.ReLU(),
+                # nn.Dropout(dropout),
+                # nn.Linear(256, 128),
+                nn.Linear(size_inputs, 128),
                 nn.ReLU(),
                 nn.Dropout(dropout),
                 nn.Linear(128, 64),
@@ -808,7 +810,6 @@ def compute_profile_generators(
         params['noise0'] = 1e-3
         params['lr_start'] = 1e-3
         params['lr_end'] = 1e-3
-        params['batch_size'] = 10
         params['initial_noise'] = 0.01
         params['n_epochs_initial_noise'] = 100
         params['dropout_generator'] = 0.5
@@ -816,6 +817,7 @@ def compute_profile_generators(
         params['n_epochs_initial_lr'] = 100
         params['n_items_generated'] = 50
         params['lr_discriminator_ratio'] = 1e-3
+        params['batch_size'] = 400
 
     params['lr_decay'] = (params['lr_end'] / params['lr_start']) ** (1 / params['n_epochs'])
     params['size_input_generator_one_item'] = params['dim_latent_noise']
