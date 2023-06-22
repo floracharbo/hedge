@@ -27,7 +27,7 @@ import seaborn as sns
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
-from src.data_preparation.factors_generation import compute_profile_generators
+from src.data_preparation.profile_generation import compute_profile_generators
 from src.utils import initialise_dict, save_fig
 
 
