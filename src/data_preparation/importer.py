@@ -618,6 +618,7 @@ def get_sequences(
             #         sequences[id_] = pd.concat([sequences[id_], current_time_step], ignore_index=True)
     assert len(sequences) > 0, "len(sequences) == 0"
     granularities = None
+
     return sequences, granularities
 
 
@@ -887,6 +888,7 @@ def get_data(
     data = formatting(
         data,
         prm["type_cols"][data_type],
+        data_type,
         prm,
         name_col=list(prm["i_cols"][data_type]),
         hour_min=0,

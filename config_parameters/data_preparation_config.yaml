@@ -1,5 +1,5 @@
 # run configuration
-data_types: ["loads"]
+data_types: ["car"]
 
 syst:
   H: 24
