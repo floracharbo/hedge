@@ -75,9 +75,9 @@ def datetime_to_cols(data_frame, col_name, hour_min=0):
     return data_frame
 
 
-def formatting(data, type_cols, prm, name_col=None, hour_min=0):
+def formatting(data, type_cols, data_type, prm, name_col=None, hour_min=0):
     """Format data column according to type specification."""
-    if prm['var_file']['gen'][-len('parquet'):] == 'parquet':
+    if data_type == 'gen' and prm['var_file']['gen'][-len('parquet'):] == 'parquet':
         return data
 
     for i, type_col in enumerate(type_cols):
