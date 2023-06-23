@@ -517,11 +517,14 @@ class GAN_Trainer():
                 self.batch_size_ = len(train_data)
                 real_inputs, real_outputs = self.split_inputs_and_outputs(train_data)
                 real_outputs = real_outputs.view(self.n_items_generated * self.batch_size_, -1)[:, ~self.zero_values].view(self.batch_size_, -1)
-                episodes['loss_discriminator'][idx] = self.train_discriminator(real_inputs, real_outputs)
+                loss_discriminator = self.train_discriminator(real_inputs, real_outputs)
+                with th.no_grad():
+                    episodes['loss_discriminator'][idx + offset_idx] = loss_discriminator
                 final_n = n == len(self.train_loader) - 1
                 generated_outputs, episode, generated_samples = self.train_generator(real_inputs, final_n, epoch, real_outputs)
                 for key in episode:
-                    episodes[key][idx + offset_idx] = episode[key]
+                    with th.no_grad():
+                        episodes[key][idx + offset_idx] = episode[key]
                 idx += 1
 
             self.update_noise_and_lr_generator(epoch)
@@ -679,6 +682,7 @@ class Generator(nn.Module):
             'min',
             'max',
             'recover_weights',
+            'size_output_generator_one_item',
         ]
         for attribute in attribute_list:
             setattr(self, attribute, getattr(gan_trainer, attribute))
@@ -776,14 +780,14 @@ class Generator(nn.Module):
             output, _ = self.lstm(x)
             output = self.fc(output)
 
-
         # if self.data_type == 'gen':
         if True:
-            output = output.reshape(-1, 24)
+            output = output.reshape(-1, self.size_output_generator_one_item)
             output = th.div(output, th.sum(output, dim=1).reshape(-1, 1)).reshape(-1, self.size_output)
         # output = th.exp(output)
         noise = th.randn(output.shape) * self.noise_factor
         output = th.clamp(output + noise, min=self.min, max=self.max)
+
         return output
 
     def init_hidden(self, batch_size):
@@ -851,6 +855,18 @@ def compute_profile_generators(
         params['batch_size'] = 100
         # params['percentiles'] = [25, 75]
         params['recover_weights'] = True
+    elif data_type == 'car':
+        params['noise0'] = 1e-3
+        params['lr_start'] = 1e-3
+        params['lr_end'] = 1e-3
+        params['initial_noise'] = 0.01
+        params['n_epochs_initial_noise'] = 100
+        params['dropout_generator'] = 0.5
+        # params['initial_lr'] = 0.1
+        params['n_epochs_initial_lr'] = 100
+        params['n_items_generated'] = 50
+        params['lr_discriminator_ratio'] = 1e-3
+        params['batch_size'] = 100
 
     params['lr_decay'] = (params['lr_end'] / params['lr_start']) ** (1 / params['n_epochs'])
     params['size_input_generator_one_item'] = params['dim_latent_noise']
