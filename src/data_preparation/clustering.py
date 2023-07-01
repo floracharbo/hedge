@@ -396,7 +396,7 @@ class Clusterer:
                     )
                     plt.fill_between(xs, statistical_indicators[k]['p10'], color="w")
                     if stylised:
-                        title = f"Cluster {k} demand {day_type} stylised"
+                        title = f"Cluster {k} {data_type} {day_type} stylised"
                         plt.plot(
                             xs, statistical_indicators[k]['mean'],
                             color="blue", label="mean", lw=3
@@ -659,13 +659,16 @@ class Clusterer:
         for k in range(self.prm["n_clus"][data_type]):
             print(f"k {k}")
             if data_type == 'car':
-                print(
-                    f"k {k} % car available = "
-                    f"{np.sum(ev_avail_k[k]) / np.multiply(*np.shape(ev_avail_k[k]))}"
-                )
+                percentage_car_avail = np.sum(ev_avail_k[k]) / np.multiply(*np.shape(ev_avail_k[k]))
+                average_non_zero_trip = np.mean(vals_k[k][vals_k[k] > 0])
+                print(f"k {k} % car available = {percentage_car_avail}")
+                print(f"average trip non zero {average_non_zero_trip}")
+            else:
+                percentage_car_avail, average_non_zero_trip = None, None
             compute_profile_generators(
                 vals_k[k], k, statistical_indicators,
-                data_type, day_type, self.prm
+                data_type, day_type, self.prm,
+                percentage_car_avail, average_non_zero_trip
             )
 
     def _cluster_module(

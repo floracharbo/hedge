@@ -191,6 +191,7 @@ def save_outs(outs, prm, data_type, chunks_rows):
         else:
             print(f"{data_type} np.shape(all_data) {np.shape(all_data)}")
         print(f"np.sum(all_data) {np.sum(all_data)} {data_type}")
+        print(f"len(days_) = {len(days_)}")
     if (
             prm["do_test_filling_in"]
             and prm["data_type_source"][data_type] == "CLNR"
