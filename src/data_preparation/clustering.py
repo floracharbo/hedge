@@ -482,7 +482,7 @@ class Clusterer:
         self._get_n_trans(
             n_data_type, data_type, days, n_consecutive_days
         )
-        if len(self.banks['loads']['wd2wd'][f'f0of{n_consecutive_days}']) == 0:
+        if data_type == 'loads' and len(self.banks['loads']['wd2wd'][f'f0of{n_consecutive_days}']) == 0:
             print(f"loads wd2wd f0of{n_consecutive_days}: len banks is 0 after _get_n_trans")
 
         for c0 in range(n_clus_all_):

@@ -924,7 +924,7 @@ def compute_profile_generators(
         params['dropout_generator'] = 0.5
         params['lr_discriminator_ratio'] = 1e-3
         params['n_epochs_test'] = 10
-        # params['recover_weights'] = True
+        params['recover_weights'] = True
 
     params['lr_decay'] = (params['lr_end'] / params['lr_start']) ** (1 / params['n_epochs'])
     params['size_input_generator_one_item'] = params['dim_latent_noise']
