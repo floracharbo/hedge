@@ -11,7 +11,7 @@ from tqdm import tqdm
 import os
 
 from src.hedge import car_loads_to_availability
-from src.utils import save_fig
+from src.utils import save_fig, list_potential_paths
 
 th.manual_seed(111)
 
