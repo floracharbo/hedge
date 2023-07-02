@@ -523,21 +523,27 @@ class GAN_Trainer():
         episodes_test = {
             info: th.zeros(int(np.floor(self.n_epochs / self.n_epochs_test))) for info in episode_entries
         }
-        path = self.prm['save_hedge'] / 'profiles' / f"norm_{self.data_type}"
-        files = {
-            'episodes': path / f"episodes{self.ext}.pt",
-            'idx': path / f"episodes_idx{self.ext}.pt",
-            'done': path / f"done{self.ext}.pt"
-        }
-        if self.recover_weights and all(os.path.exists(file) for file in files.values()):
-            episodes_path = files['episodes']
-            episodes = th.load(episodes_path)
-            offset_idx = th.load(files['idx'])
-            done = th.load(files['done'])
-            if done:
-                return
-        else:
-            offset_idx = 0
+
+        potential_paths = list_potential_paths(
+            self.prm, [self.data_type], data_folder='hedge_inputs', sub_data_folder='profiles'
+        )
+        for potential_path in potential_paths:
+            path = potential_path / f"norm_{self.data_type}"
+            files = {
+                'episodes': path / f"episodes{self.ext}.pt",
+                'idx': path / f"episodes_idx{self.ext}.pt",
+                'done': path / f"done{self.ext}.pt"
+            }
+            if self.recover_weights and all(os.path.exists(file) for file in files.values()):
+                episodes_path = files['episodes']
+                episodes = th.load(episodes_path)
+                offset_idx = th.load(files['idx'])
+                done = th.load(files['done'])
+                if done:
+                    return
+                break
+            else:
+                offset_idx = 0
         idx = 0
         for epoch in tqdm(range(self.n_epochs)):
             test = True if epoch % self.n_epochs_test == 0 else False
