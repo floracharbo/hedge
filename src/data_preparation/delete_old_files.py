@@ -16,7 +16,7 @@ for root, dirs, files in os.walk(folder_path):
 
         # Check if the file is older than one month
         modification_time = datetime.datetime.fromtimestamp(os.path.getmtime(file_path))
-        if modification_time < one_month_ago:
+        if modification_time < one_month_ago and root[-4:] != 'outs':
             # Delete the file
             # os.remove(file_path)
             print(f"Delete file: {file_path} modification_time {modification_time}")
