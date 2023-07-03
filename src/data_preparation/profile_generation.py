@@ -574,22 +574,18 @@ class GAN_Trainer():
             self.update_noise_and_lr_generator(epoch)
             if epoch % self.n_epochs_test == 0:
                 self._save_model(episodes, idx, done=False, save_ext=epoch_test)
-                # if self.data_type != 'gen':
-                if True:
-                    self._plot_errors_normalisation_profiles(episodes, idx - 1)
+                self._plot_errors_normalisation_profiles(episodes, idx - 1)
                 self.plot_losses_over_time(episodes, epoch)
                 self.plot_metrics_over_time(episodes, epoch)
                 self.plot_losses_over_time(episodes_test, epoch_test, test=True)
                 self.plot_metrics_over_time(episodes_test, epoch_test, test=True)
-            if episodes_test['loss_percentiles'][epoch_test] < 5e-1:
+            if episodes_test['loss_percentiles'][epoch_test] < 1e2:
                 if self.data_type == 'car':
                     self.get_ideal_ev_avail_tol(generated_outputs)
                 break
 
         self.plot_final_hist_generated_vs_real(generated_outputs, real_outputs, epoch)
-        # if self.data_type != 'gen':
-        if True:
-            self._plot_errors_normalisation_profiles(episodes, idx - 1)
+        self._plot_errors_normalisation_profiles(episodes, idx - 1)
         self.plot_losses_over_time(episodes, epoch)
         self.plot_metrics_over_time(episodes, epoch)
         percentiles_generated \
@@ -597,11 +593,6 @@ class GAN_Trainer():
         self.plot_statistical_indicators_profiles(
             percentiles_generated, epoch
         )
-        # self.plot_noise_over_time()
-        # print(
-        #     f"mean generated outputs last 10: {np.mean(episodes['means_outputs'][-10:])}, "
-        #     f"std {np.mean(episodes['stds_outputs'][-10:])}"
-        # )
         self._save_model(episodes, idx, done=True)
 
     def _save_model(self, episodes, idx, done=False, save_ext=None):
