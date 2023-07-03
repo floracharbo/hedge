@@ -7,7 +7,7 @@ folder_path = 'data/other_outputs'  # Replace with the actual folder path
 current_date = datetime.datetime.now()
 
 # Calculate the date one month ago
-one_month_ago = current_date - datetime.timedelta(days=30)
+one_month_ago = current_date - datetime.timedelta(days=15)
 
 # Recursively iterate over all files and subdirectories in the folder
 for root, dirs, files in os.walk(folder_path):
