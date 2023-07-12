@@ -4,6 +4,7 @@ car:
   SoC0: 0.5  # EV battery start state of charge
   cap: 75  # EV battery capacity [kWh]
   c_max: 22  # max charge [kW]
+  max_daily_energy_cutoff: 200  # in kWh (over one day)
 
 syst:
   data_types: ["gen", "loads", "car"]
@@ -17,6 +18,12 @@ syst:
   date0: [2020, 1, 1, 0]
   n_items: 50
   H: 24  # number of time steps per day
+  month0: 1
+  factors0:
+    'gen': 8.012
+    'loads': 9.459
+    'car': 8.893
+
 
 
 
