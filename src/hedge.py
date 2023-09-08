@@ -446,9 +446,9 @@ class HEDGE:
                     interval_f_car[home] -= 1
                     factors[i_home] = self.mid_fs_brackets['car'][transition][
                         int(interval_f_car[home])]
-                    day['loads_car'][home] *= factors[i_home]/factor0
-                    assert sum(day['loads_car'][home]) == 0 or abs(sum(day[home]) - 1) < 1e-3, \
+                    assert sum(day['loads_car'][home]) == 0 or abs(sum(day['loads_car'][home]) - 1) < 1e-3, \
                         f"ev_cons {day['loads_car'][home]}"
+                    day['loads_car'][home] *= factors[i_home] / factor0
                 else:
                     profile = self._generate_profile('car', day_type, clusters[home])
                     day['loads_car'][home] = profile * factors[i_home]
@@ -486,10 +486,7 @@ class HEDGE:
             clus_dist_bin_edges = self.clus_dist_bin_edges[data_type][fitted_kmeans_id]
         else:
             clus_dist_cdfs = self.clus_dist_cdfs[data_type][fitted_kmeans_id][cluster]
-            try:
-                select_cdfs = self.select_cdfs[data_type][fitted_kmeans_id][cluster]
-            except Exception as ex:
-                print(ex)
+            select_cdfs = self.select_cdfs[data_type][fitted_kmeans_id][cluster]
             clus_dist_bin_edges = self.clus_dist_bin_edges[data_type][fitted_kmeans_id][cluster]
         max_dist = clus_dist_bin_edges[np.where(select_cdfs > clus_dist_cdfs)[0][-1]]
         zero_values = self.zero_values[f"{data_type}_{day_type}_{cluster_}"]
