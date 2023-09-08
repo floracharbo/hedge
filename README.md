@@ -18,7 +18,7 @@ The source code for **HEDGE** is currently hosted on GitHub at: https://github.c
 ## Usage
 
 
-### A. Preparing the HEDGE tool dataset
+### A. Preparing the HEDGE tool dataset [skip if using hourly resolution]
 Perform this step once to prepare the data that will be used by the HEDGE tool
 1. If you wish to generate car data, 
 - Find the dataset Study Number (SN) 5340 "National Travel Survey, 2002-2020" on the UK Data Service website
@@ -59,7 +59,7 @@ If you hit RAM issues and the code is unable to run on your machine, you may fin
 `from src.hedge import HEDGE`
 3. Create home energy data generator object instance, with at least the number of homes as an input
 `data_generator = HEDGE(n_homes)`
-    
+
 other optional inputs are:
 - factors0; the initial scaling factors in the format factors0[data_type][home]
   - where data_type is in ['car', 'PV', 'loads']
