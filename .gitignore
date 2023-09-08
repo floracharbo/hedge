@@ -9,7 +9,7 @@ data/*
 data/hedge_inputs/*
 !data/hedge_inputs/n24_sample
 !data/hedge_inputs/n48_sample
-!data/hedge_intputs/n24
+!data/hedge_inputs/n24
 hedge_extra_functions
 previous_results
 *.icloud
