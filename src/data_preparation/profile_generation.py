@@ -214,10 +214,12 @@ class GAN_Trainer():
 
     def _compute_metrics_episode(self, episode, generated_samples):
         mean_real_t = th.mean(self.outputs, dim=0)[~self.zero_values]
+        std_real_t = th.std(self.outputs, dim=0)[~self.zero_values]
         generated_samples_2d = generated_samples.view(
             self.batch_size_ * self.n_items_generated, -1
         )
         mean_generated_t = th.mean(generated_samples_2d, dim=0)
+        std_generated_t = th.std(generated_samples_2d, dim=0)
         episode['ave_diff_mean'] = th.mean(th.square(mean_generated_t - mean_real_t))
         n_real = len(self.outputs)
         n_generated = int(self.batch_size_ * self.n_items_generated)
@@ -253,6 +255,8 @@ class GAN_Trainer():
         episode['prd'] = th.sqrt(sum_diff_x_y_2 / sum_x2)
         episode['rmse'] = th.sqrt(1/th.tensor(n_sum * self.n_profile) * sum_diff_x_y_2)
         episode['mrae'] = 1/n_forecast * sum_diff_forecast
+        episode['diff_mean'] = sum((mean_generated_t[t] - mean_real_t[t]) ** 2 for t in range(self.n_profile))
+        episode['diff_std'] = sum((std_generated_t[t] - std_real_t[t]) ** 2 for t in range(self.n_profile))
 
         return episode
 
@@ -402,11 +406,11 @@ class GAN_Trainer():
             title += ' normalised'
         if test:
             title += ' test'
-        fig, axs = plt.subplots(2, 2)
+        fig, axs = plt.subplots(3, 2)
         for label, x, y in zip(
-            ['pcc', 'prd', 'rmse', 'mrae'],
-            [0, 0, 1, 1],
-            [0, 1, 0, 1]
+            ['pcc', 'prd', 'rmse', 'mrae', 'diff_mean', 'diff_std'],
+            [0, 0, 1, 1, 2, 2],
+            [0, 1, 0, 1, 0, 1]
         ):
             axs[x, y].plot(episodes[label][:epoch].detach().numpy())
             axs[x, y].set_xlabel("Epochs")
