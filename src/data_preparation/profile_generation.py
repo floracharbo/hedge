@@ -220,8 +220,8 @@ class GAN_Trainer():
     def _compute_metrics_episode(self, episode, generated_samples):
         mean_real_t = th.mean(self.outputs, dim=0)[~self.zero_values]
         std_real_t = th.std(self.outputs, dim=0)[~self.zero_values]
-        mean_test_t = th.mean(self.outputs, dim=0)[~self.zero_values]
-        std_test_t = th.std(self.outputs, dim=0)[~self.zero_values]
+        mean_test_t = th.mean(self.outputs_test, dim=0)[~self.zero_values]
+        std_test_t = th.std(self.outputs_test, dim=0)[~self.zero_values]
         generated_samples_2d = generated_samples.view(
             self.batch_size_ * self.n_items_generated, -1
         )
@@ -783,7 +783,10 @@ class Generator(nn.Module):
         self.hidden_dim = 256
         self.n_layers = 2
         self._initialise_model(gan_trainer)
-        self.noise_reduction_exp = math.exp(math.log(gan_trainer.noise_end / gan_trainer.noise0) / gan_trainer.n_epochs)
+        if gan_trainer.noise_reduction_type == 'exp':
+            self.noise_reduction_exp = math.exp(
+                math.log(gan_trainer.noise_end / gan_trainer.noise0) / gan_trainer.n_epochs
+            )
         self.noise_factor = gan_trainer.noise0
 
     def _initialise_model(self, gan_trainer):
@@ -959,7 +962,9 @@ def compute_profile_generators(
         # params['recover_weights'] = False
 
     elif data_type == 'loads':
-        params['noise0'] = 1e-1
+        params['noise0'] = 0
+        params['noise_end'] = 0
+        params['noise_reduction_type'] = 'linear'
         params['lr_start'] = 1e-3
         params['lr_end'] = 1e-2
         params['initial_noise'] = 0.01
