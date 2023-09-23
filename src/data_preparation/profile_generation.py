@@ -74,23 +74,28 @@ class GAN_Trainer():
         return saving_label
 
     def add_training_data(
-        self, inputs=None, outputs=None, p_clus=None, p_trans=None, n_clus=None,
+        self, inputs=None, outputs=None, test_outputs=None, p_clus=None, p_trans=None, n_clus=None,
     ):
         self.train_data_length = len(outputs)
         self.outputs = th.tensor(outputs)
+        self.outputs_test = th.tensor(test_outputs)
 
         if self.normalised:
             for i in range(self.train_data_length):
                 if inputs is not None:
                     self.inputs[i] = self.inputs[i] / self.inputs[i][0]
                 self.outputs[i] = self.outputs[i] / self.inputs[i][0]
+                self.outputs_test[i] = self.outputs_test[i] / self.inputs[i][0]
 
         self.plot_inputs()
 
         self.mean_real_output = np.nanmean(self.outputs)
         self.std_real_output = np.nanstd(self.outputs)
+        self.mean_test_output = np.nanmean(self.outputs_test)
+        self.std_test_output = np.nanstd(self.outputs_test)
 
         self.train_data = self.outputs
+        self.test_data = self.outputs_test
 
         if p_clus is not None:
             self.p_clus0, self.p_trans0, self.n_clus = p_clus, p_trans, n_clus
@@ -215,23 +220,27 @@ class GAN_Trainer():
     def _compute_metrics_episode(self, episode, generated_samples):
         mean_real_t = th.mean(self.outputs, dim=0)[~self.zero_values]
         std_real_t = th.std(self.outputs, dim=0)[~self.zero_values]
+        mean_test_t = th.mean(self.outputs, dim=0)[~self.zero_values]
+        std_test_t = th.std(self.outputs, dim=0)[~self.zero_values]
         generated_samples_2d = generated_samples.view(
             self.batch_size_ * self.n_items_generated, -1
         )
         mean_generated_t = th.mean(generated_samples_2d, dim=0)
         std_generated_t = th.std(generated_samples_2d, dim=0)
         episode['ave_diff_mean'] = th.mean(th.square(mean_generated_t - mean_real_t))
+        episode['ave_diff_mean_test'] = th.mean(th.square(mean_generated_t - mean_test_t))
         n_real = len(self.outputs)
         n_generated = int(self.batch_size_ * self.n_items_generated)
         n_sum = min(n_generated, n_real)
-        sum_diff_x_mean = 0
-        sum_diff_x2 = 0
-        sum_diff_y_mean = 0
-        sum_diff_y2 = 0
-        sum_diff_x_y_2 = 0
-        sum_x2 = 0
-        sum_diff_forecast = 0
-        n_forecast = 0
+        n_sum_test = min(n_generated, len(self.outputs_test))
+        [
+            sum_diff_x_mean, sum_diff_x2, sum_diff_y_mean, sum_diff_y2,
+            sum_diff_x_y_2, sum_x2, sum_diff_forecast, n_forecast
+        ] = [0] * 8
+        [
+            sum_diff_x_mean_test, sum_diff_x2_test, sum_diff_x_y_2_test,
+            sum_x2_test, sum_diff_forecast_test, n_forecast_test
+        ] = [0] * 6
         for t in range(self.n_profile):
             for i in range(n_sum):
                 i_real = np.random.choice(n_real)
@@ -251,12 +260,34 @@ class GAN_Trainer():
                         )
                         n_forecast += 1
 
+                if i < n_sum_test:
+                    i_test = np.random.choice(n_sum_test)
+                    sum_diff_x_mean_test += self.outputs_test[i_test, t] - mean_test_t[t]
+                    sum_diff_x2_test += th.square(self.outputs_test[i_test, t] - mean_test_t[t])
+                    sum_diff_x_y_2_test += th.square(self.outputs_test[i_test, t] - generated_samples_2d[i_generated, t])
+                    sum_x2_test += th.square(self.outputs_test[i_test, t])
+                    if t > 0:
+                        f = generated_samples_2d[i_generated, t - 1]
+                        if th.abs(self.outputs_test[i_test, t] - f) > 1e-4:
+                            sum_diff_forecast_test += th.abs(
+                                (self.outputs_test[i_test, t] - generated_samples_2d[i_generated, t]) /
+                                (self.outputs_test[i_test, t] - f)
+                            )
+                            n_forecast_test += 1
+
         episode['pcc'] = (sum_diff_x_mean * sum_diff_y_mean) / th.sqrt(sum_diff_x2 * sum_diff_y2)
         episode['prd'] = th.sqrt(sum_diff_x_y_2 / sum_x2)
         episode['rmse'] = th.sqrt(1/th.tensor(n_sum * self.n_profile) * sum_diff_x_y_2)
         episode['mrae'] = 1/n_forecast * sum_diff_forecast
         episode['diff_mean'] = sum((mean_generated_t[t] - mean_real_t[t]) ** 2 for t in range(self.n_profile))
         episode['diff_std'] = sum((std_generated_t[t] - std_real_t[t]) ** 2 for t in range(self.n_profile))
+
+        episode['pcc_test'] = (sum_diff_x_mean_test * sum_diff_y_mean) / th.sqrt(sum_diff_x2_test * sum_diff_y2)
+        episode['prd_test'] = th.sqrt(sum_diff_x_y_2_test / sum_x2_test)
+        episode['rmse_test'] = th.sqrt(1/th.tensor(n_sum_test * self.n_profile) * sum_diff_x_y_2_test)
+        episode['mrae_test'] = 1/n_forecast_test * sum_diff_forecast_test
+        episode['diff_mean_test'] = sum((mean_generated_t[t] - mean_test_t[t]) ** 2 for t in range(self.n_profile))
+        episode['diff_std_test'] = sum((std_generated_t[t] - std_test_t[t]) ** 2 for t in range(self.n_profile))
 
         return episode
 
@@ -276,7 +307,7 @@ class GAN_Trainer():
             episode['loss_percentiles'] += th.sum(
                 th.square(
                     percentiles_generated[key]
-                    - th.from_numpy(self.percentiles_inputs[self.k][key][~self.zero_values])
+                    - th.from_numpy(self.percentiles_inputs_train[self.k][key][~self.zero_values])
                 )
             ) * self.weight_diff_percentiles
         episode['loss_generator'] += episode['loss_percentiles']
@@ -307,9 +338,10 @@ class GAN_Trainer():
         episode['loss_generator'].backward()
         self.optimizer_generator.step()
         if final_n and epoch % self.n_epochs_test == 0:
-            self.plot_statistical_indicators_profiles(
-                percentiles_generated, epoch
-            )
+            for compared_with_test_set in [True, False]:
+                self.plot_statistical_indicators_profiles(
+                    percentiles_generated, epoch, compared_with_test_set=compared_with_test_set
+                )
         episode['means_outputs'] = th.mean(generated_outputs)
         episode['stds_outputs'] = th.std(generated_outputs)
 
@@ -317,13 +349,17 @@ class GAN_Trainer():
 
 
     def plot_statistical_indicators_profiles(
-            self, percentiles_generated, epoch
+            self, percentiles_generated, epoch, compared_with_test_set=False,
     ):
         if self.prm['plots']:
+            if compared_with_test_set:
+                percentiles_inputs = self.percentiles_inputs_test
+            else:
+                percentiles_inputs = self.percentiles_inputs_train
             fig = plt.figure()
             for color, percentiles_, label in zip(
                     ['b', 'g'],
-                    [percentiles_generated, self.percentiles_inputs[self.k]],
+                    [percentiles_generated, percentiles_inputs[self.k]],
                     ['generated', 'original']
             ):
                 for indicator in [f'p{percentile}' for percentile in self.percentiles] + ['mean']:
@@ -346,6 +382,8 @@ class GAN_Trainer():
             title = f"{self.get_saving_label()} profiles generated vs original epoch {epoch}"
             if self.normalised:
                 title += ' normalised'
+            if compared_with_test_set:
+                title += ' test set'
             plt.title(title)
             title = title.replace(' ', '_')
             if epoch in [0, self.n_epochs - 1]:
@@ -514,11 +552,11 @@ class GAN_Trainer():
         self.initialise_generator_and_discriminator()
         episode_entries = [
             'loss_generator', 'loss_discriminator', 'loss_percentiles',
-            'means_outputs', 'stds_outputs', 'ave_diff_mean', 'pcc', 'prd',
-            'rmse', 'mrae'
+            'means_outputs', 'stds_outputs',
         ]
-
-        # if self.data_type != 'gen':
+        for entry in ['pcc', 'prd', 'rmse', 'mrae', 'diff_mean', 'diff_std', 'ave_diff_mean']:
+            episode_entries.append(entry)
+            episode_entries.append(f"{entry}_test")
         if True:
             episode_entries += ['loss_sum_profiles',  'mean_err_1', 'std_err_1', 'share_large_err_1']
         episodes = {
@@ -585,7 +623,7 @@ class GAN_Trainer():
                 self.plot_metrics_over_time(episodes, epoch)
                 self.plot_losses_over_time(episodes_test, epoch_test, test=True)
                 self.plot_metrics_over_time(episodes_test, epoch_test, test=True)
-            if episodes_test['loss_percentiles'][epoch_test] < 5e-1:
+            if episodes_test['loss_percentiles'][epoch_test] < self.tol_loss_percentiles:
                 if self.data_type == 'car':
                     self.get_ideal_ev_avail_tol(generated_outputs)
                 break
@@ -854,20 +892,23 @@ class Generator(nn.Module):
 
 
 def compute_profile_generators(
-        profiles, k, percentiles_inputs, data_type,
+        profiles, k, percentiles_inputs_test, percentiles_inputs_train, data_type,
         day_type, prm, percentage_car_avail=None, average_non_zero_trip=None,
 ):
     print("profile generators")
+    profiles_train = profiles[0: int(len(profiles) * 0.8)]
+    profiles_test = profiles[int(len(profiles) * 0.8):]
+
     zero_values = (
-        (percentiles_inputs[k]['p90'] == 0)
-        & (percentiles_inputs[k]['p10'] == 0)
-        & (percentiles_inputs[k]['mean'] < 0.01)
+        (percentiles_inputs_train[k]['p90'] == 0)
+        & (percentiles_inputs_train[k]['p10'] == 0)
+        & (percentiles_inputs_train[k]['mean'] < 0.01)
     )
     ext = f"_{data_type}_{day_type}_{k}"
     params = {
         'profiles': True,
         'batch_size': 100,
-        'n_epochs': int(1e8 / len(profiles)),
+        'n_epochs': int(1e8 / len(profiles_train)),
         'weight_sum_profiles': 1e-7,
         'weight_diff_percentiles': 100,
         'zero_values': zero_values,
@@ -875,7 +916,8 @@ def compute_profile_generators(
         'size_input_discriminator_one_item': prm['n'] - sum(zero_values),
         'size_output_generator_one_item': prm['n'] - sum(zero_values),
         'k': k,
-        'percentiles_inputs': percentiles_inputs,
+        'percentiles_inputs_train': percentiles_inputs_train,
+        'percentiles_inputs_test': percentiles_inputs_test,
         'data_type': data_type,
         'n_items_generated': 50,
         'nn_type_generator': 'linear',
@@ -893,15 +935,16 @@ def compute_profile_generators(
         'initial_noise': None,
         'initial_lr': None,
         'n_epochs_initial_lr': 100,
-        'min': min(percentiles_inputs[k]['p10']),
-        'max': max(percentiles_inputs[k]['p90']),
+        'min': min(percentiles_inputs_train[k]['p10']),
+        'max': max(percentiles_inputs_train[k]['p90']),
         'lr_discriminator_ratio': 1,
         'recover_weights': False,
         'n_epochs_test': 100,
         'tol': 1e-2,
         'ext': ext,
         'percentage_car_avail': percentage_car_avail,
-        'average_non_zero_trip': average_non_zero_trip
+        'average_non_zero_trip': average_non_zero_trip,
+        'tol_loss_percentiles': 5e-1,
     }
     path = prm['save_hedge'] / 'profiles' / f"norm_{data_type}"
     np.save(path / f"zerovalues{ext}.npy", zero_values)
@@ -917,12 +960,14 @@ def compute_profile_generators(
 
     elif data_type == 'loads':
         params['noise0'] = 1e-1
-        params['lr_start'] = 1e-2
+        params['lr_start'] = 1e-3
         params['lr_end'] = 1e-2
         params['initial_noise'] = 0.01
         params['n_epochs_initial_noise'] = 100
         params['dropout_generator'] = 0.5
         params['lr_discriminator_ratio'] = 1e-3
+        params['tol_loss_percentiles'] = 1e-1
+        # params['n_epochs'] = 2500
         # params['recover_weights'] = True
     elif data_type == 'car':
         params['noise0'] = 1e-2
@@ -940,5 +985,6 @@ def compute_profile_generators(
     params['size_input_generator_one_item'] = params['dim_latent_noise']
     gan_trainer = GAN_Trainer(params, prm)
     gan_trainer.update_value_type('profiles')
-    gan_trainer.add_training_data(outputs=profiles)
+    gan_trainer.add_training_data(outputs=profiles_train, test_outputs=profiles_test)
+
     gan_trainer.train()

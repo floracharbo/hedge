@@ -198,12 +198,12 @@ class Clusterer:
             banks_, self.min_cdfs[data_type][day_type], self.max_cdfs[data_type][day_type],
             self.clus_dist_bin_edges[data_type][day_type], self.clus_dist_cdfs[data_type][day_type]
         ] = self._get_cdfs(distances, f"{data_type} {day_type}", banks_)
-        statistical_indicators = self._plot_clusters(
+        statistical_indicators, statistical_indicators_test, statistical_indicators_train = self._plot_clusters(
             transformed_features, norm_vals, data_type, day_type, banks_, vals_k
         )
         if self.prm['gan_generation_profiles']:
             self._generate_gan_profiles_behaviour_type(
-                day_type, data_type, ev_avail_k, vals_k, statistical_indicators
+                day_type, data_type, ev_avail_k, vals_k, statistical_indicators_test, statistical_indicators_train
             )
         self.banks[data_type][day_type] = banks_
 
@@ -333,7 +333,7 @@ class Clusterer:
 
         return bank, min_cdfs_, max_cdfs_, bins_edges_, cdfs_
 
-    def _get_percentiles(self, data):
+    def _get_percentiles(self, data, label=''):
         # data should be [n_clus, n_profiles, n_steps]
         n_clus = len(data)
         statistical_indicators = {k: {} for k in range(n_clus)}
@@ -352,7 +352,7 @@ class Clusterer:
                     statistical_indicators[k]['mean'][time] = np.mean(data[k][:, time])
                 fig = plt.figure()
                 plt.plot(statistical_indicators[k]['mean'], label='mean')
-                fig.savefig(self.prm['save_other'] / 'clusters' / f'mean_{k}.png')
+                fig.savefig(self.prm['save_other'] / 'clusters' / f'mean_{k}{label}.png')
                 plt.close('all')
             else:
                 print(f"Cluster {k} is empty")
@@ -376,6 +376,14 @@ class Clusterer:
                 f"same as ({len(transformed_features)}, {self.n})"
             )
         statistical_indicators = self._get_percentiles(vals_k)
+        train_vals_k = {
+            k: vals_k[k][0: int(len(vals_k[k]) * 0.8)] for k in vals_k
+        }
+        test_vals_k = {
+            k: vals_k[k][int(len(vals_k[k]) * 0.8):] for k in vals_k
+        }
+        statistical_indicators_test = self._get_percentiles(test_vals_k, label='_test')
+        statistical_indicators_train = self._get_percentiles(train_vals_k, label='_train')
 
         ymax = np.max(
             [
@@ -414,7 +422,7 @@ class Clusterer:
                     save_fig(fig, self.prm, fig_save_path)
                 plt.close("all")
 
-        return statistical_indicators
+        return statistical_indicators, statistical_indicators_test, statistical_indicators_train
 
     def _group_gen_month(self, days_):
         self.banks['gen'] = initialise_dict(range(13), "empty_dict")
@@ -654,7 +662,7 @@ class Clusterer:
                         )
 
     def _generate_gan_profiles_behaviour_type(
-            self, day_type, data_type, ev_avail_k, vals_k, statistical_indicators
+            self, day_type, data_type, ev_avail_k, vals_k, statistical_indicators_test, statistical_indicators_train
     ):
         for k in range(self.prm["n_clus"][data_type]):
             print(f"k {k}")
@@ -666,7 +674,7 @@ class Clusterer:
             else:
                 percentage_car_avail, average_non_zero_trip = None, None
             compute_profile_generators(
-                vals_k[k], k, statistical_indicators,
+                vals_k[k], k, statistical_indicators_test, statistical_indicators_train,
                 data_type, day_type, self.prm,
                 percentage_car_avail, average_non_zero_trip
             )
