@@ -28,6 +28,7 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
 from src.data_preparation.profile_generation import compute_profile_generators
+from src.data_preparation.test_GANs import test_GANs
 from src.utils import initialise_dict, save_fig
 
 
@@ -377,10 +378,10 @@ class Clusterer:
             )
         statistical_indicators = self._get_percentiles(vals_k)
         train_vals_k = {
-            k: vals_k[k][0: int(len(vals_k[k]) * 0.8)] for k in vals_k
+            k: vals_k[k][0: int(len(vals_k[k]) * self.prm['train_set_size'])] for k in vals_k
         }
         test_vals_k = {
-            k: vals_k[k][int(len(vals_k[k]) * 0.8):] for k in vals_k
+            k: vals_k[k][int(len(vals_k[k]) * self.prm['train_set_size']):] for k in vals_k
         }
         statistical_indicators_test = self._get_percentiles(test_vals_k, label='_test')
         statistical_indicators_train = self._get_percentiles(train_vals_k, label='_train')
@@ -664,6 +665,10 @@ class Clusterer:
     def _generate_gan_profiles_behaviour_type(
             self, day_type, data_type, ev_avail_k, vals_k, statistical_indicators_test, statistical_indicators_train
     ):
+        if day_type == 'wd':
+            return
+        generators = {}
+        params = {}
         for k in range(self.prm["n_clus"][data_type]):
             print(f"k {k}")
             if data_type == 'car':
@@ -673,11 +678,12 @@ class Clusterer:
                 print(f"average trip non zero {average_non_zero_trip}")
             else:
                 percentage_car_avail, average_non_zero_trip = None, None
-            compute_profile_generators(
+            generators[k], params[k] = compute_profile_generators(
                 vals_k[k], k, statistical_indicators_test, statistical_indicators_train,
                 data_type, day_type, self.prm,
                 percentage_car_avail, average_non_zero_trip
             )
+        test_GANs(generators, vals_k, params, self.prm['train_set_size'])
 
     def _cluster_module(
             self,
@@ -747,13 +753,25 @@ class Clusterer:
                 plt.title(f"i_month {i_month}")
                 fig.savefig(f"gen_{i_month}.png")
                 plt.close(fig)
-            statistical_indicators = self._get_percentiles(vals_k)
+            # statistical_indicators = self._get_percentiles(vals_k)
+            train_vals_k = {
+                i_month: vals_k[i_month][0: int(len(vals_k[i_month]) * self.prm['train_set_size'])] for i_month in vals_k
+            }
+            test_vals_k = {
+                i_month: vals_k[i_month][int(len(vals_k[i_month]) * self.prm['train_set_size']):] for i_month in vals_k
+            }
+            statistical_indicators_test = self._get_percentiles(test_vals_k, label='_test')
+            statistical_indicators_train = self._get_percentiles(train_vals_k, label='_train')
             if self.prm['gan_generation_profiles']:
-                for i_month in [12]:
-                    compute_profile_generators(
-                        self.banks["gen"][i_month]["profs"], i_month, statistical_indicators,
+                generators, params = {}, {}
+                ks = [12]
+                for i_month in ks:
+                    generators[i_month], params[i_month] = compute_profile_generators(
+                        self.banks["gen"][i_month]["profs"], i_month,
+                        statistical_indicators_test, statistical_indicators_train,
                         'gen', '', self.prm
                     )
+                test_GANs(generators, vals_k, params, self.prm['train_set_size'], ks=ks)
 
         # transitions probabilities
         self._save_clustering()

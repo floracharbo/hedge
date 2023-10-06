@@ -266,6 +266,7 @@ def get_parameters() -> Tuple[dict, dict]:
         'high_res',
         'n_consecutive_days',
         'months',
+        'train_set_size'
     ]:
         prm[key] = run_config[key]
 
