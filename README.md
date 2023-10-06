@@ -7,7 +7,7 @@ Contact: Flora Charbonnier, flora.charbonnier@eng.ox.ac.uk
 The aim of the HEDGE tool is to randomly generate realistic home photovoltaic (PV) generation, electricity consumption, and electric vehicle consumption and availability daily profiles, based on UK historical datasets. 
 It can for example generate data that can be used to train neural networks.
 
-More details on the aims and methodology here:
+More details on the aims and methodology [here](https://arxiv.org/abs/2310.01661).
 
 This README guides you through (A) how to prepare the tool dataset, (B) how to use the tool
 
@@ -58,7 +58,7 @@ If you hit RAM issues and the code is unable to run on your machine, you may fin
 2. Import home energy data generator object
 `from src.hedge import HEDGE`
 3. Create home energy data generator object instance, with at least the number of homes as an input
-`data_generator = HEDGE(n_homes)`
+`data_generator = HEDGE(n_homes)`.
 
 other optional inputs are:
 - factors0; the initial scaling factors in the format factors0[data_type][home]
