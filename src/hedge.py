@@ -23,27 +23,28 @@ import numpy as np
 import torch as th
 import yaml
 from scipy.stats import norm
-from sklearn.preprocessing import StandardScaler
 
-from src.utils import f_to_interval, initialise_dict, list_potential_paths
+import src.utils as utils
+
+
+def check_file_start(name, file):
+    return file[0: len(name)] == name
 
 
 def car_loads_to_availability(car_loads, tol=1e-2):
     """Tag car availability based on trips' origins and destinations."""
     car_loads[car_loads < tol] = 0
-    i_start_trips = np.where((car_loads[:-1] == 0) & (car_loads[1:] > 0))[0]
-    ev_avail = np.ones(len(car_loads))
-    for i in range(len(i_start_trips)):
+    i_start_trips = np.where((car_loads[:-1] == 0) & (car_loads[1:] > 0))[0] + 1
+    if car_loads[0] > 0:
+        i_start_trips = np.insert(i_start_trips, 0, 0)
+    ev_avail = np.where(car_loads > 0, 0, 1)
+    for i in range(0, len(i_start_trips), 2):
         i_start = i_start_trips[i]
-        i_start_next = i_start_trips[i + 1] if i < len(i_start_trips) - 1 else len(car_loads)
-        if i_start == 0 or ev_avail[i - 1]:
+        if i + 1 < len(i_start_trips):
+            i_start_next = i_start_trips[i + 1]
             ev_avail[i_start: i_start_next] = 0
 
     return ev_avail, car_loads
-
-
-def check_file_start(name, file):
-    return file[0: len(name)] == name
 
 
 class HEDGE:
@@ -57,6 +58,7 @@ class HEDGE:
         self,
         n_homes: int,
         n_steps: int = 24,
+        factors0: Optional[dict] = None,
         clusters0: Optional[dict] = None,
         prm: Optional[dict] = None,
         other_prm: Optional[dict] = None,
@@ -75,12 +77,12 @@ class HEDGE:
 
         self.homes = range(self.n_homes)
         self.it_plot = 0
-        self._load_input_data(prm, other_prm, clusters0, brackets_definition)
+        self._load_input_data(prm, other_prm, factors0, clusters0, brackets_definition)
 
-    def _load_input_data(self, prm, other_prm, clusters0, brackets_definition):
+    def _load_input_data(self, prm, other_prm, factors0, clusters0, brackets_definition):
         prm = self._load_inputs(prm, brackets_definition)
         prm = self._replace_car_prm(prm, other_prm)
-        self._init_factors()
+        self._init_factors(factors0, prm)
         self._init_clusters(clusters0)
         self.profile_generator = self._load_profile_generators(prm)
 
@@ -153,17 +155,6 @@ class HEDGE:
 
         return day
 
-    def _import_dem(self, prm):
-        self.select_cdfs["loads"] = {}
-        for day_type in prm["syst"]["weekday_types"]:
-            self.select_cdfs["loads"][day_type] = [
-                min_cdf + prm["syst"]["clus_dist_share"] * (max_cdf - min_cdf)
-                for min_cdf, max_cdf in zip(
-                    self.min_cdfs["loads"][day_type],
-                    self.max_cdfs["loads"][day_type]
-                )
-            ]
-
     def _import_cdfs(self, prm):
         self.select_cdfs = {}
         for data_type in self.behaviour_types:
@@ -207,8 +198,8 @@ class HEDGE:
         properties = ["p_pos", "p_zero2pos", "mid_fs_brackets", "fs_brackets"]
         for property_ in properties:
             path = factors_path \
-                   / f"{property_}_n_consecutive_days{self.n_consecutive_days}_" \
-                     f"brackets_definition_{brackets_definition}.pickle"
+                / f"{property_}_n_consecutive_days{self.n_consecutive_days}_" \
+                f"brackets_definition_{brackets_definition}.pickle"
             with open(path, "rb") as file:
                 setattr(self, property_, pickle.load(file))
 
@@ -217,7 +208,7 @@ class HEDGE:
             "p_clus", "p_trans", "min_cdfs", "max_cdfs", "clus_dist_bin_edges",
             "clus_dist_cdfs", "fitted_kmeans_obj", "fitted_scalers"
         ]:
-            potential_paths = list_potential_paths(
+            potential_paths = utils.list_potential_paths(
                 prm, data_types=self.data_types,
                 root_path=prm['paths']["input_folder"],
                 data_folder='hedge_inputs', sub_data_folder='clusters'
@@ -268,18 +259,13 @@ class HEDGE:
         # add relevant parameters to object properties
         self.car = prm["car"]
         self.store0 = self.car["SoC0"] * np.array(self.car['caps' + self.ext])
-        self.own_car = self.car['own_car'] if 'own_car' in self.car else np.ones(self.n_homes, dtype=bool)
-        self.own_PV = prm['gen']['own_PV'] if 'gen' in prm and 'own_PV' in prm['gen'] else np.ones(self.n_homes, dtype=bool)
-        self.own_loads = prm['loads']['own_loads'] if 'loads' in prm and 'own_loads' in prm['loads'] else np.ones(self.n_homes, dtype=bool)
-        self.own_der = {
-            'car': self.own_car,
-            'loads': self.own_loads,
-            'gen': self.own_PV,
-        }
+        if 'own_car' not in self.car:
+            self.car['own_car'] = np.ones(self.n_homes, dtype=bool)
 
         return prm
 
-    def _init_factors(self):
+    def _init_factors(self, factors0, prm):
+        self.factors0 = factors0
         _, transition = self._transition_type()
         self.factors = {}
         if self.factors0 is None:
@@ -338,6 +324,23 @@ class HEDGE:
                     self.n_consecutive_days - 1, self.factors[data_type][home]
                 )
 
+        for brackets in ['fs_brackets', 'mid_fs_brackets']:
+            if 'gen' in self.data_types:
+                self.__dict__[brackets]['gen']['all'] = np.array(
+                    self.__dict__[brackets]['gen']['all']
+                )
+                self.__dict__[brackets]['gen']['all'] \
+                    *= self.factors["gen"][0] / self.f_mean['gen'][0]
+            for data_type in ['car', 'loads']:
+                if data_type in self.data_types:
+                    for transition in prm["syst"]['day_trans_types'] + ['all']:
+                        if not (data_type == 'car' and transition == 'we2wd'):
+                            self.__dict__[brackets][data_type][transition] = np.array(
+                                self.__dict__[brackets][data_type][transition]
+                            )
+                            self.__dict__[brackets][data_type][transition] \
+                                *= self.factors[data_type][0] / self.f_mean[data_type]
+
     def _init_clusters(self, clusters0):
         self.clusters0 = clusters0
         day_type, transition = self._transition_type()
@@ -381,13 +384,16 @@ class HEDGE:
                         transition_ = 'all'
                     else:
                         transition_ = transition
-                    previous_intervals = tuple(
-                        f_to_interval(
-                            prev_factors[data_type][home][- (self.n_consecutive_days - 1 - d)],
-                            self.fs_brackets[data_type][transition_]
+                    try:
+                        previous_intervals = tuple(
+                            utils.f_to_interval(
+                                prev_factors[data_type][home][- (self.n_consecutive_days - 1 - d)],
+                                self.fs_brackets[data_type][transition_]
+                            )
+                            for d in range(self.n_consecutive_days - 1)
                         )
-                        for d in range(self.n_consecutive_days - 1)
-                    )
+                    except Exception as e:
+                        print(e)
                     if (
                             data_type == 'car'
                             and prev_clusters[data_type][home] == self.n_all_clusters[data_type] - 1
@@ -411,7 +417,7 @@ class HEDGE:
         return factors, interval_f
 
     def _next_clusters(self, transition, prev_clusters):
-        clusters = initialise_dict(self.behaviour_types)
+        clusters = {behaviour: [] for behaviour in self.behaviour_types}
 
         random_clus = [
             [np.random.rand() for _ in self.homes]
@@ -440,23 +446,29 @@ class HEDGE:
     def _adjust_max_ev_loads(
         self, day, interval_f_car, factors, transition, clusters, day_type, homes
     ):
+        transition_ = 'all' if transition == 'we2wd' else transition
+        homes = [home for home in homes if self.car['own_car'][home]]
         for i_home, home in enumerate(homes):
             it = 0
-            while np.max(day['loads_car'][i_home]) > self.car['caps'][home] and it < 100:
+            while (
+                    np.max(day["loads_car"][i_home]) > self.car['caps' + self.ext][home]
+                    or factors[i_home] > self.car['max_daily_energy_cutoff']
+            ) and it < 100:
                 if it == 99:
                     print("100 iterations _adjust_max_ev_loads")
-                if factors[i_home] > 0 and interval_f_car[home] > 0:
+                if factors[i_home] > 0 and interval_f_car[i_home] > 0:
                     factor0 = factors[i_home].copy()
-                    interval_f_car[home] -= 1
-                    factors[i_home] = self.mid_fs_brackets['car'][transition][
-                        int(interval_f_car[home])]
-                    day['loads_car'][home] *= factors[i_home] / factor0
+                    interval_f_car[i_home] -= 1
+                    mid_fs_brackets = self.mid_fs_brackets['car'][transition_]
+                    factors[i_home] = mid_fs_brackets[interval_f_car[i_home]]
+                    day['loads_car'][i_home] *= factors[i_home] / factor0
+
                 else:
-                    profile = self._generate_profile('car', day_type, clusters[home])
-                    assert sum(profile) == 0 or abs(sum(profile) - 1) < 1e-3, \
-                        f"sum profile ev_cons {np.sum(profile)}"
-                    day['loads_car'][home] = profile * factors[i_home]
-                    day['ev_avail'][home], day['loads_car'][home] = car_loads_to_availability(day['loads_car'][home])
+                    profile = self._generate_profile('car', day_type, clusters['car'][home])
+                    day['loads_car'][i_home] = profile * factors[i_home]
+                    day['avail_car'][i_home], day['loads_car'][i_home] = car_loads_to_availability(
+                        day['loads_car'][i_home]
+                    )
 
                 it += 1
 
@@ -554,6 +566,9 @@ class HEDGE:
             profile /= np.sum(profile)
             its += 1
 
+        if sum(np.isnan(profile)) > 0:
+            print("nans in generated profile")
+
         return profile
 
     def _compute_number_of_available_profiles(self, data_type, day_type, i_month):
@@ -598,16 +613,17 @@ class HEDGE:
                 if previous_i_prof <= i_prof < n_profs_ - 1 and n_profs_ > 1:
                     i_prof += 1
             i_profs.append(i_prof)
+            profs = self.profs[data_type]
             if data_type == "car":
-                assert i_prof < len(self.profs["car"]["cons"][day_type][clusters[data_type][home]]), \
+                assert i_prof < len(profs["cons"][day_type][clusters[data_type][home]]), \
                     f"i_profs {i_profs} i_prof {i_prof} " \
                     f"n_profs_ {n_profs_} n_profs {n_profs} n_profs0 {n_profs0}"
             elif data_type == "loads":
-                assert i_prof < len(self.profs[data_type][day_type][clusters[data_type][home]]), \
+                assert i_prof < len(profs[day_type][clusters[data_type][home]]), \
                     f"i_profs {i_profs} i_prof {i_prof} " \
                     f"n_profs_ {n_profs_} n_profs {n_profs} n_profs0 {n_profs0}"
             else:
-                assert i_prof < len(self.profs[data_type][i_month]), \
+                assert i_prof < len(profs[i_month]), \
                     f"i_profs {i_profs} i_prof {i_prof} " \
                     f"n_profs_ {n_profs_} n_profs {n_profs} n_profs0 {n_profs0}"
 
@@ -621,7 +637,7 @@ class HEDGE:
         return choice
 
     def _load_dem_profiles(self, profiles, prm):
-        profiles["loads"] = initialise_dict(prm["syst"]["weekday_types"])
+        profiles["loads"] = {day_type: [] for day_type in prm["syst"]["weekday_type"]}
 
         self.n_prof["loads"] = {}
         clusters = [
@@ -1046,9 +1062,18 @@ class HEDGE:
 
     def _init_params(self, prm):
         # add relevant parameters to object properties
-        for info in ['data_types', 'n_items', 'clus_dist_share', 'dem_intervals', 'month0', 'factors0']:
+        for info in [
+            'data_types', 'n_items', 'clus_dist_share', 'dem_intervals', 'month0'
+        ]:
             setattr(self, info, prm['syst'][info])
-
+        self.own_car = prm['car']['own_car'] if 'car' in prm and 'own_car' in prm['car'] else np.ones(self.n_homes, dtype=bool)
+        self.own_PV = prm['gen']['own_PV'] if 'gen' in prm and 'own_PV' in prm['gen'] else np.ones(self.n_homes, dtype=bool)
+        self.own_loads = prm['loads']['own_loads'] if 'loads' in prm and 'own_loads' in prm['loads'] else np.ones(self.n_homes, dtype=bool)
+        self.own_der = {
+            'car': self.own_car,
+            'loads': self.own_loads,
+            'gen': self.own_PV,
+        }
         self.behaviour_types = [
             data_type for data_type in self.data_types if data_type != "gen"
         ]
@@ -1081,7 +1106,8 @@ class HEDGE:
             features = profile[
                 int(6 * 24 / self.n_steps): int(22 * 24 / self.n_steps)
             ]
-
-        transformed_features = self.fitted_scalers[data_type][cluster_id].transform(features.reshape(1, -1))
+        transformed_features = self.fitted_scalers[data_type][cluster_id].transform(
+            np.reshape(features, (1, -1))
+        )
 
         return transformed_features
