@@ -111,6 +111,10 @@ class HEDGE:
                     else self.date.month - 1
                 generated_profile = self._generate_profile(data_type, day_type_, cluster)
                 day[data_type_][i_home] = generated_profile * factors[data_type][i_home]
+                if sum(np.isnan(day[data_type_][i_home])) > 0:
+                    print("nans in generated profile")
+                assert sum(generated_profile) == 0 or abs(sum(generated_profile) - 1) < 1e-3, \
+                    f"sum profile {data_type} {np.sum(generated_profile)}"
 
         if 'car' in self.data_types:
             # check loads car are consistent with maximum battery load
@@ -446,11 +450,11 @@ class HEDGE:
                     interval_f_car[home] -= 1
                     factors[i_home] = self.mid_fs_brackets['car'][transition][
                         int(interval_f_car[home])]
-                    assert sum(day['loads_car'][home]) == 0 or abs(sum(day['loads_car'][home]) - 1) < 1e-3, \
-                        f"ev_cons {day['loads_car'][home]}"
                     day['loads_car'][home] *= factors[i_home] / factor0
                 else:
                     profile = self._generate_profile('car', day_type, clusters[home])
+                    assert sum(profile) == 0 or abs(sum(profile) - 1) < 1e-3, \
+                        f"sum profile ev_cons {np.sum(profile)}"
                     day['loads_car'][home] = profile * factors[i_home]
                     day['ev_avail'][home], day['loads_car'][home] = car_loads_to_availability(day['loads_car'][home])
 
@@ -500,6 +504,10 @@ class HEDGE:
                     min=self.min[f"{data_type}_{day_type}_{cluster_}"],
                     max=self.max[f"{data_type}_{day_type}_{cluster_}"]
                 )
+                assert np.sum(generated_profiles > 1) == 0, \
+                    f"{np.sum(generated_profiles > 1)} generated {data_type} profile values are larger than 1"
+                if any(np.isnan(generated_profiles.flatten())):
+                    print("nan values in generated profile")
             it_i_profile = 0
             found_non_nan_profile = False
             while it_i_profile < 1000 and not found_non_nan_profile:
