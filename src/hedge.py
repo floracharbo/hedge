@@ -294,13 +294,14 @@ class HEDGE:
 
             if "car" in self.data_types:
                 randoms = np.random.rand(self.n_homes)
-                self.factors["car"] = [
+                intervals = [
                     self._ps_rand_to_choice(
                         self.p_zero2pos['car'][transition],
                         randoms[home]
                     )
                     for home in self.homes
                 ]
+                self.factors["car"] = [self.mid_fs_brackets["car"][transition][interval] for interval in intervals]
         else:
             for data_type in self.data_types:
                 if isinstance(self.factors0[data_type], (int, float)):
@@ -384,16 +385,6 @@ class HEDGE:
                         transition_ = 'all'
                     else:
                         transition_ = transition
-                    try:
-                        previous_intervals = tuple(
-                            utils.f_to_interval(
-                                prev_factors[data_type][home][- (self.n_consecutive_days - 1 - d)],
-                                self.fs_brackets[data_type][transition_]
-                            )
-                            for d in range(self.n_consecutive_days - 1)
-                        )
-                    except Exception as e:
-                        print(e)
                     if (
                             data_type == 'car'
                             and prev_clusters[data_type][home] == self.n_all_clusters[data_type] - 1
@@ -401,6 +392,13 @@ class HEDGE:
                         # no trip day
                         probabilities = self.p_zero2pos[data_type][transition_]
                     else:
+                        previous_intervals = tuple(
+                            utils.f_to_interval(
+                                prev_factors[data_type][home][- (self.n_consecutive_days - 1 - d)],
+                                self.fs_brackets[data_type][transition_]
+                            )
+                            for d in range(self.n_consecutive_days - 1)
+                        )
                         probabilities = self.p_pos[data_type][transition_][previous_intervals]
                     interval = self._ps_rand_to_choice(
                         probabilities,
@@ -518,22 +516,22 @@ class HEDGE:
                 )
                 assert np.sum(generated_profiles > 1) == 0, \
                     f"{np.sum(generated_profiles > 1)} generated {data_type} profile values are larger than 1"
-                if any(np.isnan(generated_profiles.flatten())):
+                if np.sum(np.isnan(generated_profiles)) > 0:
                     print("nan values in generated profile")
             it_i_profile = 0
-            found_non_nan_profile = False
-            while it_i_profile < 1000 and not found_non_nan_profile:
+            valid_profile = False
+            while it_i_profile < 1000 and not valid_profile:
                 i_profile = random.randint(0, self.n_items - 1)
                 idx = n_steps_nonzero * i_profile
                 profile_nonzero = generated_profiles[0, idx: idx + n_steps_nonzero]
                 profile = np.zeros(self.n_steps)
                 profile[~zero_values] = profile_nonzero
-                if np.sum(np.isnan(profile)) == 0:
-                    found_non_nan_profile = True
+                if np.sum(np.isnan(profile)) == 0 and np.sum(profile) > 0:
+                    valid_profile = True
                 else:
                     print(
-                        f"nans in profile {data_type} "
-                        f"fitted_kmeans_id {fitted_kmeans_id} cluster_ {cluster_}"
+                        f"invalid profile in {data_type} fitted_kmeans_id {fitted_kmeans_id} cluster_ {cluster_}, "
+                        f"discarding and getting a new one"
                     )
                 if it_i_profile == 999:
                     print("1000 iterations _generate_profile")
@@ -562,7 +560,8 @@ class HEDGE:
                 if self.clus_dist_share < 1:
                     print(f"cluster_distance {cluster_distance} (max_dist {max_dist})")
                 break
-
+            assert np.sum(profile) > 0, \
+                f"np.sum(profile) {np.sum(profile)} data_type, day_type, cluster {data_type, day_type, cluster}"
             profile /= np.sum(profile)
             its += 1
 
