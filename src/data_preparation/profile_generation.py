@@ -9,6 +9,8 @@ import torch as th
 from torch import nn
 from tqdm import tqdm
 import os
+from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
 
 from src.hedge import car_loads_to_availability
 from src.utils import save_fig, list_potential_paths
@@ -74,11 +76,12 @@ class GAN_Trainer():
         return saving_label
 
     def add_training_data(
-        self, inputs=None, outputs=None, test_outputs=None, p_clus=None, p_trans=None, n_clus=None,
+        self, inputs=None, outputs=None, outputs_test=None, p_clus=None, p_trans=None, n_clus=None, plot=True
     ):
         self.train_data_length = len(outputs)
         self.outputs = th.tensor(outputs)
-        self.outputs_test = th.tensor(test_outputs)
+        if outputs_test is not None:
+            self.outputs_test = th.tensor(outputs_test)
 
         if self.normalised:
             for i in range(self.train_data_length):
@@ -87,7 +90,8 @@ class GAN_Trainer():
                 self.outputs[i] = self.outputs[i] / self.inputs[i][0]
                 self.outputs_test[i] = self.outputs_test[i] / self.inputs[i][0]
 
-        self.plot_inputs()
+        if plot:
+            self.plot_inputs()
 
         self.mean_real_output = np.nanmean(self.outputs)
         self.std_real_output = np.nanstd(self.outputs)
@@ -291,7 +295,7 @@ class GAN_Trainer():
 
         return episode
 
-    def train_generator(self, real_inputs, final_n, epoch, test):
+    def train_generator(self, real_inputs, final_n, epoch, test, plot):
         episode = {}
         self.generator.zero_grad()
         generated_outputs = self.generator(real_inputs.to(th.float32), test)
@@ -309,8 +313,8 @@ class GAN_Trainer():
                     percentiles_generated[key]
                     - th.from_numpy(self.percentiles_inputs_train[self.k][key][~self.zero_values])
                 )
-            ) * self.weight_diff_percentiles
-        episode['loss_generator'] += episode['loss_percentiles']
+            )
+        episode['loss_generator'] += episode['loss_percentiles'] * self.weight_diff_percentiles
         episode = self._compute_metrics_episode(episode, generated_samples)
         # if self.data_type != 'gen':
         if True:
@@ -332,12 +336,12 @@ class GAN_Trainer():
                         for i in range(self.n_items_generated)
                     ]
                 )  for j in range(self.batch_size_)])
-            ) * self.weight_sum_profiles
-            episode['loss_generator'] += episode['loss_sum_profiles']
+            )
+            episode['loss_generator'] += episode['loss_sum_profiles'] * self.weight_sum_profiles
 
         episode['loss_generator'].backward()
         self.optimizer_generator.step()
-        if final_n and epoch % self.n_epochs_test == 0:
+        if final_n and epoch % self.n_epochs_test == 0 and plot:
             for compared_with_test_set in [True, False]:
                 self.plot_statistical_indicators_profiles(
                     percentiles_generated, epoch, compared_with_test_set=compared_with_test_set
@@ -546,7 +550,52 @@ class GAN_Trainer():
             save_fig(fig, self.prm, self.save_path / title)
             plt.close('all')
 
-    def train(self):
+    def barplot_compare_metrics_train_test_dataset(self, episodes, epoch):
+        labels = [
+            'pcc',
+            'prd', 'rmse', 'mrae',
+            # 'ave_diff_mean'
+        ]
+        labels_for_plot = ['PCC', 'PRD', 'RMSE', 'MRAE']
+        train_values = np.ones(len(labels))
+        test_values = [episodes[f"{label}_test"][epoch]/episodes[label][epoch] for label in labels]
+
+        x = np.arange(len(labels))  # the label locations
+        width = 0.35  # the width of the bars
+
+        fig, ax = plt.subplots()
+        rects1 = ax.bar(x - width / 2, train_values, width, label='Against training set')
+        rects2 = ax.bar(x + width / 2, test_values, width, label='Against testing set')
+
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels_for_plot)
+        ax.legend(loc='upper left')
+        ax.set_ylabel('Values normalised by training set values')
+        title = f"{self.get_saving_label()} metrics train vs test epoch {epoch}"
+        title = title.replace(' ', '_')
+        fig.savefig(
+            self.save_path / f"{title}.pdf", bbox_inches='tight', format='pdf', dpi=1200
+        )
+        plt.close('all')
+
+        def autolabel(rects):
+            """Attach a text label above each bar in *rects*, displaying its height."""
+            for rect in rects:
+                height = rect.get_height()
+                ax.annotate('{}'.format(height),
+                            xy=(rect.get_x() + rect.get_width() / 2, height),
+                            xytext=(0, 3),  # 3 points vertical offset
+                            textcoords="offset points",
+                            ha='center', va='bottom')
+
+        autolabel(rects1)
+        autolabel(rects2)
+
+        fig.tight_layout()
+
+        plt.show()
+
+    def train(self, plot=True):
         self.get_train_loader()
         n_train_loader = len(self.train_loader)
         self.initialise_generator_and_discriminator()
@@ -596,7 +645,7 @@ class GAN_Trainer():
                 real_outputs = real_outputs.view(self.n_items_generated * self.batch_size_, -1)[:, ~self.zero_values].view(self.batch_size_, -1)
                 loss_discriminator = self.train_discriminator(real_inputs, real_outputs, test)
                 final_n = n == len(self.train_loader) - 1
-                generated_outputs, episode, generated_samples = self.train_generator(real_inputs, final_n, epoch, test)
+                generated_outputs, episode, generated_samples = self.train_generator(real_inputs, final_n, epoch, test, plot=plot)
                 with th.no_grad():
                     episodes['loss_discriminator'][idx + offset_idx] = loss_discriminator
                 for key in episode:
@@ -614,37 +663,30 @@ class GAN_Trainer():
                 test = False
 
             self.update_noise_and_lr_generator(epoch)
-            if epoch % self.n_epochs_test == 0:
+            if epoch % self.n_epochs_test == 0 and plot:
                 self._save_model(episodes, idx, done=False, save_ext=epoch_test)
-                # if self.data_type != 'gen':
-                if True:
-                    self._plot_errors_normalisation_profiles(episodes, idx - 1)
+                self._plot_errors_normalisation_profiles(episodes, idx - 1)
                 self.plot_losses_over_time(episodes, epoch)
                 self.plot_metrics_over_time(episodes, epoch)
                 self.plot_losses_over_time(episodes_test, epoch_test, test=True)
                 self.plot_metrics_over_time(episodes_test, epoch_test, test=True)
-            if episodes_test['loss_percentiles'][epoch_test] < self.tol_loss_percentiles:
+            if episodes['loss_percentiles'][epoch] < self.tol_loss_percentiles:
                 if self.data_type == 'car':
                     self.get_ideal_ev_avail_tol(generated_outputs)
                 break
 
-        self.plot_final_hist_generated_vs_real(generated_outputs, real_outputs, epoch)
-        # if self.data_type != 'gen':
-        if True:
+        if plot:
+            self.plot_final_hist_generated_vs_real(generated_outputs, real_outputs, epoch)
             self._plot_errors_normalisation_profiles(episodes, idx - 1)
-        self.plot_losses_over_time(episodes, epoch)
-        self.plot_metrics_over_time(episodes, epoch)
-        percentiles_generated \
-            = self._compute_statistical_indicators_generated_profiles(generated_samples)
-        self.plot_statistical_indicators_profiles(
-            percentiles_generated, epoch
-        )
-        # self.plot_noise_over_time()
-        # print(
-        #     f"mean generated outputs last 10: {np.mean(episodes['means_outputs'][-10:])}, "
-        #     f"std {np.mean(episodes['stds_outputs'][-10:])}"
-        # )
-        self._save_model(episodes, idx, done=True)
+            self.plot_losses_over_time(episodes, epoch)
+            self.plot_metrics_over_time(episodes, epoch)
+            percentiles_generated \
+                = self._compute_statistical_indicators_generated_profiles(generated_samples)
+            self.plot_statistical_indicators_profiles(
+                percentiles_generated, epoch
+            )
+            self.barplot_compare_metrics_train_test_dataset(episodes, epoch)
+            self._save_model(episodes, idx, done=True)
 
     def _save_model(self, episodes, idx, done=False, save_ext=None):
         path = self.prm['save_hedge'] / 'profiles' / f"norm_{self.data_type}" \
@@ -707,6 +749,7 @@ class GAN_Trainer():
         title = title.replace(' ', '_')
         save_fig(fig, self.prm, self.save_path / title)
         plt.close('all')
+
 
 class Discriminator(nn.Module):
     def __init__(self, gan_trainer):
@@ -899,8 +942,10 @@ def compute_profile_generators(
         day_type, prm, percentage_car_avail=None, average_non_zero_trip=None,
 ):
     print("profile generators")
-    profiles_train = profiles[0: int(len(profiles) * 0.8)]
-    profiles_test = profiles[int(len(profiles) * 0.8):]
+    print(f"len(profiles): {len(profiles)}")
+    n_train_data = int(len(profiles) * prm['train_set_size'])
+    profiles_train = profiles[0: n_train_data]
+    profiles_test = profiles[n_train_data:]
 
     zero_values = (
         (percentiles_inputs_train[k]['p90'] == 0)
@@ -919,6 +964,7 @@ def compute_profile_generators(
         'size_input_discriminator_one_item': prm['n'] - sum(zero_values),
         'size_output_generator_one_item': prm['n'] - sum(zero_values),
         'k': k,
+        'n': prm['n'],
         'percentiles_inputs_train': percentiles_inputs_train,
         'percentiles_inputs_test': percentiles_inputs_test,
         'data_type': data_type,
@@ -971,7 +1017,8 @@ def compute_profile_generators(
         params['n_epochs_initial_noise'] = 100
         params['dropout_generator'] = 0.5
         params['lr_discriminator_ratio'] = 1e-3
-        params['tol_loss_percentiles'] = 1e-1
+        params['tol_loss_percentiles'] = 5e-2/100
+        # params['weight_diff_percentiles'] = 0
         # params['n_epochs'] = 2500
         # params['recover_weights'] = True
     elif data_type == 'car':
@@ -984,12 +1031,14 @@ def compute_profile_generators(
         params['dropout_generator'] = 0.5
         params['lr_discriminator_ratio'] = 1e-3
         params['n_epochs_test'] = 10
-        params['recover_weights'] = True
+        # params['recover_weights'] = True
 
     params['lr_decay'] = (params['lr_end'] / params['lr_start']) ** (1 / params['n_epochs'])
     params['size_input_generator_one_item'] = params['dim_latent_noise']
     gan_trainer = GAN_Trainer(params, prm)
     gan_trainer.update_value_type('profiles')
-    gan_trainer.add_training_data(outputs=profiles_train, test_outputs=profiles_test)
+    gan_trainer.add_training_data(outputs=profiles_train, outputs_test=profiles_test)
 
     gan_trainer.train()
+
+    return gan_trainer.generator, params
