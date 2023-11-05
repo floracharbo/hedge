@@ -11,12 +11,12 @@ import pickle
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from pyarrow.parquet import ParquetFile
-import pyarrow as pa
-import matplotlib.pyplot as plt
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+from pyarrow.parquet import ParquetFile
 from tqdm import tqdm
 
 from src.data_preparation.define_blocks import (get_data_chunks, get_n_rows,

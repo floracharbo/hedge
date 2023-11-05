@@ -47,6 +47,6 @@ plt.legend(
     ]
 )
 fig.savefig(
-    f"data/other_outputs/accuracy_GANS.pdf", bbox_inches='tight', format='pdf', dpi=1200
+    "data/other_outputs/accuracy_GANS.pdf", bbox_inches='tight', format='pdf', dpi=1200
 )
 plt.close('all')

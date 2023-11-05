@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 from typing import Tuple
 
-import numpy as np
 import yaml
 from scipy.stats import alpha, chi, chi2, gamma, maxwell, norm
 
@@ -32,22 +31,10 @@ def _import_columns_info(prm):
             names = ['id', 'dtm', 'gen']
             i_cols = prm['i_cols_gen']
         else:
-            names = ['id', 'Measurement Description', 'dtm',
-       'gen']
+            names = ['id', 'Measurement Description', 'dtm', 'gen']
             i_cols = prm['i_cols_gen']
         for name_col, i_col in zip(names, i_cols):
             prm["i_cols"]["gen"][name_col] = i_col
-
-    # str_to_type = {
-    #     'int': np.int32,
-    #     'str': str,
-    #     'flt': float
-    # }
-    # prm["dtypes"] = initialise_dict(prm["data_types"], "empty_dict")
-    # for data_type in prm["data_types"]:
-    #     for i, name in enumerate(prm["i_cols"][data_type].keys()):
-    #         type_ = str_to_type[prm["type_cols"][data_type][i]]
-    #         prm["dtypes"][data_type][name] = type_
 
     return prm
 
