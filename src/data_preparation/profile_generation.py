@@ -10,8 +10,8 @@ import torch as th
 from torch import nn
 from tqdm import tqdm
 
-from src.hedge import car_loads_to_availability
-from src.utils import list_potential_paths, save_fig
+from hedge import car_loads_to_availability
+from utils import list_potential_paths, save_fig
 
 th.manual_seed(111)
 

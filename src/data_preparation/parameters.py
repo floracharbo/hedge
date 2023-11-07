@@ -8,7 +8,7 @@ from typing import Tuple
 import yaml
 from scipy.stats import alpha, chi, chi2, gamma, maxwell, norm
 
-from src.utils import initialise_dict, run_id
+from utils import initialise_dict, run_id
 
 
 def _import_columns_info(prm):

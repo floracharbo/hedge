@@ -16,10 +16,10 @@ import datetime
 
 import torch
 
-from src.data_preparation.clustering import Clusterer
-from src.data_preparation.importer import import_data
-from src.data_preparation.parameters import get_parameters
-from src.data_preparation.scaling_factors import scaling_factors
+from data_preparation.clustering import Clusterer
+from data_preparation.importer import import_data
+from data_preparation.parameters import get_parameters
+from data_preparation.scaling_factors import scaling_factors
 
 if __name__ == "__main__":
     # 0 - initialise variables

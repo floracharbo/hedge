@@ -1,5 +1,6 @@
 from src.hedge import HEDGE
 
+
 def generate_data_with_hedge(plotting=True):
     generator = HEDGE(
         n_homes=10,

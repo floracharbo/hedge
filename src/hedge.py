@@ -24,7 +24,7 @@ import torch as th
 import yaml
 from scipy.stats import norm
 
-import src.utils as utils
+import utils as utils
 
 
 def check_file_start(name, file):

@@ -14,8 +14,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 
-from src.data_preparation.filling_in import stats_filling_in
-from src.utils import data_id, initialise_dict, list_potential_paths, save_fig
+from data_preparation.filling_in import stats_filling_in
+from utils import data_id, initialise_dict, list_potential_paths, save_fig
 
 
 def _load_out(prm, data_type, chunk_rows):

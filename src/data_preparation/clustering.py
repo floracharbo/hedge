@@ -27,9 +27,9 @@ import seaborn as sns
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
-from src.data_preparation.profile_generation import compute_profile_generators
-from src.data_preparation.test_GANs import test_GANs
-from src.utils import initialise_dict, save_fig
+from data_preparation.profile_generation import compute_profile_generators
+from data_preparation.test_GANs import test_GANs
+from utils import initialise_dict, save_fig
 
 
 def _plot_heat_map_p_trans(
@@ -340,7 +340,8 @@ class Clusterer:
         statistical_indicators = {k: {} for k in range(n_clus)}
         for k in range(n_clus):
             if len(data[k]) > 0:
-                print(f"k {k} len(data[k]) = {len(data[k])}")
+                if label == "":
+                    print(f"k {k} len(data[k]) = {len(data[k])}")
                 statistical_indicators[k]['min'] = np.min(data[k])
                 statistical_indicators[k]['max'] = np.max(data[k])
                 for statistical_indicator in ['p10', 'p25', 'p50', 'p75', 'p90', 'mean']:
@@ -666,7 +667,6 @@ class Clusterer:
         generators = {}
         params = {}
         for k in range(self.prm["n_clus"][data_type]):
-            print(f"k {k}")
             if data_type == 'car':
                 percentage_car_avail = np.sum(ev_avail_k[k]) / np.multiply(*np.shape(ev_avail_k[k]))
                 average_non_zero_trip = np.mean(vals_k[k][vals_k[k] > 0])

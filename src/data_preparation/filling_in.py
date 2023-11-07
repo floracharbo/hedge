@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 
-from src.utils import initialise_dict, save_fig
+from utils import initialise_dict, save_fig
 
 
 def _number_missing_points(step_len: int, time: int, mins: List[int]) \
