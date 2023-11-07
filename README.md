@@ -7,7 +7,7 @@ Contact: Flora Charbonnier, flora.charbonnier@eng.ox.ac.uk
 The aim of the HEDGE tool is to randomly generate realistic home photovoltaic (PV) generation, electricity consumption, and electric vehicle consumption and availability daily profiles, based on UK historical datasets. 
 It can for example generate data that can be used to train neural networks.
 
-More details on the aims and methodology [here](https://arxiv.org/abs/2310.01661).
+More details on the aims and methodology in [related paper here](https://arxiv.org/abs/2310.01661).
 
 This README guides you through (A) how to prepare the tool dataset, (B) how to use the tool
 
