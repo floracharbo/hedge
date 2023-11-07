@@ -20,6 +20,5 @@ setup(
     url="https://github.com/floracharbo/hedge",
     license="GNU Affero General Public License v3.0",
     packages=find_packages(),
-    install_requires=parse_requirements('requirements.txt', session='hack'),
     python_requires=">=3.7",
 )
