@@ -3,7 +3,7 @@
 all: lint test
 
 install:
-	pip install -r requirements.txt  -e .
+	pip install -r requirements.txt
 
 lint:
 	isort src
