@@ -2,7 +2,7 @@
 
 
 import pathlib
-from pip.req import parse_requirements
+from pip._internal.req import parse_requirements
 from setuptools import find_packages, setup
 
 REPO_ROOT = pathlib.Path(__file__).parent
