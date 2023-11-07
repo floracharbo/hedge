@@ -27,9 +27,9 @@ import seaborn as sns
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
-from data_preparation.profile_generation import compute_profile_generators
-from data_preparation.test_GANs import test_GANs
-from utils import initialise_dict, save_fig
+from src.data_preparation.profile_generation import compute_profile_generators
+from src.data_preparation.test_GANs import test_GANs
+from src.utils import initialise_dict, save_fig
 
 
 def _plot_heat_map_p_trans(

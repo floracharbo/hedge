@@ -19,11 +19,11 @@ import pyarrow as pa
 from pyarrow.parquet import ParquetFile
 from tqdm import tqdm
 
-from data_preparation.define_blocks import (get_data_chunks, get_n_rows,
+from src.data_preparation.define_blocks import (get_data_chunks, get_n_rows,
                                             save_intermediate_out, save_outs)
-from data_preparation.filling_in import fill_whole_days
-from data_preparation.import_homes_data import import_homes_data
-from utils import (data_id, empty, formatting, get_granularity,
+from src.data_preparation.filling_in import fill_whole_days
+from src.data_preparation.import_homes_data import import_homes_data
+from src.utils import (data_id, empty, formatting, get_granularity,
                    initialise_dict, list_potential_paths, obtain_time)
 
 

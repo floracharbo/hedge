@@ -8,7 +8,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 
-from utils import dmy_to_cum_day, initialise_dict, str_to_cum_day
+from src.utils import dmy_to_cum_day, initialise_dict, str_to_cum_day
 
 
 def _make_data(

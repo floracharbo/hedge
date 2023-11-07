@@ -188,10 +188,14 @@ def list_potential_paths(
         prm['n_rows0'] = {data_type: 'all' for data_type in data_types}
     potential_paths = []
     for folder in os.listdir(Path(root_path) / data_folder):
-        if f"n{prm['syst']['H']}" in folder and all(f"{data_type}_{prm['n_rows0'][data_type]}" in folder for data_type in data_types):
+        has_correct_time_granularity = f"n{prm['syst']['H']}" in folder
+        has_relevant_data_types = all(f"{data_type}_{prm['n_rows0'][data_type]}" in folder for data_type in data_types)
+        if has_correct_time_granularity and has_relevant_data_types:
             potential_paths.append(Path("data") / data_folder / folder / sub_data_folder)
     if all(prm['n_rows0'][data_type] == 'all' for data_type in data_types):
-        potential_paths.append(Path(root_path) / data_folder / f"n{prm['syst']['H']}" / sub_data_folder)
+        potential_paths.append(
+            Path(root_path) / data_folder / f"n{prm['syst']['H']}" / sub_data_folder
+        )
 
     return potential_paths
 

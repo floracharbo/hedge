@@ -11,7 +11,7 @@ from matplotlib.colors import LogNorm
 from scipy import interpolate
 from scipy.stats import norm, pearsonr
 
-from utils import f_to_interval, get_cmap, initialise_dict, save_fig
+from src.utils import f_to_interval, get_cmap, initialise_dict, save_fig
 
 
 def _plot_f_next_vs_prev(prm, factors_path, f_prevs, f_nexts, label):
