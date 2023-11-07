@@ -438,7 +438,7 @@ class Clusterer:
             for property_ in ["factor", "id", "cum_day"]:
                 self.banks['gen'][i_month][property_] = [days_[i][property_] for i in i_days]
 
-            path = self.prm["save_hedge"] / "profiles" / "norm_gen"
+            path = self.prm["save_other"] / "profiles" / "norm_gen"
             np.save(
                 path / f"i_month{i_month}",
                 self.banks['gen'][i_month]["profs"],
@@ -464,7 +464,7 @@ class Clusterer:
 
         for i_month in range(13):
             np.save(
-                self.prm["save_hedge"] / "clusters"
+                self.prm["save_other"] / "clusters"
                 / f"cdfs_clus_gen_{i_month}",
                 self.banks['gen'][i_month]["cdfs"],
             )
@@ -513,7 +513,7 @@ class Clusterer:
                     print(f"implement n_consecutive_days = {n_consecutive_days}")
 
         with open(
-                self.prm["save_hedge"]
+                self.prm["save_other"]
                 / "clusters"
                 / f"{data_type}_p_trans_n_consecutive_days{n_consecutive_days}", "wb"
         ) as file:
@@ -572,17 +572,15 @@ class Clusterer:
         return bank
 
     def _save_clustering(self):
-        save_path = self.prm["save_hedge"]
-        prof_path = save_path / "profiles"
         for data_type in self.behaviour_types:
             for day_type in self.weekday_types:
                 for k in range(self.prm["n_clus"][data_type]):
                     np.save(
-                        save_path / "clusters"
+                        self.prm["save_other"] / "clusters"
                         / f"cdfs_clus_{data_type}_{day_type}_{k}",
                         self.banks[data_type][day_type][k]["cdfs"],
                     )
-                    path = prof_path / f"norm_{data_type}"
+                    path = self.prm["save_other"] / "profiles" / f"norm_{data_type}"
                     np.save(
                         path / f"c{k}_{day_type}",
                         self.banks[data_type][day_type][k]["profs"],
@@ -592,7 +590,7 @@ class Clusterer:
                         np.array(self.banks[data_type][day_type][k]["profs"]) == 0
                     ), f"{data_type} {k} {day_type} all zeros"
                     if data_type == "car":
-                        path = prof_path / "car_avail"
+                        path = self.prm["save_other"] / "profiles" / "car_avail"
                         np.save(
                             path / f"c{k}_{day_type}",
                             self.banks[data_type][day_type][k]["avail"],
@@ -602,15 +600,15 @@ class Clusterer:
             k = self.prm["n_clus"]["car"]
             for day_type in self.weekday_types:
                 np.save(
-                    prof_path / "car_avail" / f"c{k}_{day_type}",
+                    self.prm["save_other"] / "profiles" / "car_avail" / f"c{k}_{day_type}",
                     [np.ones((self.n,))]
                 )
                 np.save(
-                    prof_path / "norm_car" / f"c{k}_{day_type}",
+                    self.prm["save_other"] / "profiles" / "norm_car" / f"c{k}_{day_type}",
                     [np.zeros((self.n,))]
                 )
 
-        path = save_path / "clusters"
+        path = self.prm["save_hedge"] / "clusters"
         for info in [
             "p_clus", "p_trans", "min_cdfs", "max_cdfs", "clus_dist_bin_edges", "clus_dist_cdfs",
             "fitted_kmeans_obj", "fitted_scalers"
@@ -665,8 +663,6 @@ class Clusterer:
     def _generate_gan_profiles_behaviour_type(
             self, day_type, data_type, ev_avail_k, vals_k, statistical_indicators_test, statistical_indicators_train
     ):
-        if day_type == 'wd':
-            return
         generators = {}
         params = {}
         for k in range(self.prm["n_clus"][data_type]):

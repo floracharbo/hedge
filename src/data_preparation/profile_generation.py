@@ -650,7 +650,7 @@ class GAN_Trainer():
         }
 
         potential_paths = list_potential_paths(
-            self.prm, [self.data_type], data_folder='hedge_inputs', sub_data_folder='profiles'
+            self.prm, [self.data_type], data_folder='other_outputs', sub_data_folder='profiles'
         )
         for potential_path in potential_paths:
             path = potential_path / f"norm_{self.data_type}"
@@ -727,45 +727,48 @@ class GAN_Trainer():
             self._save_model(episodes, idx, done=True)
 
     def _save_model(self, episodes, idx, done=False, save_ext=None):
-        path = self.prm['save_hedge'] / 'profiles' / f"norm_{self.data_type}" \
+        save_hedge_path = self.prm['save_hedge'] / 'profiles' / f"norm_{self.data_type}" \
             if save_ext is None else self.save_path
+        save_other_path = self.prm['save_other'] / 'profiles' / f"norm_{self.data_type}" \
+            if save_ext is None else self.save_path
+
         if save_ext is not None:
             model_ext = f"{self.ext}_{save_ext}.pt"
         else:
             model_ext = f"{self.ext}.pt"
-        th.save(episodes, path / f"episodes{self.ext}.pt")
-        th.save(idx, path / f"episodes_idx{self.ext}.pt")
-        th.save(done, path / f"done{self.ext}.pt")
+        th.save(episodes, save_other_path / f"episodes{self.ext}.pt")
+        th.save(idx, save_other_path / f"episodes_idx{self.ext}.pt")
+        th.save(done, save_other_path / f"done{self.ext}.pt")
         try:
             th.save(
                 self.generator.model,
-                path
+                save_hedge_path
                 / f"generator{model_ext}"
             )
             th.save(
                 self.generator.model.state_dict(),
-                path
+                save_other_path
                 / f"generator_weights_{self.data_type}_{self.day_type}_{self.k}{self.ext}.pt"
             )
             th.save(
                 self.discriminator.model,
-                path
+                save_other_path
                 / f"discriminator{self.ext}.pt"
             )
             th.save(
                 self.discriminator.model.state_dict(),
-                path
+                save_other_path
                 / f"discriminator_weights{self.ext}.pt"
             )
         except Exception as ex1:
             try:
                 th.save(
                     self.generator.fc,
-                    path / f"generator_{self.get_saving_label()}_fc{self.ext}.pt"
+                    save_hedge_path / f"generator_{self.get_saving_label()}_fc{self.ext}.pt"
                 )
                 th.save(
                     self.generator.conv,
-                    path / f"generator_{self.get_saving_label()}_conv{self.ext}.pt"
+                    save_hedge_path / f"generator_{self.get_saving_label()}_conv{self.ext}.pt"
                 )
             except Exception as ex2:
                 print(f"Could not save model weights: ex1 {ex1}, ex2 {ex2}")
