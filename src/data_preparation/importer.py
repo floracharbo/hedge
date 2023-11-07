@@ -588,34 +588,11 @@ def get_sequences(
                 )
             else:
                 print(f"Warning: adapt resampling for H {prm['H']}")
-            sequences[id_]['cum_min'] = sequences[id_]['cum_min'].apply(lambda x: x - x % 60 * 24/prm['H'])
-            sequences[id_]['mins'] = sequences[id_]['mins'].apply(lambda x: x - x % 60 * 24/prm['H'])
-            if len(sequences[id_]) > len(set(sequences[id_]['cum_min'])):
-                print(F"591 {id_} len sequence {len(sequences[id_])} > len set cum_min {len(set(sequences[id_]['cum_min']))}")
+            sequences[id_]['cum_min'] = sequences[id_]['cum_min'].apply(lambda x: x - x % 60 * 24 / prm['H'])
+            sequences[id_]['mins'] = sequences[id_]['mins'].apply(lambda x: x - x % 60 * 24 / prm['H'])
             sequences[id_].dropna(subset=['cum_min'], inplace=True)
             sequences[id_].reset_index(inplace=True, drop=True)
-            # sequences0[id_] = sequences0[id_].sort_values(by=["cum_min"])
-            # granularity, granularities = get_granularity(
-            #     prm["step_len"], sequences0[id_] ["cum_min"], granularities
-            # )
-            # start_cum_min = sequences0[id_]["cum_min"].iloc[0] - (sequences0[id_]["cum_min"].iloc[0] % prm["step_len"])
-            # end_cum_min = sequences0[id_]["cum_min"].iloc[-1] - (sequences0[id_]["cum_min"].iloc[0] % prm["step_len"])
-            # n_slots = int((end_cum_min - start_cum_min) / prm["step_len"]) + 1
-            # for i_slot in range(n_slots):
-            #     start_slot = start_cum_min + i_slot * prm["step_len"]
-            #     end_slot = start_cum_min + (i_slot + 1) * prm["step_len"]
-            #     indexes = sequences0[id_]["cum_min"].between(start_slot, end_slot, inclusive='left')
-            #     if sum(indexes) > 0:
-            #         index0 = np.where(indexes)[0][0]
-            #         current_time_step = pd.DataFrame.from_dict({
-            #             data_type: [sequences0[id_][data_type].loc[indexes].mean()],
-            #             'cum_min': [start_slot],
-            #             'mins': [start_slot % (24 * 60)],
-            #             'cum_day': [sequences0[id_]["cum_day"].iloc[index0]],
-            #             'month': [sequences0[id_]["month"].iloc[index0]],
-            #             'n': [sum(indexes)]
-            #         })
-            #         sequences[id_] = pd.concat([sequences[id_], current_time_step], ignore_index=True)
+
     assert len(sequences) > 0, "len(sequences) == 0"
     granularities = None
 
@@ -696,7 +673,7 @@ def filter_validity(
     """Filter rows in data, only keep valid data."""
     start_id, end_id = start_end_id
     data_source = prm["data_type_source"][data_type]
-    if not (data_type == 'gen' and prm['var_file']['gen'][-len('TrialMonitoringData.csv'):] != 'TrialMonitoringData.csv'):
+    if not (data_type == 'gen' and prm['gen_CLNR']):
         data["start_avail"] = data["id"].apply(
             lambda id_: start_id[data_source][id_]
             if id_ in start_id[data_source]
@@ -730,22 +707,11 @@ def filter_validity(
         if len(data) == 0:
             return None, None
 
-        # metadata['operational_at_dtm'] = pd.to_datetime(metadata['operational_at'])
-        # data['operational_at'] = data.apply(
-        #     lambda x: metadata[metadata['ss_id'] == x.id]['operational_at_dtm'].values[0]
-        #     if x.keep else None,
-        #     axis=1
-        # )
-        # data['keep'] = data.apply(
-        #     lambda x: x.keep and x.operational_at <= x.dtm.date(),
-        #     axis=1
-        # )
-        # print(f"after checking for operational_at {sum(data['keep'])}")
-    elif data_type == 'gen' and prm['var_file']['gen'] in ['EXPORT HourlyData - Customer Endpoints.csv', '15minute_data_austin.csv']:
+    elif data_type == 'gen' and (prm['gen_uk_power_networks'] or prm['gen_pecan_street']):
         data['keep'] = True
 
     data = obtain_time(data, data_type, prm)
-    if not (data_type == 'gen' and prm['var_file']['gen'][-len('TrialMonitoringData.csv'):] != 'TrialMonitoringData.csv'):
+    if not (data_type == 'gen' and prm['gen_CLNR']):
         data["keep"] = keep_column(
             data["cum_day"], data["start_avail"], data["end_avail"]
         )
@@ -807,12 +773,10 @@ def import_segment(
     if data_type == "gen" and prm['var_file']['gen'][-len('parquet'):] == 'parquet':
         data = pa.Table.from_batches([next(pf_iter_batches)]).to_pandas()
         data.columns = ['gen', 'dtm', 'id']
-    elif data_type == "gen" and prm['var_file']['gen'] == 'EXPORT HourlyData - Customer Endpoints.csv':
+    elif data_type == "gen" and prm["gen_uk_power_networks"]:
         data = pd.read_csv(
                 prm["var_path"][data_type],
                 usecols=prm['i_cols_gen'],
-                # nrows=chunk_rows[1] - chunk_rows[0],
-                # names=['y', 'M', 'd', 'h', 'm', 'q_gen_min', 'p_gen_max'],
             )
         data['gen'] = data.apply(
             lambda x: (x.P_GEN_MIN + x.P_GEN_MAX)/2,
@@ -918,7 +882,7 @@ def get_data(
     data = data.reset_index()
 
     # check only one test_cell
-    if data_type == "loads" or data_type == 'gen' and prm['var_file']['gen'][-len('TrialMonitoringData.csv'):] == 'TrialMonitoringData.csv':
+    if data_type == "loads" or data_type == 'gen' and prm['gen_CLNR']:
         data["test_cell"] = data["id"].map(lambda id_: test_cell[id_] if id_ in test_cell else None)
 
     # register mapping of data for producing heatmap later
@@ -972,7 +936,7 @@ def get_percentiles(days, prm):
         percentiles[data_type] \
             = [np.percentile(list_data, i) for i in range(101)]
 
-    with open(prm["save_hedge"] / "percentiles.pickle", "wb") as file:
+    with open(prm["save_other"] / "percentiles.pickle", "wb") as file:
         pickle.dump(percentiles, file)
 
     return percentiles
@@ -984,6 +948,10 @@ def import_data(
     """Import, filter, pre-process data for current block."""
     days = {}  # bank of days of data per data type
     n_data_type = {}  # len of bank per data type
+    prm['gen_uk_power_networks'] = \
+        prm['var_file']['gen'] == 'EXPORT HourlyData - Customer Endpoints.csv'
+    prm['gen_pecan_street'] = prm['var_file']['gen'] == '15minute_data_austin.csv'
+    prm['gen_CLNR'] = prm['var_file']['gen'].endswith('TrialMonitoringData.csv')
 
     for data_type in prm["data_types"]:
         print(f"start import {data_type}")
@@ -995,7 +963,6 @@ def import_data(
             try:
                 n_batches = 0
                 while n_batches < n_batches_max:
-                    next_batch = next(pf_iter_batches)
                     n_batches += 1
             except Exception:
                 pf_iter_batches = pf.iter_batches(batch_size=n_rows_per_chunk)
@@ -1011,7 +978,7 @@ def import_data(
             prm["n_rows"][data_type] = get_n_rows(data_type, prm)
         if data_type == "gen" and prm['var_file']['gen'][-len('parquet'):] == 'parquet':
             chunks_rows = [[i, n_rows_per_chunk] for i in range(n_batches)]
-        elif data_type == "gen" and prm['var_file']['gen'] == 'EXPORT HourlyData - Customer Endpoints.csv':
+        elif data_type == "gen" and prm['gen_uk_power_networks']:
             chunks_rows = [[0, prm["n_rows"][data_type]]]
         else:
             # chunks_rows = get_data_chunks(prm, data_type)

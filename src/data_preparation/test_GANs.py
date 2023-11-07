@@ -17,11 +17,14 @@ def generate_synthetic_data(n_train_data, generators, ks, params):
     profiles = {}
     for k in ks:
         n_batch = int(n_train_data[k] / 50) + 1
-        profiles_nonzero = generators[k](th.randn(n_batch, 1)).view(-1, params[k]['n_profile']).detach().numpy()[:n_train_data[k]]
+        profiles_nonzero = generators[k](
+            th.randn(n_batch, 1)
+        ).view(-1, params[k]['n_profile']).detach().numpy()[:n_train_data[k]]
         profiles[k] = np.zeros((n_train_data[k], params[k]['n']))
         profiles[k][:, ~params[k]['zero_values']] = profiles_nonzero
 
     return profiles
+
 
 def predict_clusters(generators, vals_k, n_train_data, n_test_data, n_repeats, params, ks):
     setups = {
@@ -51,7 +54,9 @@ def predict_clusters(generators, vals_k, n_train_data, n_test_data, n_repeats, p
                 for k in ks:
                     profiles_train[k] = vals_k[k][n_train_data[k]:]
             elif setup['train_data'] == 'synthetic':
-                profiles_train = generate_synthetic_data(n_train_data, generators, list(vals_k.keys()), params)
+                profiles_train = generate_synthetic_data(
+                    n_train_data, generators, list(vals_k.keys()), params
+                )
 
             X_train = np.concatenate([profiles_train[k] for k in ks])
             y_train = np.concatenate([np.full(len(profiles_train[k]), k) for k in ks])
@@ -60,7 +65,9 @@ def predict_clusters(generators, vals_k, n_train_data, n_test_data, n_repeats, p
                 for k in ks:
                     profiles_test[k] = vals_k[k][n_train_data[k]:]
             elif setup['test_data'] == 'synthetic':
-                profiles_test = generate_synthetic_data(n_test_data, generators, list(vals_k.keys()), params)
+                profiles_test = generate_synthetic_data(
+                    n_test_data, generators, list(vals_k.keys()), params
+                )
 
             X_test = np.concatenate([profiles_test[k] for k in ks])
             y_test = np.concatenate([np.full(len(profiles_test[k]), k) for k in ks])
@@ -79,7 +86,9 @@ def predict_clusters(generators, vals_k, n_train_data, n_test_data, n_repeats, p
         print(f"Average accuracy {setup_label} over {n_repeats}: {np.mean(scores)}")
 
 
-def discriminate_real_synthetic(vals_k, generators, n_train_data, n_test_data, n_repeats, params, ks):
+def discriminate_real_synthetic(
+        vals_k, generators, n_train_data, n_test_data, n_repeats, params, ks
+):
     for k in ks:
         scores = []
         for _ in range(n_repeats):
@@ -103,6 +112,7 @@ def discriminate_real_synthetic(vals_k, generators, n_train_data, n_test_data, n
             f"over {n_repeats} repeats: {np.mean(scores)}"
         )
 
+
 def test_GANs(generators, vals_k, params, train_set_size, ks=None):
     n_repeats = 10
     if ks is None:
@@ -111,4 +121,6 @@ def test_GANs(generators, vals_k, params, train_set_size, ks=None):
     n_test_data = {k: len(vals_k[k]) - n_train_data[k] for k in ks}
     if len(ks) > 1:
         predict_clusters(generators, vals_k, n_train_data, n_test_data, n_repeats, params, ks=ks)
-    discriminate_real_synthetic(vals_k, generators, n_train_data, n_test_data, n_repeats, params, ks=ks)
+    discriminate_real_synthetic(
+        vals_k, generators, n_train_data, n_test_data, n_repeats, params, ks=ks
+    )
